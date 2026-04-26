@@ -19,7 +19,6 @@ export function Home() {
         {/*
           HERO VARIANT A (risk-first):
           <h1>Avoid the $25,000 IRS penalty. File Form 5472 correctly.</h1>
-
           HERO VARIANT B (clarity-first):
           <h1>If you own a U.S. LLC as a non-U.S. resident, you are required to file Form 5472.</h1>
         */}
@@ -49,6 +48,7 @@ export function Home() {
           >
             The only platform built specifically for foreign-owned U.S. LLCs. CPA-reviewed. Pay per filing. Start without an account.
           </p>
+
           <div className="flex flex-wrap gap-3 justify-center mb-3">
             <Link
               to="/check"
@@ -64,7 +64,7 @@ export function Home() {
                 minHeight: "44px",
               }}
             >
-              Start My Filing
+              Check Eligibility
             </Link>
             <Link
               to="/pricing"
@@ -84,10 +84,12 @@ export function Home() {
               See Pricing
             </Link>
           </div>
+
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2.5rem" }}>
             Start without an account. Takes about 10 minutes.
           </p>
         </div>
+
         <IRSClock />
       </section>
 
@@ -238,7 +240,7 @@ export function Home() {
                   lineHeight: "1.8",
                 }}
               >
-                Start My Filing
+                Check Eligibility
               </Link>
             </div>
 
@@ -432,7 +434,7 @@ export function Home() {
           <h2 id="contact-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
             Have a question before you start? We are here.
           </h2>
-          <a
+          
             href="mailto:hello@filetax.co"
             style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
           >
