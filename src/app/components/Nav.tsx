@@ -166,7 +166,7 @@ export function Nav() {
             ) : (
               <>
                 <Link
-                  to="/auth"
+                  to="/portal?mode=login"
                   style={{
                     color: "white",
                     fontWeight: 600,
@@ -181,7 +181,7 @@ export function Nav() {
                   Log in
                 </Link>
                 <Link
-                  to="/auth?mode=signup"
+                  to="/portal?mode=signup"
                   style={{
                     color: "white",
                     fontWeight: 600,
@@ -304,7 +304,7 @@ export function Nav() {
               ) : (
                 <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
                   <Link
-                    to="/auth"
+                    to="/portal?mode=login"
                     onClick={() => setMobileOpen(false)}
                     style={{
                       flex: 1,
@@ -322,7 +322,7 @@ export function Nav() {
                     Log in
                   </Link>
                   <Link
-                    to="/auth?mode=signup"
+                    to="/portal?mode=signup"
                     onClick={() => setMobileOpen(false)}
                     style={{
                       flex: 1,
