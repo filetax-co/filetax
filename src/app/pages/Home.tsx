@@ -428,12 +428,12 @@ export function Home() {
           <h2 id="contact-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
             Have a question before you start? We are here.
           </h2>
-          
-            href="mailto:hello@filetax.co"
-            style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
-          >
-            hello@filetax.co
-          </a>
+            <a
+            href={`mailto:${"hello"}@filetax.co`}
+              style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
+            >
+              {"hello"}@filetax.co
+            </a>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
             We respond within 1 business day.
           </p>
