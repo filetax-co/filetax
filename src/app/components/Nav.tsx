@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { NavLink, Link } from "react-router";
+import type { User } from "@supabase/supabase-js";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import { Sun, Moon, Menu, X } from "lucide-react";
 
 const navLinks = [
@@ -12,8 +14,80 @@ const navLinks = [
   { to: "/faq", label: "FAQ" },
 ];
 
+// --- helpers for the user chip ---------------------------------------------
+function getDisplayName(user: User): string {
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof meta.full_name === "string" ? meta.full_name : "";
+  const name = typeof meta.name === "string" ? meta.name : "";
+  return fullName || name || (user.email ? user.email.split("@")[0] : "Account");
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function UserChip({ user, onClick }: { user: User; onClick?: () => void }) {
+  const name = getDisplayName(user);
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const avatarUrl = typeof meta.avatar_url === "string" ? meta.avatar_url : undefined;
+
+  return (
+    <Link
+      to="/dashboard"
+      onClick={onClick}
+      aria-label={`Open profile for ${name}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        color: "white",
+        textDecoration: "none",
+        padding: "0.25rem 0.625rem 0.25rem 0.25rem",
+        borderRadius: "9999px",
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        minHeight: "44px",
+      }}
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          width={32}
+          height={32}
+          style={{ width: 32, height: 32, borderRadius: "9999px", objectFit: "cover" }}
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: "9999px",
+            background: "#0284C7",
+            color: "white",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: "0.8125rem",
+          }}
+        >
+          {getInitials(name)}
+        </span>
+      )}
+      <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>{name}</span>
+    </Link>
+  );
+}
+// ---------------------------------------------------------------------------
+
 export function Nav() {
   const { theme, toggleTheme } = useTheme();
+  const { user, loading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -63,7 +137,7 @@ export function Nav() {
           ))}
         </div>
 
-        {/* Right: Dark mode toggle + CTA */}
+        {/* Right: theme toggle + auth + CTA */}
         <div className="hidden md:flex items-center gap-3">
           <button
             onClick={toggleTheme}
@@ -84,6 +158,49 @@ export function Nav() {
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+
+          {/* Auth area: avatar+name when logged in, Log in/Sign up when not */}
+          {!loading && (
+            user ? (
+              <UserChip user={user} />
+            ) : (
+              <>
+                <Link
+                  to="/auth"
+                  style={{
+                    color: "white",
+                    fontWeight: 600,
+                    fontSize: "0.9375rem",
+                    textDecoration: "none",
+                    padding: "0.5rem 0.75rem",
+                    minHeight: "44px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                  }}
+                >
+                  Log in
+                </Link>
+                <Link
+                  to="/auth?mode=signup"
+                  style={{
+                    color: "white",
+                    fontWeight: 600,
+                    fontSize: "0.9375rem",
+                    textDecoration: "none",
+                    padding: "0.5rem 0.875rem",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                    borderRadius: "0.5rem",
+                    minHeight: "44px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                  }}
+                >
+                  Sign up
+                </Link>
+              </>
+            )
+          )}
+
           <Link
             to="/check"
             style={{
@@ -104,7 +221,7 @@ export function Nav() {
           </Link>
         </div>
 
-        {/* Mobile: toggle + hamburger */}
+        {/* Mobile: theme toggle + hamburger */}
         <div className="flex md:hidden items-center gap-2">
           <button
             onClick={toggleTheme}
@@ -172,6 +289,60 @@ export function Nav() {
                 {link.label}
               </NavLink>
             ))}
+
+            {/* Auth area (mobile) */}
+            {!loading && (
+              user ? (
+                <div
+                  style={{
+                    padding: "0.75rem 0.5rem",
+                    borderBottom: "1px solid #1E293B",
+                  }}
+                >
+                  <UserChip user={user} onClick={() => setMobileOpen(false)} />
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <Link
+                    to="/auth"
+                    onClick={() => setMobileOpen(false)}
+                    style={{
+                      flex: 1,
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: "1rem",
+                      textDecoration: "none",
+                      padding: "0.75rem 1rem",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      borderRadius: "0.5rem",
+                      textAlign: "center",
+                      minHeight: "44px",
+                    }}
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/auth?mode=signup"
+                    onClick={() => setMobileOpen(false)}
+                    style={{
+                      flex: 1,
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: "1rem",
+                      textDecoration: "none",
+                      padding: "0.75rem 1rem",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      borderRadius: "0.5rem",
+                      textAlign: "center",
+                      minHeight: "44px",
+                    }}
+                  >
+                    Sign up
+                  </Link>
+                </div>
+              )
+            )}
+
             <Link
               to="/check"
               onClick={() => setMobileOpen(false)}
