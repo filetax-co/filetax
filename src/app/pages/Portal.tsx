@@ -57,7 +57,8 @@ export function Portal() {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const initialMode = searchParams.get('mode') === 'login' ? 'login' : 'signup';
+  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
