@@ -217,7 +217,7 @@ export function Nav() {
               lineHeight: "1.6",
             }}
           >
-            Start My Filing
+            Check Eligibility
           </Link>
         </div>
 
@@ -361,7 +361,7 @@ export function Nav() {
                 lineHeight: "1.6",
               }}
             >
-              Start My Filing
+              Check Eligibility
             </Link>
           </div>
         </div>
