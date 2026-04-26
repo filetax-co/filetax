@@ -16,12 +16,6 @@ export function Home() {
         style={{ background: "var(--tf-bg)", padding: "4rem 1rem 3rem" }}
         aria-labelledby="hero-heading"
       >
-        {/*
-          HERO VARIANT A (risk-first):
-          <h1>Avoid the $25,000 IRS penalty. File Form 5472 correctly.</h1>
-          HERO VARIANT B (clarity-first):
-          <h1>If you own a U.S. LLC as a non-U.S. resident, you are required to file Form 5472.</h1>
-        */}
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
           <h1
             id="hero-heading"
