@@ -110,7 +110,7 @@ export function Privacy() {
           </p>
           <ul style={styles.ul}>
             <li style={styles.li}>
-              <strong>Service providers.</strong> Vendors who help us run the Service — including hosting, database, email delivery, form intake, customer support, analytics, and payment processing — may process your information on our behalf under written contracts that limit their use of the data.
+              <strong>Service providers.</strong> Vendors who help us run the Service, including hosting, database, email delivery, form intake, customer support, analytics, and payment processing, may process your information on our behalf under written contracts that limit their use of the data.
             </li>
             <li style={styles.li}>
               <strong>Tax authorities.</strong> When you engage us to prepare a filing, we submit the relevant information to the U.S. Internal Revenue Service (IRS) or other tax authorities as part of the engagement.
