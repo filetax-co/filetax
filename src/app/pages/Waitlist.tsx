@@ -2,15 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 
+const FORMSPREE_ENDPOINT = "https://formspree.io/f/mlgzrgnd";
+
 const SERVICES = [
-  { id: "5472", label: "Form 5472 + Pro Forma 1120 Filing", available: true },
-  { id: "past-filing", label: "Past Year Filing + Reasonable Cause Letter", available: true },
-  { id: "llc-classification", label: "LLC Tax Classification Change", available: true },
-  { id: "irs-fax", label: "IRS Fax Submission", available: true },
-  { id: "form-7004", label: "Form 7004 – Automatic 6-Month Extension", available: false },
-  { id: "fbar", label: "FBAR / FinCEN 114 Reporting", available: false },
-  { id: "delaware-annual", label: "Annual Report – Delaware", available: false },
-  { id: "wy-nm-annual", label: "Annual Reports – Wyoming and New Mexico", available: false },
+  { id: "5472", label: "Form 5472 + Pro Forma 1120 Filing" },
+  { id: "past-filing", label: "Past Year Filing + Reasonable Cause Letter" },
+  { id: "llc-classification", label: "LLC Tax Classification Change" },
+  { id: "irs-fax", label: "IRS Fax Submission" },
+  { id: "form-7004", label: "Form 7004 – Automatic 6-Month Extension" },
+  { id: "fbar", label: "FBAR / FinCEN 114 Reporting" },
+  { id: "delaware-annual", label: "Annual Report – Delaware" },
+  { id: "wy-nm-annual", label: "Annual Reports – Wyoming and New Mexico" },
 ];
 
 type Status = "idle" | "submitting" | "success" | "error";
@@ -32,6 +34,7 @@ export function Waitlist() {
   );
   const [status, setStatus] = useState<Status>("idle");
   const [errors, setErrors] = useState<{ name?: string; email?: string; services?: string }>({});
+  const [submitError, setSubmitError] = useState<string>("");
 
   // Dropdown state
   const [open, setOpen] = useState(false);
@@ -88,14 +91,43 @@ export function Waitlist() {
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+    setSubmitError("");
     setStatus("submitting");
-    // TODO: replace with real API endpoint
-    await new Promise((r) => setTimeout(r, 900));
-    setStatus("success");
-  }
 
-  const availableServices = SERVICES.filter((s) => s.available);
-  const comingSoonServices = SERVICES.filter((s) => !s.available);
+    try {
+      // Map selected service ids back to readable labels for the email
+      const selectedLabels = selected
+        .map((id) => SERVICES.find((s) => s.id === id)?.label ?? id)
+        .join(", ");
+
+      const response = await fetch(FORMSPREE_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          services: selectedLabels,
+          _subject: `New waitlist signup: ${name}`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Submission failed (${response.status})`);
+      }
+
+      setStatus("success");
+    } catch (err) {
+      setStatus("error");
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again."
+      );
+    }
+  }
 
   // Label shown in the dropdown trigger
   const triggerLabel =
@@ -297,18 +329,14 @@ export function Waitlist() {
                         background: "var(--tf-bg)",
                         border: "1px solid var(--tf-border)",
                         borderRadius: "0.5rem",
-                        padding: "0.75rem",
+                        padding: "0.5rem",
                         maxHeight: "340px",
                         overflowY: "auto",
                         boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
                       }}
                     >
-                      {/* Available now */}
-                      <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 0.375rem", padding: "0 0.25rem" }}>
-                        Available now
-                      </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem", marginBottom: "0.875rem" }}>
-                        {availableServices.map((svc) => {
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+                        {SERVICES.map((svc) => {
                           const checked = selected.includes(svc.id);
                           return (
                             <label
@@ -341,58 +369,6 @@ export function Waitlist() {
                           );
                         })}
                       </div>
-
-                      {/* Coming soon */}
-                      <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 0.375rem", padding: "0 0.25rem" }}>
-                        Coming soon
-                      </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
-                        {comingSoonServices.map((svc) => {
-                          const checked = selected.includes(svc.id);
-                          return (
-                            <label
-                              key={svc.id}
-                              role="option"
-                              aria-selected={checked}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.625rem",
-                                padding: "0.5rem 0.625rem",
-                                borderRadius: "0.375rem",
-                                background: checked ? "rgba(2,132,199,0.08)" : "transparent",
-                                cursor: "pointer",
-                                fontSize: "0.9375rem",
-                                fontWeight: checked ? 600 : 400,
-                                color: "var(--tf-text)",
-                                transition: "background 140ms",
-                                minHeight: "36px",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleService(svc.id)}
-                                style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
-                              />
-                              <span style={{ flex: 1 }}>{svc.label}</span>
-                              <span
-                                style={{
-                                  background: "var(--tf-border)",
-                                  color: "var(--tf-muted)",
-                                  fontSize: "0.6875rem",
-                                  fontWeight: 600,
-                                  borderRadius: "9999px",
-                                  padding: "0.125rem 0.5rem",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                Soon
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -401,6 +377,24 @@ export function Waitlist() {
                   <p style={{ color: "#B31D1D", fontSize: "0.8125rem", marginTop: "0.5rem" }}>{errors.services}</p>
                 )}
               </fieldset>
+
+              {/* Submission error */}
+              {status === "error" && submitError && (
+                <div
+                  role="alert"
+                  style={{
+                    background: "rgba(179,29,29,0.06)",
+                    border: "1px solid #B31D1D",
+                    color: "#B31D1D",
+                    borderRadius: "0.5rem",
+                    padding: "0.75rem 1rem",
+                    fontSize: "0.875rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  {submitError} Please try again, or email us directly if the problem persists.
+                </div>
+              )}
 
               <button
                 type="submit"
