@@ -3,7 +3,14 @@ import { IRSClock } from "../components/IRSClock";
 import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
 
-const PORTAL_URL = "/portal";
+// ---------------------------------------------------------------------
+// TEMPORARY: Services are not yet live. All pricing-card CTAs route
+// to /waitlist instead of their original destinations. To revert when
+// services launch, change CHECK_URL and PORTAL_URL back to their
+// originals (shown in comments below).
+// ---------------------------------------------------------------------
+const CHECK_URL = "/waitlist";  // original: "/check"
+const PORTAL_URL = "/waitlist"; // original: "/portal"
 
 interface PricingCard {
   title: string;
@@ -26,8 +33,8 @@ const cards: PricingCard[] = [
     description: "One filing year. Print-ready PDF. Ready to mail or fax.",
     microcopy: "One-time filing. No ongoing fees.",
     tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
-    cta: "Start My Filing",
-    ctaLink: "/check",
+    cta: "Join the Waitlist",
+    ctaLink: CHECK_URL, // original: "/check"
     highlight: true,
   },
   {
@@ -36,8 +43,8 @@ const cards: PricingCard[] = [
     priceNote: "per year",
     description: "Any prior unfiled year. Same output as current year.",
     microcopy: "One-time filing. No ongoing fees.",
-    cta: "Start My Filing",
-    ctaLink: "/check",
+    cta: "Join the Waitlist",
+    ctaLink: CHECK_URL, // original: "/check"
   },
   {
     title: "Add-On: Additional Form 5472",
@@ -45,8 +52,8 @@ const cards: PricingCard[] = [
     priceNote: "per form",
     description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is needed for each.",
     note: "Volume discount: $50/form from the 4th form filed.",
-    cta: "Check My Eligibility",
-    ctaLink: "/check",
+    cta: "Join the Waitlist",
+    ctaLink: CHECK_URL, // original: "/check"
   },
   {
     title: "Add-On: CPA-Prepared Reasonable Cause Letter",
@@ -54,16 +61,16 @@ const cards: PricingCard[] = [
     priceNote: "per year",
     description: "Added to any past-year filing. Total with past-year filing: $350 per year.",
     badge: "Recommended for Late Filers",
-    cta: "Add to Filing",
-    ctaLink: PORTAL_URL,
+    cta: "Join the Waitlist",
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
     title: "Add-On: IRS Fax Submission",
     price: "+$30",
     description: "IRS processes faxed forms significantly faster than mailed ones. Digital confirmation receipt included.",
     note: "Not available for Form 8832.",
-    cta: "Add to Filing",
-    ctaLink: PORTAL_URL,
+    cta: "Join the Waitlist",
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
     title: "LLC Tax Classification Change",
@@ -71,17 +78,26 @@ const cards: PricingCard[] = [
     priceNote: "per filing",
     description: "Standalone. Form 8832 or Form 2553. Print-ready PDF. Must be mailed. Fax add-on not available.",
     microcopy: "One-time filing. No ongoing fees.",
-    cta: "Start Filing",
-    ctaLink: PORTAL_URL,
+    cta: "Join the Waitlist",
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
     title: "Multi-Year Past Filing Package",
     price: "Custom",
     description: "3 or more unfiled years. Contact via portal. Reasonable cause letter available per year.",
-    cta: "Get in Touch",
-    ctaLink: PORTAL_URL,
+    cta: "Join the Waitlist",
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
 ];
+
+// Original card CTA copy preserved for revert:
+//   1. "Start My Filing"      → /check
+//   2. "Start My Filing"      → /check
+//   3. "Check My Eligibility" → /check
+//   4. "Add to Filing"        → /portal
+//   5. "Add to Filing"        → /portal
+//   6. "Start Filing"         → /portal
+//   7. "Get in Touch"         → /portal
 
 export function Pricing() {
   usePageMeta({
