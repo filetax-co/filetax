@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { Sun, Moon, Menu, X } from "lucide-react";
+import headerLogo from "/header.png";
 
 const navLinks = [
   { to: "/", label: "Home", exact: true },
@@ -107,7 +108,7 @@ export function Nav() {
           style={{ display: "inline-flex", alignItems: "center" }}
         >
           <img
-            src="/header.png"
+            src={headerLogo}
             alt="Logo"
             height={36}
             style={{ height: 36, width: "auto", display: "block" }}
