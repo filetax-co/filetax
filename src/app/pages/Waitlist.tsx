@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 
@@ -33,7 +33,11 @@ export function Waitlist() {
   const [status, setStatus] = useState<Status>("idle");
   const [errors, setErrors] = useState<{ name?: string; email?: string; services?: string }>({});
 
-  // If query param changes (e.g. navigated from different card), sync selection
+  // Dropdown state
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Sync preselected service from URL
   useEffect(() => {
     if (preselected && SERVICES.some((s) => s.id === preselected)) {
       setSelected((prev) =>
@@ -41,6 +45,28 @@ export function Waitlist() {
       );
     }
   }, [preselected]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  // Close dropdown on Escape
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open]);
 
   function toggleService(id: string) {
     setSelected((prev) =>
@@ -70,6 +96,14 @@ export function Waitlist() {
 
   const availableServices = SERVICES.filter((s) => s.available);
   const comingSoonServices = SERVICES.filter((s) => !s.available);
+
+  // Label shown in the dropdown trigger
+  const triggerLabel =
+    selected.length === 0
+      ? "Select services..."
+      : selected.length === 1
+        ? SERVICES.find((s) => s.id === selected[0])?.label ?? "1 service selected"
+        : `${selected.length} services selected`;
 
   return (
     <>
@@ -192,100 +226,175 @@ export function Waitlist() {
                 )}
               </div>
 
-              {/* Services */}
+              {/* Services dropdown */}
               <fieldset style={{ border: "none", padding: 0, margin: "0 0 1.75rem" }}>
-                <legend style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.75rem", display: "block" }}>
+                <legend style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.375rem", display: "block" }}>
                   Services you are interested in
                 </legend>
 
-                {/* Available now */}
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
-                  Available now
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.25rem" }}>
-                  {availableServices.map((svc) => {
-                    const checked = selected.includes(svc.id);
-                    return (
-                      <label
-                        key={svc.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                          padding: "0.75rem 1rem",
-                          borderRadius: "0.5rem",
-                          border: `1px solid ${checked ? "#0284C7" : "var(--tf-border)"}`,
-                          background: checked ? "rgba(2,132,199,0.05)" : "var(--tf-bg)",
-                          cursor: "pointer",
-                          fontSize: "0.9375rem",
-                          fontWeight: checked ? 600 : 400,
-                          color: "var(--tf-text)",
-                          transition: "border-color 140ms, background 140ms",
-                          minHeight: "44px",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleService(svc.id)}
-                          style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
-                        />
-                        {svc.label}
-                      </label>
-                    );
-                  })}
-                </div>
+                <div ref={dropdownRef} style={{ position: "relative" }}>
+                  {/* Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    aria-haspopup="listbox"
+                    aria-expanded={open}
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 0.875rem",
+                      borderRadius: "0.5rem",
+                      border: `1px solid ${errors.services ? "#B31D1D" : "var(--tf-border)"}`,
+                      background: "var(--tf-bg)",
+                      color: "var(--tf-text)",
+                      fontSize: "1rem",
+                      cursor: "pointer",
+                      minHeight: "44px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      textAlign: "left",
+                      outline: "none",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: selected.length === 0 ? "var(--tf-muted)" : "var(--tf-text)",
+                        fontWeight: selected.length === 0 ? 400 : 500,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flex: 1,
+                      }}
+                    >
+                      {triggerLabel}
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: "0.5rem",
+                        fontSize: "0.625rem",
+                        color: "var(--tf-muted)",
+                        transition: "transform 140ms",
+                        transform: open ? "rotate(180deg)" : "rotate(0)",
+                        flexShrink: 0,
+                      }}
+                      aria-hidden="true"
+                    >
+                      ▼
+                    </span>
+                  </button>
 
-                {/* Coming soon */}
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
-                  Coming soon
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {comingSoonServices.map((svc) => {
-                    const checked = selected.includes(svc.id);
-                    return (
-                      <label
-                        key={svc.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                          padding: "0.75rem 1rem",
-                          borderRadius: "0.5rem",
-                          border: `1px solid ${checked ? "#0284C7" : "var(--tf-border)"}`,
-                          background: checked ? "rgba(2,132,199,0.05)" : "var(--tf-bg)",
-                          cursor: "pointer",
-                          fontSize: "0.9375rem",
-                          fontWeight: checked ? 600 : 400,
-                          color: "var(--tf-text)",
-                          transition: "border-color 140ms, background 140ms",
-                          minHeight: "44px",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleService(svc.id)}
-                          style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
-                        />
-                        {svc.label}
-                        <span
-                          style={{
-                            marginLeft: "auto",
-                            background: "var(--tf-border)",
-                            color: "var(--tf-muted)",
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            borderRadius: "9999px",
-                            padding: "0.125rem 0.625rem",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          Coming soon
-                        </span>
-                      </label>
-                    );
-                  })}
+                  {/* Dropdown panel */}
+                  {open && (
+                    <div
+                      role="listbox"
+                      aria-multiselectable="true"
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 0.25rem)",
+                        left: 0,
+                        right: 0,
+                        zIndex: 50,
+                        background: "var(--tf-bg)",
+                        border: "1px solid var(--tf-border)",
+                        borderRadius: "0.5rem",
+                        padding: "0.75rem",
+                        maxHeight: "340px",
+                        overflowY: "auto",
+                        boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      {/* Available now */}
+                      <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 0.375rem", padding: "0 0.25rem" }}>
+                        Available now
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem", marginBottom: "0.875rem" }}>
+                        {availableServices.map((svc) => {
+                          const checked = selected.includes(svc.id);
+                          return (
+                            <label
+                              key={svc.id}
+                              role="option"
+                              aria-selected={checked}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.625rem",
+                                padding: "0.5rem 0.625rem",
+                                borderRadius: "0.375rem",
+                                background: checked ? "rgba(2,132,199,0.08)" : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.9375rem",
+                                fontWeight: checked ? 600 : 400,
+                                color: "var(--tf-text)",
+                                transition: "background 140ms",
+                                minHeight: "36px",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleService(svc.id)}
+                                style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
+                              />
+                              {svc.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Coming soon */}
+                      <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 0.375rem", padding: "0 0.25rem" }}>
+                        Coming soon
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+                        {comingSoonServices.map((svc) => {
+                          const checked = selected.includes(svc.id);
+                          return (
+                            <label
+                              key={svc.id}
+                              role="option"
+                              aria-selected={checked}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.625rem",
+                                padding: "0.5rem 0.625rem",
+                                borderRadius: "0.375rem",
+                                background: checked ? "rgba(2,132,199,0.08)" : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.9375rem",
+                                fontWeight: checked ? 600 : 400,
+                                color: "var(--tf-text)",
+                                transition: "background 140ms",
+                                minHeight: "36px",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleService(svc.id)}
+                                style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
+                              />
+                              <span style={{ flex: 1 }}>{svc.label}</span>
+                              <span
+                                style={{
+                                  background: "var(--tf-border)",
+                                  color: "var(--tf-muted)",
+                                  fontSize: "0.6875rem",
+                                  fontWeight: 600,
+                                  borderRadius: "9999px",
+                                  padding: "0.125rem 0.5rem",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                Soon
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {errors.services && (
