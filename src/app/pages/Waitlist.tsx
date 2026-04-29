@@ -9,10 +9,9 @@ const SERVICES = [
   { id: "past-filing", label: "Past Year Filing + Reasonable Cause Letter" },
   { id: "llc-classification", label: "LLC Tax Classification Change" },
   { id: "irs-fax", label: "IRS Fax Submission" },
-  { id: "form-7004", label: "Form 7004 – Automatic 6-Month Extension" },
+  { id: "form-7004", label: "Form 7004 - Automatic 6-Month Extension" },
   { id: "fbar", label: "FBAR / FinCEN 114 Reporting" },
-  { id: "delaware-annual", label: "Annual Report – Delaware" },
-  { id: "wy-nm-annual", label: "Annual Reports – Wyoming and New Mexico" },
+  { id: "wyoming-annual", label: "Annual Report - Wyoming" },
 ];
 
 type Status = "idle" | "submitting" | "success" | "error";
