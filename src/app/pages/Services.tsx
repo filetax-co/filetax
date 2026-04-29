@@ -143,8 +143,7 @@ export function Services() {
             {[
               { label: "Form 7004 (automatic 6-month extension)", id: "form-7004" },
               { label: "FBAR / FinCEN 114 reporting", id: "fbar" },
-              { label: "Annual report for Delaware", id: "delaware-annual" },
-              { label: "Annual reports for Wyoming and New Mexico", id: "wy-nm-annual" },
+              { label: "Annual report for Wyoming", id: "wyoming-annual" },
             ].map((item) => (
               <li key={item.id} style={{ padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)", color: "var(--tf-muted)", fontSize: "0.9375rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
                 <span style={{ display: "flex", gap: "0.75rem" }}>
