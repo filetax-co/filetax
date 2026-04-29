@@ -123,7 +123,7 @@ export function Terms() {
 
           <h2 style={styles.h2}>7. Intellectual Property</h2>
           <p style={styles.p}>
-            All content on the Service — including text, graphics, software, logos, and trademarks — is owned by {COMPANY_LEGAL_NAME} or its licensors and is protected by intellectual property laws. We grant you a limited, non-exclusive, non-transferable license to use the Service for its intended purpose. You may not copy, modify, distribute, sell, or create derivative works from the Service without our prior written consent.
+            All content on the Service, including text, graphics, software, logos, and trademarks, is owned by {COMPANY_LEGAL_NAME} or its licensors and is protected by intellectual property laws. We grant you a limited, non-exclusive, non-transferable license to use the Service for its intended purpose. You may not copy, modify, distribute, sell, or create derivative works from the Service without our prior written consent.
           </p>
           <p style={styles.p}>
             You retain ownership of the information and documents you submit. By submitting content, you grant us a non-exclusive license to use, store, and process that content solely as necessary to provide the Service to you.
