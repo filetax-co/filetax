@@ -1,11 +1,13 @@
+# FileTax.co
 
-  # Website creation request (Copy)
+IRS Form 5472 + Pro Forma 1120 filing for foreign-owned U.S. single-member LLCs.
 
-  This is a code bundle for Website creation request (Copy). The original project is available at https://www.figma.com/design/Fbzzh7M1yQbodtpP4jzkU6/Website-creation-request--Copy-.
+Live site: https://filetax-co.github.io/filetax/
 
-  ## Running the code
+## Stack
 
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
-  
+- React + Vite + TypeScript
+- React Router 7
+- Supabase (auth + storage)
+- Sanity (blog content)
+- Deployed via GitHub Pages
