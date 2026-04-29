@@ -11,7 +11,7 @@ export function Home() {
 
   return (
     <>
-      {/* ── Hero ── */}
+      {/* Hero */}
       <section
         style={{ background: "var(--tf-bg)", padding: "4rem 1rem 3rem" }}
         aria-labelledby="hero-heading"
@@ -87,7 +87,7 @@ export function Home() {
         <IRSClock />
       </section>
 
-      {/* ── Why FileTax.co Exists ── */}
+      {/* Why FileTax.co Exists */}
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="why-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="why-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1rem" }}>
@@ -102,7 +102,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── What You Receive ── */}
+      {/* What You Receive */}
       <section style={{ background: "var(--tf-bg)", padding: "4rem 1rem" }} aria-labelledby="receive-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="receive-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1.25rem" }}>
@@ -138,7 +138,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── How It Works ── */}
+      {/* How It Works */}
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="how-heading">
         <div style={{ maxWidth: "900px", margin: "0 auto" }}>
           <h2 id="how-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "0.5rem" }}>
@@ -190,7 +190,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Services Overview ── */}
+      {/* Services Overview */}
       <section style={{ background: "var(--tf-bg)", padding: "4rem 1rem" }} aria-labelledby="services-heading">
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <h2 id="services-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "2rem" }}>
@@ -363,7 +363,36 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Trust signals strip ── */}
+      {/* More services on the way / Waitlist CTA */}
+      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="waitlist-cta-heading">
+        <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
+          <h2 id="waitlist-cta-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.625rem)", marginBottom: "0.75rem" }}>
+            More services on the way
+          </h2>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.6, marginBottom: "1.5rem", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
+            Form 7004 extensions, FBAR reporting, and Wyoming annual reports are launching soon. Join the waitlist to get notified when each one is ready.
+          </p>
+          <Link
+            to="/waitlist"
+            style={{
+              background: "transparent",
+              color: "#0284C7",
+              fontWeight: 600,
+              fontSize: "1rem",
+              padding: "0.75rem 1.75rem",
+              borderRadius: "0.5rem",
+              textDecoration: "none",
+              display: "inline-block",
+              border: "1px solid #0284C7",
+              minHeight: "44px",
+            }}
+          >
+            Join the Waitlist
+          </Link>
+        </div>
+      </section>
+
+      {/* Trust signals strip */}
       <section style={{ background: "#0F172A", padding: "2rem 1rem" }} aria-label="Trust signals">
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div className="flex flex-wrap gap-3 justify-center">
@@ -393,7 +422,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Urgency band ── */}
+      {/* Urgency band */}
       <section style={{ background: "#B31D1D", padding: "3rem 1rem" }} aria-label="Filing urgency">
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
           <p style={{ color: "white", fontWeight: 700, fontSize: "clamp(1.125rem, 3vw, 1.5rem)", marginBottom: "0.75rem", lineHeight: 1.3 }}>
@@ -421,18 +450,18 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Contact ── */}
+      {/* Contact */}
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="contact-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="contact-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
             Have a question before you start? We are here.
           </h2>
-            <a
-            href={`mailto:${"hello"}@filetax.co`}
-              style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
-            >
-              {"hello"}@filetax.co
-            </a>
+          <a
+            href="mailto:hello@filetax.co"
+            style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
+          >
+            hello@filetax.co
+          </a>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
             We respond within 1 business day.
           </p>
