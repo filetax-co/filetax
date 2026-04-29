@@ -45,7 +45,7 @@ export function Auth() {
       <div style={{ width: '100%', maxWidth: '420px' }}>
         <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2rem)', marginBottom: '0.5rem' }}>Sign in to FileTax</h1>
         <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', marginBottom: '2rem' }}>
-          We'll send a magic link to your inbox — no password needed.
+          We'll send a magic link to your inbox. No password needed.
         </p>
 
         {sent ? (
