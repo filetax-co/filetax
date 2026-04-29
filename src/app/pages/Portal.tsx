@@ -12,13 +12,13 @@ const FILING_YEARS_DISPLAY: Record<string, string> = {
 };
 
 const PORTAL_SECTION_NAMES: Record<string, string> = {
-  b: 'Part III – Monetary transactions',
-  c: 'Part IV – Non-monetary transactions',
-  d: 'Part V – Rents/royalties/licenses',
-  e: 'Part VI – Cost-sharing',
-  f: 'Part VII – Compensation',
-  g: 'Part VIII – Other transactions',
-  h: 'Part IX – Foreign related party info',
+  b: 'Part III - Monetary transactions',
+  c: 'Part IV - Non-monetary transactions',
+  d: 'Part V - Rents/royalties/licenses',
+  e: 'Part VI - Cost-sharing',
+  f: 'Part VII - Compensation',
+  g: 'Part VIII - Other transactions',
+  h: 'Part IX - Foreign related party info',
 };
 
 const checklistItems = [
@@ -31,7 +31,7 @@ const checklistItems = [
 
 const howItWorksSteps = [
   { step: '1', title: 'Enter your LLC details', body: 'Provide your LLC name, EIN, state of formation, and the tax year you are filing for. This takes about 2 minutes.' },
-  { step: '2', title: 'Enter or import your transactions', body: 'Add reportable transactions manually or connect via Plaid for automatic import. No bank login is required if you prefer to enter details by hand.' },
+  { step: '2', title: 'Enter your transactions', body: 'Add reportable transactions manually. No bank login is required.' },
   { step: '3', title: 'Review your filing summary', body: 'See a plain-language summary of your Form 5472 before anything is generated. Confirm all details are correct.' },
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
@@ -70,7 +70,6 @@ export function Portal() {
     if (mode === 'signup' && !name.trim()) { setError('Please enter your full name.'); return; }
     setSubmitting(true);
 
-    // Sign up or sign in via magic link
     const { data: authData, error: authError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
@@ -85,7 +84,6 @@ export function Portal() {
       return;
     }
 
-    // Save intake submission to Supabase
     await supabase.from('intake_submissions').insert({
       user_id: authData?.user?.id ?? null,
       full_name: name.trim() || email.trim(),
@@ -103,7 +101,6 @@ export function Portal() {
 
   return (
     <>
-      {/* Header */}
       <section style={{ background: 'var(--tf-bg)', padding: '3rem 1rem 2rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <span style={{ display: 'inline-block', background: '#059669', color: 'white', borderRadius: '9999px', padding: '0.2rem 0.875rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.875rem' }}>
@@ -118,7 +115,6 @@ export function Portal() {
         </div>
       </section>
 
-      {/* Filing configuration panel */}
       {hasConfig && (
         <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 0' }}>
           <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '1rem' }}>
@@ -173,7 +169,6 @@ export function Portal() {
         </section>
       )}
 
-      {/* Main: form + checklist */}
       <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 3rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '1.5rem' }}>
           <div style={{ border: '1px solid var(--tf-border)', borderRadius: '0.75rem', overflow: 'hidden', background: 'var(--tf-surface)' }}>
@@ -183,7 +178,7 @@ export function Portal() {
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: '52px' }}
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
-              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '−' : '+'}</span>
+              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '+' : '+'}</span>
             </button>
             {howItWorksOpen && (
               <div style={{ borderTop: '1px solid var(--tf-border)', padding: '1.25rem 1.25rem 1.5rem' }}>
@@ -204,9 +199,7 @@ export function Portal() {
         </div>
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr)', gap: '2rem', alignItems: 'start' }} className="portal-grid">
-          {/* Left: Account form */}
           <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '2rem', boxShadow: '0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)' }}>
-            {/* Mode toggle */}
             <div style={{ display: 'flex', background: 'var(--tf-bg)', borderRadius: '0.5rem', padding: '0.25rem', marginBottom: '1.75rem', border: '1px solid var(--tf-border)' }}>
               {(['signup', 'login'] as const).map((m) => (
                 <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '0.375rem', background: mode === m ? '#0284C7' : 'transparent', color: mode === m ? 'white' : 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', cursor: 'pointer', transition: 'background 0.15s, color 0.15s', minHeight: '36px' }}>
@@ -240,7 +233,7 @@ export function Portal() {
                   {submitting ? 'Sending…' : mode === 'signup' ? 'Create Free Account' : 'Send Sign-In Link'}
                 </button>
                 <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, textAlign: 'center', lineHeight: 1.5 }}>
-                  {mode === 'signup' ? 'No password needed — we email you a secure sign-in link.' : 'New here? Switch to Create Account above.'}
+                  {mode === 'signup' ? 'No password needed. We email you a secure sign-in link.' : 'New here? Switch to Create Account above.'}
                 </p>
               </form>
             )}
@@ -251,7 +244,6 @@ export function Portal() {
             </div>
           </div>
 
-          {/* Right: What you will need */}
           <div>
             <h2 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>What you will need</h2>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>

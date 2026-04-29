@@ -19,7 +19,6 @@ export function Services() {
         </div>
       </section>
 
-      {/* Section 1: Form 5472 */}
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s1-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s1-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
@@ -64,17 +63,16 @@ export function Services() {
           </div>
 
           <div style={{ background: "var(--tf-bg)", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "1rem" }}>
-            <p style={{ fontWeight: 600, fontSize: "0.9375rem", color: "var(--tf-text)", marginBottom: "0.25rem" }}>Transaction entry: Manual or via Plaid (optional)</p>
-            <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>Manual entry available. No bank login required.</p>
+            <p style={{ fontWeight: 600, fontSize: "0.9375rem", color: "var(--tf-text)", marginBottom: "0.25rem" }}>Transaction entry: Manual</p>
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>Enter transactions manually. No bank login required.</p>
           </div>
 
-          {/* Multiple related parties callout */}
           <div style={{ background: "rgba(2,132,199,0.04)", border: "1px solid rgba(2,132,199,0.25)", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "1.75rem" }}>
             <p style={{ fontWeight: 700, fontSize: "0.9375rem", color: "var(--tf-text)", marginBottom: "0.375rem" }}>
               More than one foreign related party?
             </p>
             <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "0.5rem" }}>
-              The IRS requires a separate Form 5472 for each foreign related party. Most single-member LLCs have only one — the foreign owner. If your LLC transacted with additional related parties such as a foreign parent company or an entity you own 25% or more of, each requires its own Form 5472.
+              The IRS requires a separate Form 5472 for each foreign related party. Most single-member LLCs have only one, the foreign owner. If your LLC transacted with additional related parties such as a foreign parent company or an entity you own 25% or more of, each requires its own Form 5472.
             </p>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
               Additional forms: <strong style={{ color: "var(--tf-text)" }}>+$75/form</strong> (forms 2 and 3). Volume discount for the 4th form onwards: <strong style={{ color: "var(--tf-text)" }}>+$50/form</strong>. The eligibility check will ask about this and calculate your total automatically.
@@ -104,7 +102,6 @@ export function Services() {
         </div>
       </section>
 
-      {/* Section 2: LLC Tax Classification */}
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s2-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s2-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
@@ -112,7 +109,7 @@ export function Services() {
             If you need to change how the IRS classifies your LLC for tax purposes, this service covers both Form 8832 (entity classification election) and Form 2553 (S-Corporation election).
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            Form 8832 is used when you want to elect C-Corporation treatment instead of the default disregarded entity status. Form 2553 is used when you want S-Corporation status. Both are standalone filings and must be mailed. The IRS fax add-on is not available for these forms.
+            Form 8832 is used when you want to elect C-Corporation treatment instead of the default disregarded entity status. Form 2553 is used when you want S-Corporation status. Both are standalone filings and must be mailed. The IRS fax add-on is not available for these forms, which must be mailed.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time filing. No ongoing fees.</p>
           <Link to="/portal" style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
@@ -121,7 +118,6 @@ export function Services() {
         </div>
       </section>
 
-      {/* Section 3: IRS Fax Submission */}
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s3-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Submission</h2>
@@ -137,7 +133,6 @@ export function Services() {
         </div>
       </section>
 
-      {/* Section 4: Coming Soon */}
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>Coming Soon</h2>

@@ -43,8 +43,8 @@ const faqs = [
     a: "Form 8832 is an entity classification election that changes how the IRS treats your LLC for tax purposes. By default, a single-member LLC is treated as a disregarded entity. If you want to be taxed as a C-Corporation, you file Form 8832 to elect that status. Form 2553 is used specifically to elect S-Corporation status. Both are separate from the Form 5472 filing requirement.",
   },
   {
-    q: "Is my transaction data safe? Do you store my bank information?",
-    a: "FileTax.co does not store your bank credentials. If you use the optional Plaid connection to import transactions, Plaid handles the bank authentication and only passes transaction data to the platform. You can also enter transactions manually. No bank connection is required. No form data is stored after your session ends.",
+    q: "Is my transaction data safe?",
+    a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Data is encrypted and stored securely on Supabase. No form data is retained after your session ends.",
   },
   {
     q: "Do I need to create an account to use FileTax.co?",
@@ -108,7 +108,7 @@ export function FAQ() {
                 >
                   {faq.q}
                   <span style={{ color: "#0284C7", fontSize: "1.25rem", lineHeight: 1, flexShrink: 0, marginLeft: "1rem" }}>
-                    {open === i ? "−" : "+"}
+                    {open === i ? "+" : "+"}
                   </span>
                 </summary>
                 <div
