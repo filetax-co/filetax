@@ -4,7 +4,8 @@ import type { User } from "@supabase/supabase-js";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { Sun, Moon, Menu, X } from "lucide-react";
-import headerLogo from "/header.png";
+
+const headerLogo = `${import.meta.env.BASE_URL}header.png`;
 
 const navLinks = [
   { to: "/", label: "Home", exact: true },
@@ -159,7 +160,6 @@ export function Nav() {
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
-          {/* Auth area: avatar+name when logged in, Log in/Sign up when not */}
           {!loading && (
             user ? (
               <UserChip user={user} />
@@ -290,7 +290,6 @@ export function Nav() {
               </NavLink>
             ))}
 
-            {/* Auth area (mobile) */}
             {!loading && (
               user ? (
                 <div

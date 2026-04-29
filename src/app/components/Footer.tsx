@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import footerLogo from "/footer.png";
+
+const footerLogo = `${import.meta.env.BASE_URL}footer.png`;
 
 const footerLinks = [
   { to: "/pricing", label: "Pricing" },
