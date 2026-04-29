@@ -14,7 +14,7 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.75rem" }}>Services</h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
-            Built by a licensed CPA after seeing repeated $25,000 penalty cases among foreign founders. Forms generated based strictly on IRS instructions (Rev. December 2024).
+            Built by a foreign founder, with CPA guidance, after seeing repeated $25,000 penalty cases among foreign founders. Forms generated based strictly on IRS instructions (Rev. December 2024).
           </p>
         </div>
       </section>

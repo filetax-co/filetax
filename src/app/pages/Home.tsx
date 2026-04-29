@@ -6,7 +6,7 @@ export function Home() {
   usePageMeta({
     title: "File Form 5472 + Pro Forma 1120 | FileTax.co",
     description:
-      "CPA-reviewed platform for foreign-owned U.S. single-member LLCs. File Form 5472 and Pro Forma 1120 correctly in minutes. Pay per filing. Start without an account.",
+      "Built with CPA guidance for foreign-owned U.S. single-member LLCs. File Form 5472 and Pro Forma 1120 correctly in minutes. Pay per filing. Start without an account.",
   });
 
   return (
@@ -40,7 +40,7 @@ export function Home() {
               margin: "0 auto 2rem",
             }}
           >
-            The only platform built specifically for foreign-owned U.S. LLCs. CPA-reviewed. Pay per filing. Start without an account.
+            The only platform built specifically for foreign-owned U.S. LLCs. Built with CPA guidance. Pay per filing. Start without an account.
           </p>
 
           <div className="flex flex-wrap gap-3 justify-center mb-3">
@@ -94,7 +94,7 @@ export function Home() {
             Built because this problem kept appearing
           </h2>
           <p style={{ color: "var(--tf-text)", fontSize: "1rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            Most foreign founders discover this requirement only after penalties have already started, often when opening a U.S. bank account, applying for a visa, or preparing to exit. This platform was built by a licensed CPA after seeing repeated $25,000 penalty cases among foreign founders. The goal is simple: make the correct filing accessible, accurate, and fast, without requiring a full CPA engagement.
+            Most foreign founders discover this requirement only after penalties have already started, often when opening a U.S. bank account, applying for a visa, or preparing to exit. This platform was built by a foreign founder, with CPA guidance, after seeing repeated $25,000 penalty cases among foreign founders. The goal is simple: make the correct filing accessible, accurate, and fast, without requiring a full CPA engagement.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
             Forms generated based strictly on IRS instructions (Rev. December 2024). Designed specifically for non-U.S. founders with U.S. LLCs.
@@ -368,10 +368,9 @@ export function Home() {
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div className="flex flex-wrap gap-3 justify-center">
             {[
-              "CPA-reviewed process",
+              "Built with CPA guidance",
               "Pay-per-filing. No subscription.",
               "Start without an account.",
-              "Used by founders from India, UK, UAE, Singapore, and Canada",
               "IRS penalty starts at $25,000 per missed form, per year",
             ].map((item) => (
               <span
