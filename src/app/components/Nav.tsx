@@ -103,16 +103,15 @@ export function Nav() {
         {/* Logo */}
         <Link
           to="/"
-          style={{
-            color: "#0284C7",
-            fontWeight: 700,
-            fontSize: "1.25rem",
-            textDecoration: "none",
-            fontFamily: "'Satoshi', sans-serif",
-          }}
-          aria-label="FileTax.co - Home"
+          aria-label="Home"
+          style={{ display: "inline-flex", alignItems: "center" }}
         >
-          FileTax.co
+          <img
+            src="/header.png"
+            alt="Logo"
+            height={36}
+            style={{ height: 36, width: "auto", display: "block" }}
+          />
         </Link>
 
         {/* Desktop Nav Links */}
