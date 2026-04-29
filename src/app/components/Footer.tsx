@@ -122,14 +122,38 @@ export function Footer() {
               fontSize: "0.8125rem",
               fontWeight: 400,
               lineHeight: 1.6,
-              marginBottom: "0.5rem",
+              marginBottom: "0.75rem",
             }}
           >
             FileTax.co is a software platform for generating IRS forms based on your inputs. It is not a law firm and does not provide legal or tax advice. Forms are generated according to the official IRS Instructions for Form 5472 (Rev. December 2024).
           </p>
-          <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400 }}>
-            &copy; 2026 FileTax.co
-          </p>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "0.5rem 1rem",
+              color: "var(--tf-muted)",
+              fontSize: "0.8125rem",
+              fontWeight: 400,
+            }}
+          >
+            <span>&copy; 2026 FileTax.co</span>
+            <span aria-hidden="true">&middot;</span>
+            <Link
+              to="/terms"
+              style={{ color: "var(--tf-muted)", textDecoration: "none" }}
+            >
+              Terms of Service
+            </Link>
+            <span aria-hidden="true">&middot;</span>
+            <Link
+              to="/privacy"
+              style={{ color: "var(--tf-muted)", textDecoration: "none" }}
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </div>
     </footer>
