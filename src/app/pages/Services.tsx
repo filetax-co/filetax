@@ -1,6 +1,15 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 
+// ---------------------------------------------------------------------
+// TEMPORARY: Services are not yet live. All "start filing" CTAs route
+// to /waitlist instead of their original destinations. To revert when
+// services launch, change CHECK_URL and PORTAL_URL back to their
+// originals (shown in comments below).
+// ---------------------------------------------------------------------
+const CHECK_URL = "/waitlist";  // original: "/check"
+const PORTAL_URL = "/waitlist"; // original: "/portal"
+
 export function Services() {
   usePageMeta({
     title: "Services | FileTax.co",
@@ -96,8 +105,9 @@ export function Services() {
             </p>
           </div>
 
-          <Link to="/check" style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Check My Eligibility
+          {/* original CTA: <Link to="/check">Check My Eligibility</Link> - revert when services go live */}
+          <Link to={CHECK_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Join the Waitlist
           </Link>
         </div>
       </section>
@@ -112,8 +122,9 @@ export function Services() {
             Form 8832 is used when you want to elect C-Corporation treatment instead of the default disregarded entity status. Form 2553 is used when you want S-Corporation status. Both are standalone filings and must be mailed. The IRS fax add-on is not available for these forms, which must be mailed.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time filing. No ongoing fees.</p>
-          <Link to="/portal" style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Start Filing
+          {/* original CTA: <Link to="/portal">Start Filing</Link> - revert when services go live */}
+          <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Join the Waitlist
           </Link>
         </div>
       </section>
@@ -127,8 +138,9 @@ export function Services() {
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             This service is an add-on to Form 5472 filings only. It is not available for Form 8832 or Form 2553 filings, which must be mailed.
           </p>
-          <Link to="/portal" style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Add to My Filing
+          {/* original CTA: <Link to="/portal">Add to My Filing</Link> - revert when services go live */}
+          <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Join the Waitlist
           </Link>
         </div>
       </section>
@@ -140,6 +152,13 @@ export function Services() {
             Join the waitlist to get notified when these services launch.
           </p>
           <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1.5rem" }}>
+            {/*
+              Removed two entries that don't represent real obligations for foreign-owned LLCs:
+                - "Annual report for Delaware" (id: "delaware-annual"): Delaware LLCs do not file
+                  annual reports; they pay a $300 annual franchise tax instead.
+                - "Annual reports for Wyoming and New Mexico" (id: "wy-nm-annual"): split — only
+                  Wyoming kept; New Mexico LLCs have no annual or biennial report requirement.
+            */}
             {[
               { label: "Form 7004 (automatic 6-month extension)", id: "form-7004" },
               { label: "FBAR / FinCEN 114 reporting", id: "fbar" },
