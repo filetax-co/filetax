@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import footerLogo from "/footer.png";
 
 const footerLinks = [
   { to: "/pricing", label: "Pricing" },
@@ -30,7 +31,7 @@ export function Footer() {
               style={{ display: "inline-flex", alignItems: "center", marginBottom: "0.5rem" }}
             >
               <img
-                src="/footer.png"
+                src={footerLogo}
                 alt="Logo"
                 height={32}
                 style={{ height: 32, width: "auto", display: "block" }}
