@@ -12,6 +12,8 @@ import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Waitlist } from './pages/Waitlist';
+import { Terms } from './pages/Terms';
+import { Privacy } from './pages/Privacy';
 
 function NotFound() {
   return (
@@ -39,6 +41,8 @@ export const router = createBrowserRouter([
       { path: 'auth', Component: Auth },
       { path: 'dashboard', Component: Dashboard },
       { path: 'waitlist', Component: Waitlist },
+      { path: 'terms', Component: Terms },
+      { path: 'privacy', Component: Privacy },
       { path: '*', Component: NotFound },
     ],
   },
