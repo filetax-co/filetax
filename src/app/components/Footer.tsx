@@ -8,6 +8,7 @@ const footerLinks = [
   { to: "/past-filings", label: "Past Filings" },
   { to: "/resources", label: "Resources" },
   { to: "/faq", label: "FAQ" },
+  { to: "/waitlist", label: "Waitlist" },
 ];
 
 export function Footer() {

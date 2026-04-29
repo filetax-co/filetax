@@ -135,20 +135,48 @@ export function Services() {
 
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>Coming Soon</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.5rem" }}>Coming Soon</h2>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, marginBottom: "1.25rem" }}>
+            Join the waitlist to get notified when these services launch.
+          </p>
+          <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1.5rem" }}>
             {[
-              "Form 7004 (automatic 6-month extension)",
-              "FBAR / FinCEN 114 reporting",
-              "Annual report for Delaware",
-              "Annual reports for Wyoming and New Mexico",
+              { label: "Form 7004 (automatic 6-month extension)", id: "form-7004" },
+              { label: "FBAR / FinCEN 114 reporting", id: "fbar" },
+              { label: "Annual report for Delaware", id: "delaware-annual" },
+              { label: "Annual reports for Wyoming and New Mexico", id: "wy-nm-annual" },
             ].map((item) => (
-              <li key={item} style={{ padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)", color: "var(--tf-muted)", fontSize: "0.9375rem", display: "flex", gap: "0.75rem" }}>
-                <span style={{ color: "var(--tf-border)", fontWeight: 700, flexShrink: 0 }}>&#8250;</span>
-                {item}
+              <li key={item.id} style={{ padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)", color: "var(--tf-muted)", fontSize: "0.9375rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                <span style={{ display: "flex", gap: "0.75rem" }}>
+                  <span style={{ color: "var(--tf-border)", fontWeight: 700, flexShrink: 0 }}>&#8250;</span>
+                  {item.label}
+                </span>
+                <Link
+                  to={`/waitlist?service=${item.id}`}
+                  style={{ color: "#0284C7", fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  Notify me
+                </Link>
               </li>
             ))}
           </ul>
+          <Link
+            to="/waitlist"
+            style={{
+              color: "#0284C7",
+              fontWeight: 600,
+              fontSize: "0.9375rem",
+              textDecoration: "none",
+              border: "1px solid #0284C7",
+              padding: "0.625rem 1.25rem",
+              borderRadius: "0.5rem",
+              display: "inline-block",
+              minHeight: "44px",
+              lineHeight: "1.8",
+            }}
+          >
+            Join the Waitlist
+          </Link>
         </div>
       </section>
     </>

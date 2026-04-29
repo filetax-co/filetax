@@ -1,0 +1,322 @@
+import { useState, useEffect } from "react";
+import { useSearchParams, Link } from "react-router";
+import { usePageMeta } from "../hooks/usePageMeta";
+
+const SERVICES = [
+  { id: "5472", label: "Form 5472 + Pro Forma 1120 Filing", available: true },
+  { id: "past-filing", label: "Past Year Filing + Reasonable Cause Letter", available: true },
+  { id: "llc-classification", label: "LLC Tax Classification Change", available: true },
+  { id: "irs-fax", label: "IRS Fax Submission", available: true },
+  { id: "form-7004", label: "Form 7004 – Automatic 6-Month Extension", available: false },
+  { id: "fbar", label: "FBAR / FinCEN 114 Reporting", available: false },
+  { id: "delaware-annual", label: "Annual Report – Delaware", available: false },
+  { id: "wy-nm-annual", label: "Annual Reports – Wyoming and New Mexico", available: false },
+];
+
+type Status = "idle" | "submitting" | "success" | "error";
+
+export function Waitlist() {
+  usePageMeta({
+    title: "Join the Waitlist | FileTax.co",
+    description:
+      "Get notified when a new service launches on FileTax.co. Enter your name and email and select the services you are interested in.",
+  });
+
+  const [searchParams] = useSearchParams();
+  const preselected = searchParams.get("service") ?? "";
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [selected, setSelected] = useState<string[]>(() =>
+    SERVICES.some((s) => s.id === preselected) ? [preselected] : []
+  );
+  const [status, setStatus] = useState<Status>("idle");
+  const [errors, setErrors] = useState<{ name?: string; email?: string; services?: string }>({});
+
+  // If query param changes (e.g. navigated from different card), sync selection
+  useEffect(() => {
+    if (preselected && SERVICES.some((s) => s.id === preselected)) {
+      setSelected((prev) =>
+        prev.includes(preselected) ? prev : [...prev, preselected]
+      );
+    }
+  }, [preselected]);
+
+  function toggleService(id: string) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  }
+
+  function validate() {
+    const e: typeof errors = {};
+    if (!name.trim()) e.name = "Please enter your name.";
+    if (!email.trim()) e.email = "Please enter your email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Please enter a valid email address.";
+    if (selected.length === 0) e.services = "Please select at least one service.";
+    return e;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setErrors({});
+    setStatus("submitting");
+    // TODO: replace with real API endpoint
+    await new Promise((r) => setTimeout(r, 900));
+    setStatus("success");
+  }
+
+  const availableServices = SERVICES.filter((s) => s.available);
+  const comingSoonServices = SERVICES.filter((s) => !s.available);
+
+  return (
+    <>
+      <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 2rem" }}>
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <Link
+            to="/"
+            style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 500, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.375rem", marginBottom: "1.5rem" }}
+          >
+            &#8592; Back to Home
+          </Link>
+          <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.25rem)", marginBottom: "0.625rem" }}>
+            Stay in the loop
+          </h1>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
+            Select the services you are interested in and we will reach out as soon as they are ready.
+          </p>
+        </div>
+      </section>
+
+      <section style={{ background: "var(--tf-surface)", padding: "2.5rem 1rem 4rem" }}>
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+
+          {status === "success" ? (
+            <div
+              style={{
+                background: "var(--tf-bg)",
+                border: "1px solid #059669",
+                borderRadius: "0.75rem",
+                padding: "2.5rem 2rem",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>&#10003;</div>
+              <h2 style={{ fontSize: "1.25rem", marginBottom: "0.5rem" }}>You are on the list</h2>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, marginBottom: "1.5rem" }}>
+                We will email you at <strong style={{ color: "var(--tf-text)" }}>{email}</strong> when the selected services are available.
+              </p>
+              <Link
+                to="/"
+                style={{
+                  background: "#0284C7",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "0.9375rem",
+                  padding: "0.625rem 1.5rem",
+                  borderRadius: "0.5rem",
+                  textDecoration: "none",
+                  display: "inline-block",
+                  minHeight: "44px",
+                  lineHeight: "1.8",
+                }}
+              >
+                Back to Home
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} noValidate>
+              {/* Name */}
+              <div style={{ marginBottom: "1.25rem" }}>
+                <label
+                  htmlFor="wl-name"
+                  style={{ display: "block", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.375rem" }}
+                >
+                  Your name
+                </label>
+                <input
+                  id="wl-name"
+                  type="text"
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Jane Smith"
+                  style={{
+                    width: "100%",
+                    padding: "0.625rem 0.875rem",
+                    borderRadius: "0.5rem",
+                    border: `1px solid ${errors.name ? "#B31D1D" : "var(--tf-border)"}`,
+                    background: "var(--tf-bg)",
+                    color: "var(--tf-text)",
+                    fontSize: "1rem",
+                    outline: "none",
+                    minHeight: "44px",
+                  }}
+                />
+                {errors.name && (
+                  <p style={{ color: "#B31D1D", fontSize: "0.8125rem", marginTop: "0.25rem" }}>{errors.name}</p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div style={{ marginBottom: "1.75rem" }}>
+                <label
+                  htmlFor="wl-email"
+                  style={{ display: "block", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.375rem" }}
+                >
+                  Email address
+                </label>
+                <input
+                  id="wl-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                  style={{
+                    width: "100%",
+                    padding: "0.625rem 0.875rem",
+                    borderRadius: "0.5rem",
+                    border: `1px solid ${errors.email ? "#B31D1D" : "var(--tf-border)"}`,
+                    background: "var(--tf-bg)",
+                    color: "var(--tf-text)",
+                    fontSize: "1rem",
+                    outline: "none",
+                    minHeight: "44px",
+                  }}
+                />
+                {errors.email && (
+                  <p style={{ color: "#B31D1D", fontSize: "0.8125rem", marginTop: "0.25rem" }}>{errors.email}</p>
+                )}
+              </div>
+
+              {/* Services */}
+              <fieldset style={{ border: "none", padding: 0, margin: "0 0 1.75rem" }}>
+                <legend style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.75rem", display: "block" }}>
+                  Services you are interested in
+                </legend>
+
+                {/* Available now */}
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+                  Available now
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.25rem" }}>
+                  {availableServices.map((svc) => {
+                    const checked = selected.includes(svc.id);
+                    return (
+                      <label
+                        key={svc.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          padding: "0.75rem 1rem",
+                          borderRadius: "0.5rem",
+                          border: `1px solid ${checked ? "#0284C7" : "var(--tf-border)"}`,
+                          background: checked ? "rgba(2,132,199,0.05)" : "var(--tf-bg)",
+                          cursor: "pointer",
+                          fontSize: "0.9375rem",
+                          fontWeight: checked ? 600 : 400,
+                          color: "var(--tf-text)",
+                          transition: "border-color 140ms, background 140ms",
+                          minHeight: "44px",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleService(svc.id)}
+                          style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
+                        />
+                        {svc.label}
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Coming soon */}
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+                  Coming soon
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {comingSoonServices.map((svc) => {
+                    const checked = selected.includes(svc.id);
+                    return (
+                      <label
+                        key={svc.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          padding: "0.75rem 1rem",
+                          borderRadius: "0.5rem",
+                          border: `1px solid ${checked ? "#0284C7" : "var(--tf-border)"}`,
+                          background: checked ? "rgba(2,132,199,0.05)" : "var(--tf-bg)",
+                          cursor: "pointer",
+                          fontSize: "0.9375rem",
+                          fontWeight: checked ? 600 : 400,
+                          color: "var(--tf-text)",
+                          transition: "border-color 140ms, background 140ms",
+                          minHeight: "44px",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleService(svc.id)}
+                          style={{ width: "1rem", height: "1rem", accentColor: "#0284C7", flexShrink: 0 }}
+                        />
+                        {svc.label}
+                        <span
+                          style={{
+                            marginLeft: "auto",
+                            background: "var(--tf-border)",
+                            color: "var(--tf-muted)",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            borderRadius: "9999px",
+                            padding: "0.125rem 0.625rem",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Coming soon
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {errors.services && (
+                  <p style={{ color: "#B31D1D", fontSize: "0.8125rem", marginTop: "0.5rem" }}>{errors.services}</p>
+                )}
+              </fieldset>
+
+              <button
+                type="submit"
+                disabled={status === "submitting"}
+                style={{
+                  background: "#0284C7",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  padding: "0.75rem 1.75rem",
+                  borderRadius: "0.5rem",
+                  border: "none",
+                  cursor: status === "submitting" ? "not-allowed" : "pointer",
+                  opacity: status === "submitting" ? 0.7 : 1,
+                  minHeight: "44px",
+                  width: "100%",
+                  transition: "opacity 140ms",
+                }}
+              >
+                {status === "submitting" ? "Submitting..." : "Join the Waitlist"}
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
