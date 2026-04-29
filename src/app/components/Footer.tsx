@@ -26,16 +26,15 @@ export function Footer() {
           <div>
             <Link
               to="/"
-              style={{
-                color: "#0284C7",
-                fontWeight: 700,
-                fontSize: "1.25rem",
-                textDecoration: "none",
-                display: "block",
-                marginBottom: "0.5rem",
-              }}
+              aria-label="Home"
+              style={{ display: "inline-flex", alignItems: "center", marginBottom: "0.5rem" }}
             >
-              FileTax.co
+              <img
+                src="/footer.png"
+                alt="Logo"
+                height={32}
+                style={{ height: 32, width: "auto", display: "block" }}
+              />
             </Link>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
               IRS-ready forms for foreign-owned U.S. entities.
