@@ -305,8 +305,9 @@ export function Home() {
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
                 <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>One-time filing. No ongoing fees.</p>
+                {/* Original link (restore when portal is ready): <Link to="/portal" ...>Start Filing</Link> */}
                 <Link
-                  to="/portal"
+                  to="/waitlist?service=llc-classification"
                   style={{
                     color: "#0284C7",
                     fontWeight: 600,
@@ -339,8 +340,9 @@ export function Home() {
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Submission</h3>
                 <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Faster IRS processing. Digital confirmation receipt included.</p>
+                {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
-                  to="/portal"
+                  to="/waitlist?service=irs-fax"
                   style={{
                     color: "#0284C7",
                     fontWeight: 600,
