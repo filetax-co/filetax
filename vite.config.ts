@@ -5,11 +5,12 @@ import react from '@vitejs/plugin-react'
 import sitemap from 'vite-plugin-sitemap'
 
 // Static public-facing routes
-// Private app routes (/auth, /dashboard, /portal, /past-filings) are intentionally excluded
+// Private app routes (/auth, /dashboard, /portal) are intentionally excluded
 const staticRoutes = [
   '/',
   '/pricing',
   '/services',
+  '/past-filings',
   '/check',
   '/resources',
   '/faq',
