@@ -2,27 +2,6 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import sitemap from 'vite-plugin-sitemap'
-
-// Static public-facing routes
-// Private app routes (/auth, /dashboard, /portal) are intentionally excluded
-const staticRoutes = [
-  '/',
-  '/pricing',
-  '/services',
-  '/past-filings',
-  '/check',
-  '/resources',
-  '/faq',
-  '/waitlist',
-  '/terms',
-  '/privacy',
-]
-
-// TODO: Once Sanity is connected, fetch blog slugs at build time and add here:
-// const blogSlugs = await sanityClient.fetch(`*[_type == "post"]{ slug }`))
-// const blogRoutes = blogSlugs.map((p) => `/resources/${p.slug.current}`)
-// Then spread into dynamicRoutes: [...staticRoutes, ...blogRoutes]
 
 function figmaAssetResolver() {
   return {
@@ -44,18 +23,6 @@ export default defineConfig({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
-    sitemap({
-      hostname: 'https://filetax.co',
-      dynamicRoutes: staticRoutes,
-      generateRobotsTxt: true,
-      robots: [
-        {
-          userAgent: '*',
-          allow: '/',
-          disallow: ['/auth', '/dashboard', '/portal'],
-        },
-      ],
-    }),
   ],
   resolve: {
     alias: {
