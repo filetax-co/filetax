@@ -36,7 +36,7 @@ const faqs = [
   },
   {
     q: "What is a reasonable cause letter and does it actually work?",
-    a: "A reasonable cause letter is a written argument submitted to the IRS alongside a late filing, requesting that the automatic $25,000 penalty be waived. The IRS may grant relief if the failure was due to reasonable cause and not willful neglect. The most common successful argument for foreign founders is a genuine lack of knowledge of the requirement. A CPA-prepared letter is significantly more effective than a self-written one because it addresses the correct legal standards and is structured as a professional submission.",
+    a: "A reasonable cause letter is a written argument submitted to the IRS alongside a late filing, requesting that the automatic $25,000 penalty be waived. The IRS may grant relief if the failure was due to reasonable cause and not willful neglect. The most common successful argument for foreign founders is a genuine lack of knowledge of the requirement. Our letters are authored by a licensed CPA and structured to align with IRS reasonable cause standards. You select the situation that fits your case from a set of structured categories, and the system populates the letter with your filing details. The result is included in your download alongside the completed forms.",
   },
   {
     q: "What is Form 8832 and when do I need it?",
@@ -44,7 +44,7 @@ const faqs = [
   },
   {
     q: "Is my transaction data safe?",
-    a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Data is encrypted and stored securely on Supabase. No form data is retained after your session ends.",
+    a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Form data you enter through the portal is stored encrypted on Supabase. We do not currently delete data after your session, and there is no automatic data-deletion schedule. If you would like your data removed, contact us at hello@filetax.co.",
   },
   {
     q: "Do I need to create an account to use FileTax.co?",
@@ -56,7 +56,7 @@ export function FAQ() {
   usePageMeta({
     title: "Frequently Asked Questions | FileTax.co",
     description:
-      "Common questions about Form 5472, Pro Forma 1120, IRS penalties, Reasonable Cause Letters, and how FileTax.co works. Clear answers for foreign LLC owners.",
+      "Common questions about Form 5472, Pro Forma 1120, IRS penalties, the CPA-Authored Reasonable Cause Letter, and how FileTax.co works. Clear answers for foreign LLC owners.",
   });
 
   const [open, setOpen] = useState<number | null>(null);
