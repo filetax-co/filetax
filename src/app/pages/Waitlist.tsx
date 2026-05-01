@@ -6,9 +6,9 @@ const FORMSPREE_ENDPOINT = "https://formspree.io/f/mlgzrgnd";
 
 const SERVICES = [
   { id: "5472", label: "Form 5472 + Pro Forma 1120 Filing" },
-  { id: "past-filing", label: "Past Year Filing + Reasonable Cause Letter" },
+  { id: "past-filing", label: "Past Year Filing + CPA-Authored Reasonable Cause Letter" },
   { id: "llc-classification", label: "LLC Tax Classification Change" },
-  { id: "irs-fax", label: "IRS Fax Submission" },
+  { id: "irs-fax", label: "IRS Fax Transmission" },
   { id: "form-7004", label: "Form 7004 - Automatic 6-Month Extension" },
   { id: "fbar", label: "FBAR / FinCEN 114 Reporting" },
   { id: "wyoming-annual", label: "Annual Report - Wyoming" },
