@@ -374,7 +374,7 @@ export function EligibilityCheck() {
 
                 {answers.includeRCL && hasPriorYears && (
                   <PriceRow
-                    label={`CPA-Prepared Reasonable Cause Letter${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
+                    label={`CPA-Authored Reasonable Cause Letter${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
                     value={yearCount && yearCount > 1 ? `+$${rclTotal}` : "+$200"}
                   />
                 )}
@@ -616,7 +616,7 @@ export function EligibilityCheck() {
                           Recommended Add-On
                         </span>
                         <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--tf-text)", lineHeight: 1.3 }}>
-                          CPA-Prepared Reasonable Cause Letter
+                          CPA-Authored Reasonable Cause Letter
                         </p>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -625,7 +625,7 @@ export function EligibilityCheck() {
                       </div>
                     </div>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "1rem" }}>
-                      Because the original filing deadline was missed, the IRS imposes an automatic $25,000 penalty. Our CPA-prepared letter is written to present the strongest possible case for penalty abatement. It is included directly in your download alongside the completed forms.
+                      Because the original filing deadline was missed, the IRS imposes an automatic $25,000 penalty. Our letter is authored by a licensed CPA and aligned with IRS reasonable cause standards. You select the situation that fits your case, the system populates it with your filing details, and the completed letter is included in your download alongside the forms.
                     </p>
                     <div style={{ borderTop: "1px solid var(--tf-border)", paddingTop: "0.875rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
                       <PriceRow label="Form 5472 + Pro Forma 1120" value={yearCount && yearCount > 1 ? `$${yearCount * 150}` : "$150"} />
@@ -673,10 +673,10 @@ export function EligibilityCheck() {
                       Multi-Year Package
                     </span>
                     <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--tf-text)", marginBottom: "0.625rem" }}>
-                      CPA-Prepared Reasonable Cause Letter included per year
+                      CPA-Authored Reasonable Cause Letter included per year
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "0.875rem" }}>
-                      Filing three or more years at once is handled through our multi-year package. A Reasonable Cause Letter is prepared for each year. Pricing is confirmed at checkout based on the number of years filed.
+                      Filing three or more years at once is handled through our multi-year package. A Reasonable Cause Letter is included for each year. Pricing is confirmed at checkout based on the number of years filed.
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-muted)", fontWeight: 400, lineHeight: 1.6 }}>
                       Each year filed: $350 (Form 5472 + Reasonable Cause Letter). Three or more years may qualify for package pricing.
@@ -909,7 +909,7 @@ export function EligibilityCheck() {
                         </p>
                         {selectedPartyCount !== null && selectedPartyCount > 3 && selectedPartyCount < 5 && (
                           <p style={{ fontSize: "0.75rem", color: "#0284C7", fontWeight: 600, marginTop: "0.375rem" }}>
-                            Volume discount applied — forms 4 and beyond: $50/form
+                            Volume discount applied. Forms 4 and beyond: $50/form
                           </p>
                         )}
                       </div>
