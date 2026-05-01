@@ -13,6 +13,7 @@
     "@mui/icons-material": "7.3.5",
     "@mui/material": "7.3.5",
     "@popperjs/core": "2.11.8",
+    "@portabletext/react": "3.2.1",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",
     "@radix-ui/react-aspect-ratio": "1.1.2",
@@ -70,8 +71,7 @@
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5",
-    "vite-plugin-sitemap": "0.8.2"
+    "vite": "6.3.5"
   },
   "peerDependencies": {
     "react": "18.3.1",
