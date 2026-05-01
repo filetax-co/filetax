@@ -91,7 +91,7 @@ export function Privacy() {
           </p>
           <ul style={styles.ul}>
             <li style={styles.li}>provide, operate, and improve the Service;</li>
-            <li style={styles.li}>prepare and submit tax filings on your behalf when you engage us to do so;</li>
+            <li style={styles.li}>generate tax forms based on the information you provide, and where you opt in to our IRS Fax Transmission add-on, transmit your signed forms to the IRS by fax;</li>
             <li style={styles.li}>process payments and send related notices;</li>
             <li style={styles.li}>communicate with you about your account, requests, and waitlist signups;</li>
             <li style={styles.li}>send service-related announcements and, where permitted, marketing communications (you can unsubscribe at any time);</li>
@@ -113,7 +113,7 @@ export function Privacy() {
               <strong>Service providers.</strong> Vendors who help us run the Service, including hosting, database, email delivery, form intake, customer support, analytics, and payment processing, may process your information on our behalf under written contracts that limit their use of the data.
             </li>
             <li style={styles.li}>
-              <strong>Tax authorities.</strong> When you engage us to prepare a filing, we submit the relevant information to the U.S. Internal Revenue Service (IRS) or other tax authorities as part of the engagement.
+              <strong>Tax authorities.</strong> When you opt in to our IRS Fax Transmission add-on, we transmit your signed forms to the U.S. Internal Revenue Service (IRS) by fax on your behalf. You remain the filer of record. We do not file or sign forms on your behalf.
             </li>
             <li style={styles.li}>
               <strong>Legal compliance.</strong> We may disclose information when we believe in good faith that disclosure is required by law, legal process, or government request, or is necessary to protect rights, safety, or property.
@@ -133,7 +133,7 @@ export function Privacy() {
 
           <h2 style={styles.h2}>6. Data Retention</h2>
           <p style={styles.p}>
-            We retain your information for as long as necessary to provide the Service, comply with our legal and tax-related recordkeeping obligations (which may require retaining tax return information for several years after preparation), resolve disputes, and enforce our agreements. When information is no longer needed, we will delete or anonymize it.
+            We retain your information for as long as necessary to provide the Service, comply with our legal and tax-related recordkeeping obligations (which may require retaining tax return information for several years after preparation), resolve disputes, and enforce our agreements. When information is no longer needed, we will delete or anonymize it. You may also request deletion of your data at any time by emailing us at <a href={`mailto:${PRIVACY_EMAIL}`} style={{ color: "#0284C7", textDecoration: "none" }}>{PRIVACY_EMAIL}</a>, subject to legal retention obligations.
           </p>
 
           <h2 style={styles.h2}>7. Security</h2>
