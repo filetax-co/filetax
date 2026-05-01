@@ -250,6 +250,8 @@ const portableTextComponents: PortableTextComponents = {
                 textAlign: "center",
                 marginTop: "0.5rem",
                 fontWeight: 400,
+                textAlign: "justify",
+                hyphens: "auto",
               }}
             >
               {value.caption}
