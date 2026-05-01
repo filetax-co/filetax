@@ -14,7 +14,7 @@ export function Services() {
   usePageMeta({
     title: "Services | FileTax.co",
     description:
-      "Form 5472 + Pro Forma 1120 filing, CPA-prepared Reasonable Cause Letters, LLC tax classification changes, and IRS fax submission for foreign-owned U.S. LLCs.",
+      "Form 5472 + Pro Forma 1120 filing, CPA-Authored Reasonable Cause Letters, LLC tax classification changes, and IRS fax transmission for foreign-owned U.S. LLCs.",
   });
 
   return (
@@ -23,7 +23,7 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.75rem" }}>Services</h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
-            Built by a foreign founder, with CPA guidance, after seeing repeated $25,000 penalty cases among foreign founders. Forms generated based strictly on IRS instructions (Rev. December 2024).
+            Built specifically for foreign-owned U.S. single-member LLCs. Forms generated strictly to IRS Instructions for Form 5472 (Rev. December 2024). Reasonable cause letters authored by a licensed CPA, structured to align with IRS standards.
           </p>
         </div>
       </section>
@@ -57,7 +57,7 @@ export function Services() {
               {[
                 "Print-ready Form 5472 and Pro Forma 1120",
                 "Structured exactly as required by the IRS",
-                "Ready to mail or fax immediately",
+                "Ready to sign and send by mail or fax",
                 "Includes all required schedules and disclosures",
               ].map((item) => (
                 <li key={item} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--tf-border)", display: "flex", gap: "0.75rem", fontSize: "0.9375rem" }}>
@@ -93,7 +93,7 @@ export function Services() {
               Sample Output Preview
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {["Form 5472 (first page)", "Pro Forma 1120 header", "Reasonable Cause Letter (sample)"].map((label) => (
+              {["Form 5472 (first page)", "Pro Forma 1120 header", "CPA-Authored Reasonable Cause Letter (sample)"].map((label) => (
                 <div key={label} style={{ background: "var(--tf-border)", borderRadius: "0.5rem", aspectRatio: "8.5/11", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                   <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.04) 4px, rgba(0,0,0,0.04) 8px)" }} />
                   <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textAlign: "center", padding: "0.5rem", position: "relative", zIndex: 1 }}>{label}</p>
@@ -112,9 +112,47 @@ export function Services() {
         </div>
       </section>
 
+      {/* Past Year Filing + CPA-Authored Reasonable Cause Letter (compact - full pitch lives at /past-filings) */}
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s2-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h2 id="s2-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
+          <span
+            style={{
+              display: "inline-block",
+              background: "#B31D1D",
+              color: "white",
+              borderRadius: "9999px",
+              padding: "0.2rem 0.75rem",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              marginBottom: "0.75rem",
+            }}
+          >
+            Recommended for Late Filers
+          </span>
+          <h2 id="s2-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
+            Past Year Filing + CPA-Authored Reasonable Cause Letter
+          </h2>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
+            For LLCs that missed one or more prior years. We prepare the past-year Form 5472 and Pro Forma 1120 and pair them with a CPA-Authored Reasonable Cause Letter requesting that the automatic $25,000 penalty be waived. Voluntary catch-up filings work best before the IRS contacts you.
+          </p>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
+            <strong>$350 per year total</strong> ($150 filing + $200 reasonable cause letter). Multi-year package available for three or more unfiled years.
+          </p>
+          {/* original CTA: <Link to="/check">Fix a Missed Year</Link> - revert when services go live */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+            <Link to={CHECK_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+              Fix a Missed Year
+            </Link>
+            <Link to="/past-filings" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.9375rem", textDecoration: "none", padding: "0.75rem 0.5rem" }}>
+              Read full details &#8594;
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s3-heading">
+        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+          <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             If you need to change how the IRS classifies your LLC for tax purposes, this service covers both Form 8832 (entity classification election) and Form 2553 (S-Corporation election).
           </p>
@@ -129,11 +167,11 @@ export function Services() {
         </div>
       </section>
 
-      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s3-heading">
+      <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Submission</h2>
+          <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Transmission</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            The IRS processes faxed filings significantly faster than mailed ones. By faxing your completed forms, you receive a digital confirmation receipt that serves as proof of timely submission. This is useful if you are filing close to a deadline or responding to a penalty notice.
+            The IRS processes faxed filings significantly faster than mailed ones. You sign the completed forms. We transmit them by fax to the IRS on your behalf and provide you with a digital transmission receipt for your records. This is useful if you are filing close to a deadline or responding to a penalty notice.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             This service is an add-on to Form 5472 filings only. It is not available for Form 8832 or Form 2553 filings, which must be mailed.
@@ -145,9 +183,9 @@ export function Services() {
         </div>
       </section>
 
-      <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
+      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s5-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.5rem" }}>Coming Soon</h2>
+          <h2 id="s5-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.5rem" }}>Coming Soon</h2>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, marginBottom: "1.25rem" }}>
             Join the waitlist to get notified when these services launch.
           </p>
