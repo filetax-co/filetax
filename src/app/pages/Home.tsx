@@ -6,7 +6,7 @@ export function Home() {
   usePageMeta({
     title: "File Form 5472 + Pro Forma 1120 | FileTax.co",
     description:
-      "Built with CPA guidance for foreign-owned U.S. single-member LLCs. File Form 5472 and Pro Forma 1120 correctly in minutes. Pay per filing. Start without an account.",
+      "Generate IRS-ready Form 5472 and Pro Forma 1120 for foreign-owned U.S. single-member LLCs. Catch up on missed years before the IRS notices. Pay per filing. Start without an account.",
   });
 
   return (
@@ -27,7 +27,7 @@ export function Home() {
               marginBottom: "1.25rem",
             }}
           >
-            File Form 5472 and Pro Forma 1120 in minutes, not weeks
+            Missed Form 5472? Fix it before the IRS notices.
           </h1>
           <p
             style={{
@@ -40,7 +40,7 @@ export function Home() {
               margin: "0 auto 2rem",
             }}
           >
-            The only platform built specifically for foreign-owned U.S. LLCs. Built with CPA guidance. Pay per filing. Start without an account.
+            Foreign founders often discover this $25,000 filing requirement years late. Voluntary catch-up filing with a reasonable cause letter often qualifies for full penalty relief, but only if you file before the IRS contacts you.
           </p>
 
           <div className="flex flex-wrap gap-3 justify-center mb-3">
@@ -80,7 +80,7 @@ export function Home() {
           </div>
 
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2.5rem" }}>
-            Start without an account. Takes about 10 minutes.
+            Start without an account. Eligibility check takes about 2 minutes.
           </p>
         </div>
 
@@ -91,13 +91,13 @@ export function Home() {
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="why-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="why-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1rem" }}>
-            Built because this problem kept appearing
+            Why this keeps happening
           </h2>
           <p style={{ color: "var(--tf-text)", fontSize: "1rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            Most foreign founders discover this requirement only after penalties have already started, often when opening a U.S. bank account, applying for a visa, or preparing to exit. This platform was built by a foreign founder, with CPA guidance, after seeing repeated $25,000 penalty cases among foreign founders. The goal is simple: make the correct filing accessible, accurate, and fast, without requiring a full CPA engagement.
+            LLC formation services rarely mention Form 5472 to non-U.S. founders. Most owners only discover the requirement when a U.S. bank, a visa preparer, or an acquirer asks for prior tax filings. By that point, the $25,000 per year penalty clock has been running, often for two or three years. The good news: the IRS allows voluntary catch-up filings with a reasonable cause statement, and self-correcting before the IRS contacts you significantly improves the outcome.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            Forms generated based strictly on IRS instructions (Rev. December 2024). Designed specifically for non-U.S. founders with U.S. LLCs.
+            Forms generated strictly per IRS Instructions for Form 5472 (Rev. December 2024). Designed specifically for non-U.S. founders with U.S. single-member LLCs.
           </p>
         </div>
       </section>
@@ -112,8 +112,9 @@ export function Home() {
             {[
               "Print-ready Form 5472 and Pro Forma 1120",
               "Structured exactly as required by the IRS",
-              "Ready to mail or fax immediately",
+              "Ready to sign and send by mail or fax",
               "Includes all required schedules and disclosures",
+              "Reasonable cause letter for past-year filings",
             ].map((item) => (
               <li
                 key={item}
@@ -133,7 +134,7 @@ export function Home() {
             ))}
           </ul>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            You review everything before downloading your forms.
+            You review everything before downloading. You sign and submit, or add the optional fax transmission.
           </p>
         </div>
       </section>
@@ -145,7 +146,7 @@ export function Home() {
             How it works
           </h2>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", marginBottom: "2.5rem" }}>
-            The process is designed to be fast and straightforward.
+            Four steps from eligibility check to print-ready forms.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
@@ -197,7 +198,7 @@ export function Home() {
             Services
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Large card */}
+            {/* Large card - Past Year filing leads */}
             <div
               style={{
                 gridColumn: "span 1",
@@ -211,48 +212,6 @@ export function Home() {
               }}
               className="lg:col-span-1"
             >
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Most Popular
-              </p>
-              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
-              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>One Filing. Two Forms. One Price.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>One-time filing. No ongoing fees.</p>
-              <Link
-                to="/check"
-                style={{
-                  background: "#0284C7",
-                  color: "white",
-                  fontWeight: 600,
-                  fontSize: "0.9375rem",
-                  padding: "0.625rem 1.25rem",
-                  borderRadius: "0.5rem",
-                  textDecoration: "none",
-                  display: "block",
-                  textAlign: "center",
-                  minHeight: "44px",
-                  lineHeight: "1.8",
-                }}
-              >
-                Check Eligibility
-              </Link>
-            </div>
-
-            {/* Past year card */}
-            <div
-              style={{
-                background: "var(--tf-surface)",
-                border: "1px solid var(--tf-border)",
-                borderRadius: "0.75rem",
-                padding: "2rem",
-                boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                <h3 style={{ fontSize: "1.125rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
-              </div>
               <span
                 style={{
                   display: "inline-block",
@@ -268,7 +227,10 @@ export function Home() {
               >
                 Recommended for Late Filers
               </span>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.5rem", marginBottom: "1.5rem", flex: 1 }}>from $350</p>
+              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
+              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from $350</p>
+              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Catch up on a missed year. Filed correctly the first time.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>$150 filing + $200 reasonable cause letter per year. One-time cost.</p>
               <Link
                 to="/past-filings"
                 style={{
@@ -289,6 +251,42 @@ export function Home() {
               </Link>
             </div>
 
+            {/* Current year card */}
+            <div
+              style={{
+                background: "var(--tf-surface)",
+                border: "1px solid var(--tf-border)",
+                borderRadius: "0.75rem",
+                padding: "2rem",
+                boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
+              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
+              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Current-year filing. Two forms, one price.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>For LLCs filing on time or within the October 15 extension window.</p>
+              <Link
+                to="/check"
+                style={{
+                  background: "#0284C7",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "0.9375rem",
+                  padding: "0.625rem 1.25rem",
+                  borderRadius: "0.5rem",
+                  textDecoration: "none",
+                  display: "block",
+                  textAlign: "center",
+                  minHeight: "44px",
+                  lineHeight: "1.8",
+                }}
+              >
+                Check Eligibility
+              </Link>
+            </div>
+
             {/* Small cards column */}
             <div className="flex flex-col gap-5">
               <div
@@ -304,7 +302,7 @@ export function Home() {
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
                 <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>One-time filing. No ongoing fees.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832 or Form 2553. Print-ready PDF, mailed by you.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Start Filing</Link> */}
                 <Link
                   to="/waitlist?service=llc-classification"
@@ -337,9 +335,9 @@ export function Home() {
                   flexDirection: "column",
                 }}
               >
-                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Submission</h3>
+                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
                 <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Faster IRS processing. Digital confirmation receipt included.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign the forms. We transmit them by fax to the IRS. Receipt for your records.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
                   to="/waitlist?service=irs-fax"
@@ -399,7 +397,7 @@ export function Home() {
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div className="flex flex-wrap gap-3 justify-center">
             {[
-              "Built with CPA guidance",
+              "Forms per IRS Instructions Rev. December 2024",
               "Pay-per-filing. No subscription.",
               "Start without an account.",
               "IRS penalty starts at $25,000 per missed form, per year",
@@ -428,10 +426,10 @@ export function Home() {
       <section style={{ background: "#B31D1D", padding: "3rem 1rem" }} aria-label="Filing urgency">
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
           <p style={{ color: "white", fontWeight: 700, fontSize: "clamp(1.125rem, 3vw, 1.5rem)", marginBottom: "0.75rem", lineHeight: 1.3 }}>
-            Most foreign founders discover this requirement only after penalties have already started.
+            Voluntary catch-up filings work best before the IRS contacts you.
           </p>
           <p style={{ color: "rgba(255,255,255,0.85)", fontWeight: 500, fontSize: "1rem", marginBottom: "1.75rem" }}>
-            Every unfiled year risks a $25,000 IRS penalty. Each year you wait adds another.
+            Each unfiled year carries a $25,000 IRS penalty. Filing now keeps you in voluntary territory.
           </p>
           <Link
             to="/past-filings"
@@ -456,7 +454,7 @@ export function Home() {
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="contact-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="contact-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
-            Have a question before you start? We are here.
+            Have a question before you start?
           </h2>
           <a
             href="mailto:hello@filetax.co"
