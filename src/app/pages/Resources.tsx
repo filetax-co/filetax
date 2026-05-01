@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { usePageMeta } from "../hooks/usePageMeta";
-import { sanity } from "../lib/sanity";
+import { usePageMeta } from "@/app/hooks/usePageMeta";
+import { sanity } from "@/lib/sanity";
 
 // Types matching the Sanity schema
 interface Category {
