@@ -149,6 +149,8 @@ const portableTextComponents: PortableTextComponents = {
           lineHeight: 1.75,
           marginBottom: "1.125rem",
           fontWeight: 400,
+          textAlign: "justify",
+          hyphens: "auto",
         }}
       >
         {children}
@@ -250,8 +252,6 @@ const portableTextComponents: PortableTextComponents = {
                 textAlign: "center",
                 marginTop: "0.5rem",
                 fontWeight: 400,
-                textAlign: "justify",
-                hyphens: "auto",
               }}
             >
               {value.caption}
