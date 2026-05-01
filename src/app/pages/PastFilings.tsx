@@ -12,7 +12,7 @@ export function PastFilings() {
   usePageMeta({
     title: "Missed Form 5472? Fix It Now | FileTax.co",
     description:
-      "Late Form 5472 filing with a CPA-prepared Reasonable Cause Letter costs $350 per year. File past-year returns and request IRS penalty abatement before exposure compounds.",
+      "Late Form 5472 filing with a CPA-Authored Reasonable Cause Letter costs $350 per year. File past-year returns and request IRS penalty abatement before the IRS notices.",
   });
 
   return (
@@ -45,7 +45,7 @@ export function PastFilings() {
             <span style={{ color: "#B31D1D", fontSize: "0.8125rem", fontWeight: 600 }}>2 LLCs, 3 years</span>
           </div>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-            Two LLCs, three unfiled years = $150,000 in potential penalties. Our $350 total solution covers one year completely.
+            Two LLCs, three unfiled years equals $150,000 in potential penalties. Our $350 total solution covers one year completely.
           </p>
         </div>
       </section>
@@ -63,7 +63,7 @@ export function PastFilings() {
             The most common argument for foreign founders is that they were not aware of the filing requirement. This is a credible position, given that the requirement is rarely disclosed by LLC formation services. However, the argument must be presented correctly and supported with facts.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7 }}>
-            A CPA-prepared letter carries significantly more weight than a self-written one. Our letters are drafted by a licensed CPA and tailored to your specific situation, covering the facts, the applicable IRS standards, and the request for abatement.
+            Our letters are authored by a licensed CPA. You select the situation that best describes your case from a structured set of categories aligned with IRS reasonable cause standards, and the system populates the letter with your filing details. The output covers the facts of your filing, the applicable IRS standards, and the request for abatement, in the format the IRS expects.
           </p>
         </div>
       </section>
@@ -78,7 +78,7 @@ export function PastFilings() {
               <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>$150</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)" }}>
-              <span style={{ fontWeight: 500, color: "var(--tf-text)", fontSize: "0.9375rem" }}>CPA-Prepared Reasonable Cause Letter</span>
+              <span style={{ fontWeight: 500, color: "var(--tf-text)", fontSize: "0.9375rem" }}>CPA-Authored Reasonable Cause Letter</span>
               <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>+$200</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 0 0" }}>
