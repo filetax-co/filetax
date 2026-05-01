@@ -5,6 +5,5 @@ Allow: /
 Disallow: /auth
 Disallow: /dashboard
 Disallow: /portal
-Disallow: /past-filings
 
 Sitemap: https://filetax.co/sitemap.xml
