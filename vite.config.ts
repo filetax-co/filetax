@@ -47,6 +47,14 @@ export default defineConfig({
     sitemap({
       hostname: 'https://filetax.co',
       dynamicRoutes: staticRoutes,
+      generateRobotsTxt: true,
+      robots: [
+        {
+          userAgent: '*',
+          allow: '/',
+          disallow: ['/auth', '/dashboard', '/portal'],
+        },
+      ],
     }),
   ],
   resolve: {
