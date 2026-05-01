@@ -28,6 +28,17 @@ interface PricingCard {
 
 const cards: PricingCard[] = [
   {
+    title: "Form 5472 + Pro Forma 1120: Past Year",
+    price: "$150",
+    priceNote: "per year",
+    description: "Any prior unfiled year. Same output as current year. Pair with the CPA-Authored Reasonable Cause Letter for the strongest abatement case.",
+    microcopy: "One-time filing. No ongoing fees.",
+    badge: "Recommended for Late Filers",
+    cta: "Join the Waitlist",
+    ctaLink: CHECK_URL, // original: "/check"
+    highlight: true,
+  },
+  {
     title: "Form 5472 + Pro Forma 1120: Current Year",
     price: "$150",
     description: "One filing year. Print-ready PDF. Ready to mail or fax.",
@@ -35,16 +46,14 @@ const cards: PricingCard[] = [
     tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
-    highlight: true,
   },
   {
-    title: "Form 5472 + Pro Forma 1120: Past Year",
-    price: "$150",
+    title: "Add-On: CPA-Authored Reasonable Cause Letter",
+    price: "+$200",
     priceNote: "per year",
-    description: "Any prior unfiled year. Same output as current year.",
-    microcopy: "One-time filing. No ongoing fees.",
+    description: "Added to any past-year filing. Total with past-year filing: $350 per year. Written by a licensed CPA, auto-populated with your filing details.",
     cta: "Join the Waitlist",
-    ctaLink: CHECK_URL, // original: "/check"
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
     title: "Add-On: Additional Form 5472",
@@ -56,18 +65,9 @@ const cards: PricingCard[] = [
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
-    title: "Add-On: CPA-Prepared Reasonable Cause Letter",
-    price: "+$200",
-    priceNote: "per year",
-    description: "Added to any past-year filing. Total with past-year filing: $350 per year.",
-    badge: "Recommended for Late Filers",
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
-  },
-  {
-    title: "Add-On: IRS Fax Submission",
+    title: "Add-On: IRS Fax Transmission",
     price: "+$30",
-    description: "IRS processes faxed forms significantly faster than mailed ones. Digital confirmation receipt included.",
+    description: "You sign the completed forms. We transmit them by fax to the IRS. Digital transmission receipt for your records.",
     note: "Not available for Form 8832.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
@@ -84,7 +84,7 @@ const cards: PricingCard[] = [
   {
     title: "Multi-Year Past Filing Package",
     price: "Custom",
-    description: "3 or more unfiled years. Contact via portal. Reasonable cause letter available per year.",
+    description: "3 or more unfiled years. Contact via portal. CPA-Authored Reasonable Cause Letter available per year.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },
@@ -103,7 +103,7 @@ export function Pricing() {
   usePageMeta({
     title: "Pricing | FileTax.co",
     description:
-      "Simple per-filing pricing. Form 5472 + Pro Forma 1120: $150. Past year with CPA-Prepared Reasonable Cause Letter: $350 per year. No subscription. No ongoing fees.",
+      "Per-filing pricing. Form 5472 + Pro Forma 1120: $150. Past year with CPA-Authored Reasonable Cause Letter: $350 per year. No subscription. No ongoing fees.",
   });
 
   return (
@@ -113,7 +113,7 @@ export function Pricing() {
       <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 1.5rem" }}>
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.5rem" }}>
-            Simple, per-filing pricing. No subscriptions.
+            Per-filing pricing. No subscriptions.
           </h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400 }}>
             Pay only for what you file. Start without an account.
