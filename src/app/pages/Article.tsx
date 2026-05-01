@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
 import { PortableText, type PortableTextComponents } from "@portabletext/react";
-import { usePageMeta } from "../hooks/usePageMeta";
-import { sanity } from "../lib/sanity";
+import { usePageMeta } from "@/app/hooks/usePageMeta";
+import { sanity } from "@/lib/sanity";
 
 // Types matching the Sanity schema
 interface Category {
