@@ -170,7 +170,7 @@ export function Resources() {
             <div style={{ textAlign: "center", padding: "3rem 0", color: "var(--tf-muted)", fontSize: "0.9375rem" }}>
               {activeCategory === "All"
                 ? "No articles published yet. Check back soon."
-                : `No articles in this category yet. Try another category or view all.`}
+                : "No articles in this category yet. Try another category or view all."}
             </div>
           )}
 
