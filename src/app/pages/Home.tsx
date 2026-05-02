@@ -47,7 +47,7 @@ export function Home() {
             <Link
               to="/check"
               style={{
-                background: "#0284C7",
+                background: "var(--tf-accent)",
                 color: "white",
                 fontWeight: 600,
                 fontSize: "1rem",
@@ -128,7 +128,7 @@ export function Home() {
                   gap: "0.75rem",
                 }}
               >
-                <span style={{ color: "#059669", fontWeight: 700, fontSize: "1.125rem", flexShrink: 0 }}>&#10003;</span>
+                <span style={{ color: "var(--tf-success)", fontWeight: 700, fontSize: "1.125rem", flexShrink: 0 }}>&#10003;</span>
                 {item}
               </li>
             ))}
@@ -169,7 +169,7 @@ export function Home() {
                   style={{
                     width: "2rem",
                     height: "2rem",
-                    background: "#0284C7",
+                    background: "var(--tf-accent)",
                     color: "white",
                     borderRadius: "9999px",
                     display: "flex",
@@ -215,7 +215,7 @@ export function Home() {
               <span
                 style={{
                   display: "inline-block",
-                  background: "#B31D1D",
+                  background: "var(--tf-error)",
                   color: "white",
                   borderRadius: "9999px",
                   padding: "0.2rem 0.75rem",
@@ -228,13 +228,13 @@ export function Home() {
                 Recommended for Late Filers
               </span>
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from $350</p>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from $350</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Catch up on a missed year. Filed correctly the first time.</p>
               <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>$150 filing + $200 reasonable cause letter per year. One-time cost.</p>
               <Link
                 to="/past-filings"
                 style={{
-                  background: "#0284C7",
+                  background: "var(--tf-accent)",
                   color: "white",
                   fontWeight: 600,
                   fontSize: "0.9375rem",
@@ -264,13 +264,13 @@ export function Home() {
               }}
             >
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Current-year filing. Two forms, one price.</p>
               <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>For LLCs filing on time or within the October 15 extension window.</p>
               <Link
                 to="/check"
                 style={{
-                  background: "#0284C7",
+                  background: "var(--tf-accent)",
                   color: "white",
                   fontWeight: 600,
                   fontSize: "0.9375rem",
@@ -301,17 +301,17 @@ export function Home() {
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
-                <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
+                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832 or Form 2553. Print-ready PDF, mailed by you.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Start Filing</Link> */}
                 <Link
                   to="/waitlist?service=llc-classification"
                   style={{
-                    color: "#0284C7",
+                    color: "var(--tf-accent)",
                     fontWeight: 600,
                     fontSize: "0.875rem",
                     textDecoration: "none",
-                    border: "1px solid #0284C7",
+                    border: "1px solid var(--tf-accent)",
                     padding: "0.5rem 1rem",
                     borderRadius: "0.5rem",
                     display: "block",
@@ -336,17 +336,17 @@ export function Home() {
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
-                <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
+                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign the forms. We transmit them by fax to the IRS. Receipt for your records.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
                   to="/waitlist?service=irs-fax"
                   style={{
-                    color: "#0284C7",
+                    color: "var(--tf-accent)",
                     fontWeight: 600,
                     fontSize: "0.875rem",
                     textDecoration: "none",
-                    border: "1px solid #0284C7",
+                    border: "1px solid var(--tf-accent)",
                     padding: "0.5rem 1rem",
                     borderRadius: "0.5rem",
                     display: "block",
@@ -376,14 +376,14 @@ export function Home() {
             to="/waitlist"
             style={{
               background: "transparent",
-              color: "#0284C7",
+              color: "var(--tf-accent)",
               fontWeight: 600,
               fontSize: "1rem",
               padding: "0.75rem 1.75rem",
               borderRadius: "0.5rem",
               textDecoration: "none",
               display: "inline-block",
-              border: "1px solid #0284C7",
+              border: "1px solid var(--tf-accent)",
               minHeight: "44px",
             }}
           >
@@ -393,7 +393,7 @@ export function Home() {
       </section>
 
       {/* Trust signals strip */}
-      <section style={{ background: "#0F172A", padding: "2rem 1rem" }} aria-label="Trust signals">
+      <section style={{ background: "var(--tf-nav)", padding: "2rem 1rem" }} aria-label="Trust signals">
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div className="flex flex-wrap gap-3 justify-center">
             {[
@@ -423,19 +423,19 @@ export function Home() {
       </section>
 
       {/* Urgency band */}
-      <section style={{ background: "#B31D1D", padding: "3rem 1rem" }} aria-label="Filing urgency">
+      <section style={{ background: "var(--tf-cream)", padding: "3rem 1rem" }} aria-label="Filing urgency">
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
-          <p style={{ color: "white", fontWeight: 700, fontSize: "clamp(1.125rem, 3vw, 1.5rem)", marginBottom: "0.75rem", lineHeight: 1.3 }}>
-            Voluntary catch-up filings work best before the IRS contacts you.
+          <p style={{ color: "var(--tf-text)", fontWeight: 700, fontSize: "clamp(1.125rem, 3vw, 1.5rem)", marginBottom: "0.75rem", lineHeight: 1.3 }}>
+            Voluntary catch-up filings work best <span style={{ color: "var(--tf-error)" }}>before the IRS contacts you.</span>
           </p>
-          <p style={{ color: "rgba(255,255,255,0.85)", fontWeight: 500, fontSize: "1rem", marginBottom: "1.75rem" }}>
+          <p style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "1rem", marginBottom: "1.75rem" }}>
             Each unfiled year carries a $25,000 IRS penalty. Filing now keeps you in voluntary territory.
           </p>
           <Link
             to="/past-filings"
             style={{
-              background: "white",
-              color: "#B31D1D",
+              background: "var(--tf-error)",
+              color: "white",
               fontWeight: 700,
               fontSize: "1rem",
               padding: "0.75rem 1.75rem",
@@ -458,7 +458,7 @@ export function Home() {
           </h2>
           <a
             href="mailto:hello@filetax.co"
-            style={{ color: "#0284C7", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
+            style={{ color: "var(--tf-accent)", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
           >
             hello@filetax.co
           </a>
