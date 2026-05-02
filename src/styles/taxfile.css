@@ -1,5 +1,4 @@
-/* TaxFile.io Design System */
-
+/* FileTax.co Design System */
 :root {
   --tf-bg:        #F8FAFC;
   --tf-surface:   #FFFFFF;
@@ -10,42 +9,40 @@
   --tf-accent-h:  #0369A1;
   --tf-success:   #059669;
   --tf-error:     #B31D1D;
+  --tf-error-h:   #931515;
+  --tf-cream:     #F4EFE6;
   --tf-border:    #E2E8F0;
 }
-
 [data-theme="dark"] {
   --tf-bg:        #020617;
   --tf-surface:   #0F172A;
   --tf-text:      #F1F5F9;
   --tf-muted:     #94A3B8;
+  --tf-cream:     #1E1A14;
   --tf-border:    #1E293B;
 }
-
 html, body {
   font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 500;
   background: var(--tf-bg);
   color: var(--tf-text);
 }
-
 h1, h2, h3 {
   font-weight: 700 !important;
   color: var(--tf-text);
 }
-
 /* Focus ring */
 *:focus-visible {
-  outline: 2px solid #0284C7;
+  outline: 2px solid var(--tf-accent);
   outline-offset: 3px;
 }
-
 /* Skip to main */
 .skip-link {
   position: absolute;
   top: -100%;
   left: 1rem;
   padding: 0.5rem 1rem;
-  background: #0284C7;
+  background: var(--tf-accent);
   color: white;
   border-radius: 0 0 0.5rem 0.5rem;
   font-weight: 600;
@@ -54,22 +51,19 @@ h1, h2, h3 {
 .skip-link:focus {
   top: 0;
 }
-
 /* IRS Clock */
 .clock-active {
-  background: #0F172A;
+  background: var(--tf-nav);
   color: white;
   padding: 2rem 1rem;
   text-align: center;
 }
-
 .clock-pastdue {
-  background: #B31D1D;
+  background: var(--tf-error);
   color: white;
   padding: 2rem 1rem;
   text-align: center;
 }
-
 .clock-label {
   font-weight: 600;
   font-size: 0.95rem;
@@ -78,34 +72,29 @@ h1, h2, h3 {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-
 .clock-sublabel {
   font-weight: 500;
   font-size: 0.875rem;
   color: #94A3B8;
   margin-bottom: 0.75rem;
 }
-
 .clock-units {
   display: flex;
   justify-content: center;
   gap: 2rem;
   margin-top: 0.75rem;
 }
-
 .clock-unit {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-
 .clock-num {
   font-size: clamp(2rem, 5vw, 3.5rem);
   font-weight: 700;
   line-height: 1;
   color: white;
 }
-
 .clock-tag {
   font-size: 0.75rem;
   font-weight: 600;
@@ -113,7 +102,6 @@ h1, h2, h3 {
   color: #94A3B8;
   margin-top: 0.25rem;
 }
-
 .clock-actions {
   display: flex;
   gap: 1rem;
@@ -121,45 +109,39 @@ h1, h2, h3 {
   margin-top: 1rem;
   flex-wrap: wrap;
 }
-
 /* Transitions */
 @media (prefers-reduced-motion: no-preference) {
   a, button {
     transition: color 0.15s, background-color 0.15s, border-color 0.15s, opacity 0.15s;
   }
 }
-
 /* Short answer box for articles */
 .short-answer-box {
-  background: #F8FAFC;
-  border-left: 3px solid #0284C7;
+  background: var(--tf-bg);
+  border-left: 3px solid var(--tf-accent);
   padding: 1.25rem 1.5rem;
   border-radius: 0 0.5rem 0.5rem 0;
   margin: 1.5rem 0;
 }
-
 [data-theme="dark"] .short-answer-box {
-  background: #0F172A;
+  background: var(--tf-surface);
 }
-
 /* Penalty scale */
 .penalty-scale {
-  background: linear-gradient(to right, #64748B, #0284C7, #B31D1D);
+  background: linear-gradient(to right, var(--tf-muted), var(--tf-accent), var(--tf-error));
   height: 12px;
   border-radius: 9999px;
   width: 100%;
 }
-
 /* Tooltip */
 .tf-tooltip {
   position: relative;
   display: inline-block;
 }
-
 .tf-tooltip .tf-tooltip-text {
   visibility: hidden;
   opacity: 0;
-  background: #0F172A;
+  background: var(--tf-nav);
   color: white;
   text-align: left;
   padding: 0.75rem 1rem;
@@ -175,13 +157,11 @@ h1, h2, h3 {
   line-height: 1.5;
   box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
-
 .tf-tooltip:hover .tf-tooltip-text,
 .tf-tooltip:focus-within .tf-tooltip-text {
   visibility: visible;
   opacity: 1;
 }
-
 @media (prefers-reduced-motion: no-preference) {
   .tf-tooltip .tf-tooltip-text {
     transition: opacity 0.15s;
