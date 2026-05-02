@@ -3,13 +3,9 @@ import { Link } from "react-router";
 import { usePageMeta } from "@/app/hooks/usePageMeta";
 import { sanity } from "@/lib/sanity";
 
-// Types matching the Sanity schema
 interface Category {
   _id: string;
   title: string;
-  slug: { current: string };
-  description?: string;
-  displayOrder?: number;
 }
 
 interface Post {
@@ -23,8 +19,6 @@ interface Post {
   seoDescription?: string;
 }
 
-// Color map for categories. Keys are category titles as stored in Sanity.
-// If a category title doesn't match a key here, it falls back to the default neutral color.
 const CATEGORY_COLORS: Record<string, string> = {
   "Form 5472 Essentials": "#0284C7",
   "The $25,000 Penalty": "#B31D1D",
@@ -46,6 +40,35 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
+// Skeleton card shown while posts load. Same dimensions as the real card
+// so the grid doesn't reflow when content arrives.
+function SkeletonCard() {
+  return (
+    <div
+      style={{
+        background: "var(--tf-surface)",
+        border: "1px solid var(--tf-border)",
+        borderRadius: "0.75rem",
+        padding: "1.5rem",
+        minHeight: "200px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+      aria-hidden="true"
+    >
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <div style={{ background: "var(--tf-border)", borderRadius: "9999px", width: "120px", height: "20px" }} />
+        <div style={{ background: "var(--tf-border)", borderRadius: "9999px", width: "100px", height: "20px" }} />
+      </div>
+      <div style={{ background: "var(--tf-border)", borderRadius: "0.25rem", width: "85%", height: "18px", marginBottom: "0.625rem" }} />
+      <div style={{ background: "var(--tf-border)", borderRadius: "0.25rem", width: "60%", height: "18px", marginBottom: "1rem" }} />
+      <div style={{ background: "var(--tf-border)", borderRadius: "0.25rem", width: "100%", height: "12px", marginBottom: "0.5rem" }} />
+      <div style={{ background: "var(--tf-border)", borderRadius: "0.25rem", width: "90%", height: "12px", marginBottom: "0.5rem" }} />
+      <div style={{ background: "var(--tf-border)", borderRadius: "0.25rem", width: "70%", height: "12px" }} />
+    </div>
+  );
+}
+
 export function Resources() {
   usePageMeta({
     title: "Resources | FileTax.co",
@@ -56,53 +79,50 @@ export function Resources() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("All");
-  const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch posts and categories from Sanity on mount.
-  // Posts are sorted by featured first, then by publishedAt descending.
-  // Categories are sorted by displayOrder, with title as tiebreaker.
+  // Fetch posts and categories independently. Posts render as soon as they
+  // arrive; categories populate the filter chips when they arrive. This is
+  // faster than Promise.all because the user sees content sooner.
   useEffect(() => {
-    const fetchContent = async () => {
-      try {
-        const postsQuery = `*[_type == "post" && defined(publishedAt)] | order(featured desc, publishedAt desc) {
-          _id,
-          title,
-          slug,
-          publishedAt,
-          excerpt,
-          featured,
-          seoDescription,
-          "categories": categories[]->{ _id, title, slug }
-        }`;
+    const postsQuery = `*[_type == "post" && defined(publishedAt)] | order(featured desc, publishedAt desc) {
+      _id,
+      title,
+      slug,
+      publishedAt,
+      excerpt,
+      featured,
+      seoDescription,
+      "categories": categories[]->{ _id, title }
+    }`;
 
-        const categoriesQuery = `*[_type == "category"] | order(displayOrder asc, title asc) {
-          _id,
-          title,
-          slug,
-          description,
-          displayOrder
-        }`;
+    const categoriesQuery = `*[_type == "category"] | order(displayOrder asc, title asc) {
+      _id,
+      title
+    }`;
 
-        const [postsResult, categoriesResult] = await Promise.all([
-          sanity.fetch<Post[]>(postsQuery),
-          sanity.fetch<Category[]>(categoriesQuery),
-        ]);
-
-        setPosts(postsResult ?? []);
-        setCategories(categoriesResult ?? []);
-        setLoading(false);
-      } catch (err) {
-        console.error("Failed to fetch resources content from Sanity:", err);
+    sanity
+      .fetch<Post[]>(postsQuery)
+      .then((result) => {
+        setPosts(result ?? []);
+        setPostsLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch posts from Sanity:", err);
         setError("Could not load articles. Please try again in a moment.");
-        setLoading(false);
-      }
-    };
+        setPostsLoading(false);
+      });
 
-    fetchContent();
+    sanity
+      .fetch<Category[]>(categoriesQuery)
+      .then((result) => setCategories(result ?? []))
+      .catch((err) => {
+        console.error("Failed to fetch categories from Sanity:", err);
+        // Categories are non-critical. The post grid still works without filters.
+      });
   }, []);
 
-  // Filter posts by selected category
   const filteredPosts =
     activeCategory === "All"
       ? posts
@@ -121,8 +141,8 @@ export function Resources() {
         </div>
       </section>
 
-      {/* Category filter */}
-      {!loading && categories.length > 0 && (
+      {/* Category filter. Renders only when categories arrive. */}
+      {categories.length > 0 && (
         <section style={{ background: "var(--tf-surface)", padding: "1rem 1rem 0", borderBottom: "1px solid var(--tf-border)" }}>
           <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
             <div className="flex flex-wrap gap-2 pb-0">
@@ -133,8 +153,8 @@ export function Resources() {
                   style={{
                     padding: "0.375rem 1rem",
                     borderRadius: "9999px",
-                    border: activeCategory === catTitle ? "1px solid #0284C7" : "1px solid var(--tf-border)",
-                    background: activeCategory === catTitle ? "#0284C7" : "transparent",
+                    border: activeCategory === catTitle ? "1px solid var(--tf-accent)" : "1px solid var(--tf-border)",
+                    background: activeCategory === catTitle ? "var(--tf-accent)" : "transparent",
                     color: activeCategory === catTitle ? "white" : "var(--tf-text)",
                     fontWeight: 600,
                     fontSize: "0.875rem",
@@ -154,19 +174,21 @@ export function Resources() {
       {/* Post grid */}
       <section style={{ background: "var(--tf-bg)", padding: "2.5rem 1rem 4rem" }}>
         <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-          {loading && (
-            <div style={{ textAlign: "center", padding: "3rem 0", color: "var(--tf-muted)", fontSize: "0.9375rem" }}>
-              Loading articles...
+          {postsLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5" aria-busy="true" aria-label="Loading articles">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
             </div>
           )}
 
-          {error && !loading && (
-            <div style={{ textAlign: "center", padding: "3rem 0", color: "#B31D1D", fontSize: "0.9375rem" }}>
+          {error && !postsLoading && (
+            <div style={{ textAlign: "center", padding: "3rem 0", color: "var(--tf-error)", fontSize: "0.9375rem" }}>
               {error}
             </div>
           )}
 
-          {!loading && !error && filteredPosts.length === 0 && (
+          {!postsLoading && !error && filteredPosts.length === 0 && (
             <div style={{ textAlign: "center", padding: "3rem 0", color: "var(--tf-muted)", fontSize: "0.9375rem" }}>
               {activeCategory === "All"
                 ? "No articles published yet. Check back soon."
@@ -174,10 +196,9 @@ export function Resources() {
             </div>
           )}
 
-          {!loading && !error && filteredPosts.length > 0 && (
+          {!postsLoading && !error && filteredPosts.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredPosts.map((post) => {
-                // Use the first category for the badge color and label
                 const primaryCategory = post.categories?.[0];
                 const categoryTitle = primaryCategory?.title ?? "";
                 const categoryColor = getCategoryColor(categoryTitle);
@@ -226,7 +247,7 @@ export function Resources() {
                     )}
                     <Link
                       to={`/resources/${post.slug.current}`}
-                      style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}
+                      style={{ color: "var(--tf-accent)", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}
                     >
                       Read More &#8594;
                     </Link>
