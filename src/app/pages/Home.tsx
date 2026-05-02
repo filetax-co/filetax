@@ -423,10 +423,10 @@ export function Home() {
       </section>
 
       {/* Urgency band */}
-      <section style={{ background: "var(--tf-cream)", padding: "3rem 1rem" }} aria-label="Filing urgency">
+      <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-label="Filing urgency">
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
           <p style={{ color: "var(--tf-text)", fontWeight: 700, fontSize: "clamp(1.125rem, 3vw, 1.5rem)", marginBottom: "0.75rem", lineHeight: 1.3 }}>
-            Voluntary catch-up filings work best <span style={{ color: "var(--tf-error)" }}>before the IRS contacts you.</span>
+            Voluntary catch-up filings work best before the IRS contacts you.
           </p>
           <p style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "1rem", marginBottom: "1.75rem" }}>
             Each unfiled year carries a $25,000 IRS penalty. Filing now keeps you in voluntary territory.
