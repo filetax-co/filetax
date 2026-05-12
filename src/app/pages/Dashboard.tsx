@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { supabase, Filing } from '../../lib/supabase';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import { usePageMeta } from '../hooks/usePageMeta';
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
-  pending:     { label: 'Received',    color: '#92400E', bg: '#FEF3C7' },
-  in_progress: { label: 'In Progress', color: '#1D4ED8', bg: '#DBEAFE' },
-  completed:   { label: 'Completed',   color: '#065F46', bg: '#D1FAE5' },
+  draft:          { label: 'Draft',       color: '#92400E', bg: '#FEF3C7' },
+  in_progress:    { label: 'In Progress', color: '#1D4ED8', bg: '#DBEAFE' },
+  payment_failed: { label: 'Pmt Failed',  color: '#991B1B', bg: '#FEE2E2' },
+  paid:           { label: 'Paid',        color: '#065F46', bg: '#D1FAE5' },
+  completed:      { label: 'Completed',   color: '#065F46', bg: '#D1FAE5' },
+  submitted:      { label: 'Submitted',   color: '#1D4ED8', bg: '#DBEAFE' },
 };
 
 export function Dashboard() {
@@ -16,15 +19,13 @@ export function Dashboard() {
     description: 'View the status of your Form 5472 filings and download completed forms.',
   });
 
-  const { session, user, loading, signOut } = useAuth();
+  const { session, user, loading } = useAuth();
   const navigate = useNavigate();
   const [filings, setFilings] = useState<Filing[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!loading && !session) navigate('/auth');
+    if (!loading && !session) navigate('/portal?mode=login');
   }, [session, loading, navigate]);
 
   useEffect(() => {
@@ -40,23 +41,9 @@ export function Dashboard() {
       });
   }, [user]);
 
-  const getSignedUrl = async (path: string, filingId: string) => {
-    const { data } = await supabase.storage.from('filings').createSignedUrl(path, 60);
-    if (data?.signedUrl) setFileUrls((prev) => ({ ...prev, [filingId]: data.signedUrl }));
-  };
-
-  const handleUpload = async (filingId: string, file: File) => {
-    if (!user) return;
-    setUploadingId(filingId);
-    const ext = file.name.split('.').pop();
-    const path = `${user.id}/${filingId}.${ext}`;
-    const { error } = await supabase.storage.from('filings').upload(path, file, { upsert: true });
-    if (!error) {
-      await supabase.from('filings').update({ file_path: path }).eq('id', filingId);
-      setFilings((prev) => prev.map((f) => f.id === filingId ? { ...f, file_path: path } : f));
-      getSignedUrl(path, filingId);
-    }
-    setUploadingId(null);
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
   };
 
   if (loading || fetching) {
@@ -70,6 +57,7 @@ export function Dashboard() {
   return (
     <section style={{ padding: '3rem 1rem 5rem' }}>
       <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
           <div>
@@ -77,14 +65,24 @@ export function Dashboard() {
             <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem' }}>{user?.email}</p>
           </div>
           <button
-            onClick={signOut}
+            onClick={handleSignOut}
             style={{ background: 'none', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.5rem 1rem', color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', minHeight: '36px' }}
           >
             Sign out
           </button>
         </div>
 
-        {/* Filings table */}
+        {/* New filing CTA */}
+        <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <a
+            href="/portal"
+            style={{ background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', textDecoration: 'none', display: 'inline-block' }}
+          >
+            + Start new filing
+          </a>
+        </div>
+
+        {/* Filings list */}
         {filings.length === 0 ? (
           <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
             <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No filings yet</p>
@@ -98,44 +96,42 @@ export function Dashboard() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {filings.map((f) => {
-              const s = STATUS_LABEL[f.status] ?? STATUS_LABEL.pending;
+              const s = STATUS_LABEL[f.status] ?? STATUS_LABEL.draft;
+              const label = f.llc_name ? `${f.llc_name}` : 'Form 5472 Filing';
               return (
-                <div key={f.id} style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ minWidth: '0' }}>
+                <div
+                  key={f.id}
+                  style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.375rem' }}>
-                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>{f.form_type}</span>
-                      <span style={{ fontSize: '0.875rem', color: 'var(--tf-muted)' }}>— Tax Year {f.tax_year}</span>
+                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>{label}</span>
+                      {f.tax_year && (
+                        <span style={{ fontSize: '0.875rem', color: 'var(--tf-muted)' }}>— Tax Year {f.tax_year}</span>
+                      )}
                     </div>
-                    {f.notes && <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>{f.notes}</p>}
-                    {f.created_at && (
-                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
-                        Submitted {new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
+                    {f.ein && (
+                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>EIN: {f.ein}</p>
                     )}
+                    <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+                      Started {new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <span style={{ background: s.bg, color: s.color, fontWeight: 700, fontSize: '0.75rem', padding: '0.25rem 0.75rem', borderRadius: '9999px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                       {s.label}
                     </span>
-                    {f.status === 'completed' && (
-                      f.file_path ? (
-                        <a
-                          href={fileUrls[f.id!] ?? '#'}
-                          onClick={() => !fileUrls[f.id!] && f.file_path && getSignedUrl(f.file_path, f.id!)}
-                          style={{ background: '#059669', color: 'white', fontWeight: 700, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '36px', display: 'inline-flex', alignItems: 'center' }}
-                          target="_blank" rel="noopener noreferrer"
-                        >
-                          ↓ Download
-                        </a>
-                      ) : (
-                        <label style={{ cursor: 'pointer' }}>
-                          <span style={{ background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', display: 'inline-block', minHeight: '36px', lineHeight: '20px' }}>
-                            {uploadingId === f.id ? 'Uploading…' : 'Upload form'}
-                          </span>
-                          <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={(e) => e.target.files?.[0] && handleUpload(f.id!, e.target.files[0])} />
-                        </label>
-                      )
+                    {(f.status === 'draft' || f.status === 'in_progress') && (
+                      <a
+                        href={`/filing/${f.id}`}
+                        style={{ background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '36px', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        Continue →
+                      </a>
                     )}
+                    {f.status === 'paid' || f.status === 'completed' ? (
+                      <span style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 600 }}>Forms ready soon</span>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -144,7 +140,8 @@ export function Dashboard() {
         )}
 
         <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginTop: '2rem' }}>
-          Questions? Email <a href="mailto:hello@filetax.co" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>
+          Questions? Email{' '}
+          <a href="mailto:hello@filetax.co" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>
         </p>
       </div>
     </section>
