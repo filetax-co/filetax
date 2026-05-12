@@ -47,6 +47,8 @@ export function Portal() {
   const sectionsParam = searchParams.get('sections');
   const partiesParam = searchParams.get('parties');
   const rclParam = searchParams.get('rcl');
+  // When coming from Dashboard "+ Start new filing", we redirect back with this flag
+  const newFiling = searchParams.get('new-filing') === '1';
 
   const activeSections = sectionsParam ? sectionsParam.split(',').filter(Boolean) : [];
   const parties = partiesParam ? Number(partiesParam) : 1;
@@ -63,6 +65,11 @@ export function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
+  // Build the post-auth redirect URL
+  // If new-filing=1 is present, land on /dashboard?new-filing=1 so Dashboard creates the draft
+  const redirectBase = window.location.origin + '/dashboard';
+  const emailRedirectTo = newFiling ? redirectBase + '?new-filing=1' : redirectBase;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -73,7 +80,7 @@ export function Portal() {
     const { data: authData, error: authError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: window.location.origin + '/dashboard',
+        emailRedirectTo,
         data: mode === 'signup' ? { full_name: name.trim() } : {},
       },
     });
@@ -107,7 +114,7 @@ export function Portal() {
             Filing Portal
           </span>
           <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', marginBottom: '0.5rem', lineHeight: 1.2 }}>
-            Create your account and start filing.
+            {newFiling ? 'Sign in to start your new filing.' : 'Create your account and start filing.'}
           </h1>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, maxWidth: '520px' }}>
             Free to start. No payment until you are ready to download your completed forms. Takes about 10 minutes.

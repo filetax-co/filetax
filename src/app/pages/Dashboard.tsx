@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { supabase, Filing } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
 import { usePageMeta } from '../hooks/usePageMeta';
@@ -21,8 +21,10 @@ export function Dashboard() {
 
   const { session, user, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [filings, setFilings] = useState<Filing[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [creatingFiling, setCreatingFiling] = useState(false);
 
   useEffect(() => {
     if (!loading && !session) navigate('/portal?mode=login');
@@ -41,15 +43,53 @@ export function Dashboard() {
       });
   }, [user]);
 
+  // After magic-link auth, if ?new-filing=1 is in the URL, create a draft and go to the wizard
+  useEffect(() => {
+    if (!user || fetching) return;
+    if (searchParams.get('new-filing') !== '1') return;
+
+    // Remove the param from the URL immediately so a refresh doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete('new-filing');
+    window.history.replaceState({}, '', url.toString());
+
+    setCreatingFiling(true);
+    supabase
+      .from('filings')
+      .insert({ user_id: user.id, status: 'draft', current_step: 1 })
+      .select('id')
+      .single()
+      .then(({ data, error }) => {
+        setCreatingFiling(false);
+        if (error || !data) return; // stay on dashboard if insert fails
+        navigate(`/filing/${data.id}`);
+      });
+  }, [user, fetching, searchParams, navigate]);
+
+  const handleNewFiling = async () => {
+    if (!user) return;
+    setCreatingFiling(true);
+    const { data, error } = await supabase
+      .from('filings')
+      .insert({ user_id: user.id, status: 'draft', current_step: 1 })
+      .select('id')
+      .single();
+    setCreatingFiling(false);
+    if (error || !data) return;
+    navigate(`/filing/${data.id}`);
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/');
   };
 
-  if (loading || fetching) {
+  if (loading || fetching || creatingFiling) {
     return (
       <section style={{ padding: '5rem 1rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--tf-muted)' }}>Loading your filings…</p>
+        <p style={{ color: 'var(--tf-muted)' }}>
+          {creatingFiling ? 'Creating your filing…' : 'Loading your filings…'}
+        </p>
       </section>
     );
   }
@@ -74,12 +114,13 @@ export function Dashboard() {
 
         {/* New filing CTA */}
         <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-          <a
-            href="/portal"
-            style={{ background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', textDecoration: 'none', display: 'inline-block' }}
+          <button
+            onClick={handleNewFiling}
+            disabled={creatingFiling}
+            style={{ background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: creatingFiling ? 'not-allowed' : 'pointer', opacity: creatingFiling ? 0.7 : 1, minHeight: '40px' }}
           >
-            + Start new filing
-          </a>
+            {creatingFiling ? 'Creating…' : '+ Start new filing'}
+          </button>
         </div>
 
         {/* Filings list */}
@@ -89,9 +130,13 @@ export function Dashboard() {
             <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', marginBottom: '1.25rem' }}>
               Once your filing is started, it will appear here.
             </p>
-            <a href="/portal" style={{ display: 'inline-block', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', textDecoration: 'none' }}>
+            <button
+              onClick={handleNewFiling}
+              disabled={creatingFiling}
+              style={{ display: 'inline-block', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}
+            >
               Start a filing
-            </a>
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
