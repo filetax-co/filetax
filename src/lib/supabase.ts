@@ -5,6 +5,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+export type Address = {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  region?: string;
+  postal_code?: string;
+  country?: string;
+};
+
 export type IntakeSubmission = {
   id?: string;
   created_at?: string;
@@ -21,13 +30,64 @@ export type IntakeSubmission = {
   status?: 'pending' | 'in_progress' | 'completed';
 };
 
+export type FilingStatus =
+  | 'draft'
+  | 'in_progress'
+  | 'payment_failed'
+  | 'paid'
+  | 'completed'
+  | 'submitted';
+
+export type ServiceType = 'current_year' | 'past_year' | 'tax_classification';
+
 export type Filing = {
-  id?: string;
-  created_at?: string;
+  id: string;
   user_id: string;
-  tax_year: string;
-  form_type: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  notes?: string;
-  file_path?: string;
+  created_at: string;
+  updated_at: string;
+  status: FilingStatus;
+  current_step: number;
+  service_type: ServiceType;
+  tax_year?: string | null;
+  llc_name?: string | null;
+  ein?: string | null;
+  state_of_formation?: string | null;
+  mailing_address?: Address | null;
+  owner_full_name?: string | null;
+  owner_country_residence?: string | null;
+  owner_country_citizenship?: string | null;
+  owner_passport_number?: string | null;
+  owner_foreign_tax_id?: string | null;
+  owner_address?: Address | null;
+  include_irs_fax: boolean;
+  include_rcl: boolean;
+  notes?: string | null;
+  parties_count: number;
+  complex_sections: string[];
+  paid_at?: string | null;
+  payment_id?: string | null;
+  payment_amount_cents?: number | null;
+  forms_generated_at?: string | null;
+  download_count: number;
+};
+
+export type FilingTransactionCategory =
+  | 'capital_contribution'
+  | 'distribution'
+  | 'loan_to_llc'
+  | 'loan_from_llc'
+  | 'service_payment'
+  | 'rent_royalty'
+  | 'other';
+
+export type FilingTransaction = {
+  id: string;
+  filing_id: string;
+  created_at: string;
+  category: FilingTransactionCategory;
+  direction: 'to_llc' | 'from_llc';
+  amount: number;
+  currency: string;
+  transaction_date?: string | null;
+  description?: string | null;
 };
