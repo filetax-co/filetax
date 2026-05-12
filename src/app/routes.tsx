@@ -11,6 +11,7 @@ import { Article } from './pages/Article';
 import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
+import { FilingWizard } from './pages/FilingWizard';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
       { path: 'faq', Component: FAQ },
       { path: 'auth', Component: Auth },
       { path: 'dashboard', Component: Dashboard },
+      { path: 'filing/:id', Component: FilingWizard },
       { path: 'waitlist', Component: Waitlist },
       { path: 'terms', Component: Terms },
       { path: 'privacy', Component: Privacy },
