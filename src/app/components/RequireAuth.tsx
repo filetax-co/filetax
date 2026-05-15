@@ -2,17 +2,22 @@ import { useEffect } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 
+const DEV_SKIP_AUTH = import.meta.env.DEV;
+
 export function RequireAuth() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+    if (DEV_SKIP_AUTH) return;
     if (!loading && !user) {
       const next = encodeURIComponent(location.pathname + location.search);
       navigate(`/portal?mode=login&next=${next}`, { replace: true });
     }
   }, [user, loading, navigate, location]);
+
+  if (DEV_SKIP_AUTH) return <Outlet />;
 
   if (loading) {
     return (
