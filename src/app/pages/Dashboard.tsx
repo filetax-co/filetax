@@ -4,6 +4,8 @@ import { supabase, type Filing, type ServiceType } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
+
 const SERVICE_LABEL: Record<ServiceType, string> = {
   current_year: 'Form 5472 + Pro Forma 1120',
   past_year: 'Past Year Filing + Reasonable Cause Letter',
@@ -70,6 +72,8 @@ export function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
+  const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
+
   const [filings, setFilings] = useState<Filing[]>([]);
   const [pendingIntake, setPendingIntake] = useState<EligibilityIntake | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,17 +83,19 @@ export function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!user) return;
+      if (!effectiveUserId) return;
       setLoading(true);
 
       const filingsRes = await supabase
         .from('filings')
         .select('*')
+        .eq('user_id', effectiveUserId)
         .order('updated_at', { ascending: false });
 
       const intakeRes = await supabase
         .from('intake_submissions')
         .select('id, years_param, sections_param, parties_param, rcl_param')
+        .eq('user_id', effectiveUserId)
         .is('linked_filing_id', null)
         .order('created_at', { ascending: false })
         .limit(1);
@@ -114,10 +120,10 @@ export function Dashboard() {
     }
     load();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [effectiveUserId]);
 
   async function startFromEligibility() {
-    if (!user || !pendingIntake || busy) return;
+    if (!effectiveUserId || !pendingIntake || busy) return;
     setBusy('eligibility');
     setError('');
 
@@ -128,7 +134,7 @@ export function Dashboard() {
     const { data, error } = await supabase
       .from('filings')
       .insert({
-        user_id: user.id,
+        user_id: effectiveUserId,
         service_type: deriveServiceType(pendingIntake.years_param),
         tax_year: deriveTaxYear(pendingIntake.years_param),
         status: 'draft',
@@ -155,13 +161,13 @@ export function Dashboard() {
   }
 
   async function startFiling(serviceType: ServiceType) {
-    if (!user || busy) return;
+    if (!effectiveUserId || busy) return;
     setBusy(serviceType);
     setError('');
     const { data, error } = await supabase
       .from('filings')
       .insert({
-        user_id: user.id,
+        user_id: effectiveUserId,
         service_type: serviceType,
         status: 'draft',
         current_step: 1,
