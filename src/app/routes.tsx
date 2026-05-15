@@ -27,33 +27,36 @@ function NotFound() {
   );
 }
 
-export const router = createBrowserRouter([
-  {
-    path: '/',
-    Component: Layout,
-    children: [
-      { index: true, Component: Home },
-      { path: 'pricing', Component: Pricing },
-      { path: 'services', Component: Services },
-      { path: 'past-filings', Component: PastFilings },
-      { path: 'check', Component: EligibilityCheck },
-      { path: 'portal', Component: Portal },
-      { path: 'resources', Component: Resources },
-      { path: 'resources/:slug', Component: Article },
-      { path: 'faq', Component: FAQ },
-      { path: 'auth', Component: Auth },
-      { path: 'waitlist', Component: Waitlist },
-      { path: 'terms', Component: Terms },
-      { path: 'privacy', Component: Privacy },
-      {
-        Component: RequireAuth,
-        children: [
-          { path: 'dashboard', Component: Dashboard },
-          { path: 'intake/:filingId', Component: Intake },
-          { path: 'filing/:id', Component: FilingWizard },
-        ],
-      },
-      { path: '*', Component: NotFound },
-    ],
-  },
-]);
+export const router = createBrowserRouter(
+  [
+    {
+      path: '/',
+      Component: Layout,
+      children: [
+        { index: true, Component: Home },
+        { path: 'pricing', Component: Pricing },
+        { path: 'services', Component: Services },
+        { path: 'past-filings', Component: PastFilings },
+        { path: 'check', Component: EligibilityCheck },
+        { path: 'portal', Component: Portal },
+        { path: 'resources', Component: Resources },
+        { path: 'resources/:slug', Component: Article },
+        { path: 'faq', Component: FAQ },
+        { path: 'auth', Component: Auth },
+        { path: 'waitlist', Component: Waitlist },
+        { path: 'terms', Component: Terms },
+        { path: 'privacy', Component: Privacy },
+        {
+          Component: RequireAuth,
+          children: [
+            { path: 'dashboard', Component: Dashboard },
+            { path: 'intake/:filingId', Component: Intake },
+            { path: 'filing/:id', Component: FilingWizard },
+          ],
+        },
+        { path: '*', Component: NotFound },
+      ],
+    },
+  ],
+  { basename: import.meta.env.BASE_URL }
+);
