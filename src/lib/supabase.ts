@@ -54,6 +54,18 @@ export type Filing = {
   ein?: string | null;
   state_of_formation?: string | null;
   mailing_address?: Address | null;
+  // ── new Form 5472 fields (10) ──────────────────────────────
+  total_assets?: number | null;             // Line 1c
+  naics_code?: string | null;              // Line 1e
+  naics_description?: string | null;       // Line 1d
+  date_of_incorporation?: string | null;   // Line 1m  (ISO date)
+  date_of_closure?: string | null;         // tax year end when closed
+  owner_primary_country?: string | null;   // Line 4c
+  owner_us_tin?: string | null;            // Lines 4b-1, 8b-1
+  owner_reference_id?: string | null;      // Lines 4b-2, 8b-2
+  owner_naics_code?: string | null;        // Line 8d
+  owner_naics_description?: string | null; // Line 8c
+  // ─────────────────────────────────────────────────────────
   owner_full_name?: string | null;
   owner_country_residence?: string | null;
   owner_country_citizenship?: string | null;

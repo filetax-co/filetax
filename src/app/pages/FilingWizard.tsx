@@ -222,19 +222,32 @@ export function FilingWizard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // ── Step 1 state ────────────────────────────────────────────
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
   const [stateOfFormation, setStateOfFormation] = useState('');
   const [taxYear, setTaxYear] = useState('2024');
   const [mailingAddress, setMailingAddress] = useState<Address>({});
+  const [totalAssets, setTotalAssets] = useState('');
+  const [naicsCode, setNaicsCode] = useState('');
+  const [naicsDescription, setNaicsDescription] = useState('');
+  const [dateOfIncorporation, setDateOfIncorporation] = useState('');
+  const [dateOfClosure, setDateOfClosure] = useState('');
 
+  // ── Step 2 state ────────────────────────────────────────────
   const [ownerFullName, setOwnerFullName] = useState('');
+  const [ownerPrimaryCountry, setOwnerPrimaryCountry] = useState('');
   const [ownerCountryResidence, setOwnerCountryResidence] = useState('');
   const [ownerCountryCitizenship, setOwnerCountryCitizenship] = useState('');
   const [ownerPassport, setOwnerPassport] = useState('');
   const [ownerForeignTaxId, setOwnerForeignTaxId] = useState('');
+  const [ownerUsTin, setOwnerUsTin] = useState('');
+  const [ownerReferenceId, setOwnerReferenceId] = useState('');
+  const [ownerNaicsCode, setOwnerNaicsCode] = useState('');
+  const [ownerNaicsDescription, setOwnerNaicsDescription] = useState('');
   const [ownerAddress, setOwnerAddress] = useState<Address>({});
 
+  // ── Step 3 state ────────────────────────────────────────────
   const [txCategory, setTxCategory] = useState<FilingTransactionCategory>('capital_contribution');
   const [txDirection, setTxDirection] = useState<'to_llc' | 'from_llc'>('to_llc');
   const [txAmount, setTxAmount] = useState('');
@@ -256,16 +269,28 @@ export function FilingWizard() {
       const fi = f as Filing;
       setFiling(fi);
       setTransactions((txs as FilingTransaction[]) ?? []);
+      // Step 1
       setLlcName(fi.llc_name ?? '');
       setEin(fi.ein ?? '');
       setStateOfFormation(fi.state_of_formation ?? '');
       setTaxYear(fi.tax_year ?? '2024');
       setMailingAddress(fi.mailing_address ?? {});
+      setTotalAssets(fi.total_assets != null ? String(fi.total_assets) : '');
+      setNaicsCode(fi.naics_code ?? '');
+      setNaicsDescription(fi.naics_description ?? '');
+      setDateOfIncorporation(fi.date_of_incorporation ?? '');
+      setDateOfClosure(fi.date_of_closure ?? '');
+      // Step 2
       setOwnerFullName(fi.owner_full_name ?? '');
+      setOwnerPrimaryCountry(fi.owner_primary_country ?? '');
       setOwnerCountryResidence(fi.owner_country_residence ?? '');
       setOwnerCountryCitizenship(fi.owner_country_citizenship ?? '');
       setOwnerPassport(fi.owner_passport_number ?? '');
       setOwnerForeignTaxId(fi.owner_foreign_tax_id ?? '');
+      setOwnerUsTin(fi.owner_us_tin ?? '');
+      setOwnerReferenceId(fi.owner_reference_id ?? '');
+      setOwnerNaicsCode(fi.owner_naics_code ?? '');
+      setOwnerNaicsDescription(fi.owner_naics_description ?? '');
       setOwnerAddress(fi.owner_address ?? {});
       setLoadingFiling(false);
     });
@@ -289,13 +314,36 @@ export function FilingWizard() {
   const handleStep1 = async () => {
     if (!llcName.trim()) { setError('LLC name is required.'); return; }
     if (!ein.trim()) { setError('EIN is required.'); return; }
-    await saveStep(1, { llc_name: llcName.trim(), ein: ein.trim(), state_of_formation: stateOfFormation, tax_year: taxYear, mailing_address: mailingAddress }, 2);
+    await saveStep(1, {
+      llc_name: llcName.trim(),
+      ein: ein.trim(),
+      state_of_formation: stateOfFormation,
+      tax_year: taxYear,
+      mailing_address: mailingAddress,
+      total_assets: totalAssets ? Number(totalAssets) : null,
+      naics_code: naicsCode.trim() || null,
+      naics_description: naicsDescription.trim() || null,
+      date_of_incorporation: dateOfIncorporation || null,
+      date_of_closure: dateOfClosure || null,
+    }, 2);
   };
 
   const handleStep2 = async () => {
     if (!ownerFullName.trim()) { setError('Owner full name is required.'); return; }
     if (!ownerCountryResidence.trim()) { setError('Country of residence is required.'); return; }
-    await saveStep(2, { owner_full_name: ownerFullName.trim(), owner_country_residence: ownerCountryResidence.trim(), owner_country_citizenship: ownerCountryCitizenship.trim(), owner_passport_number: ownerPassport.trim(), owner_foreign_tax_id: ownerForeignTaxId.trim(), owner_address: ownerAddress }, 3);
+    await saveStep(2, {
+      owner_full_name: ownerFullName.trim(),
+      owner_primary_country: ownerPrimaryCountry.trim() || ownerCountryResidence.trim(),
+      owner_country_residence: ownerCountryResidence.trim(),
+      owner_country_citizenship: ownerCountryCitizenship.trim(),
+      owner_passport_number: ownerPassport.trim(),
+      owner_foreign_tax_id: ownerForeignTaxId.trim(),
+      owner_us_tin: ownerUsTin.trim() || null,
+      owner_reference_id: ownerReferenceId.trim() || null,
+      owner_naics_code: ownerNaicsCode.trim() || null,
+      owner_naics_description: ownerNaicsDescription.trim() || null,
+      owner_address: ownerAddress,
+    }, 3);
   };
 
   const handleAddTransaction = async () => {
@@ -372,7 +420,7 @@ export function FilingWizard() {
           </div>
         )}
 
-        {/* ── Step 1 ── */}
+        {/* ── Step 1: LLC Details ── */}
         {currentStep === 1 && (
           <Card title="LLC Details" subtitle="Basic information about your US LLC.">
             <Row>
@@ -396,6 +444,25 @@ export function FilingWizard() {
                 </Select>
               </Field>
             </Row>
+            <Row>
+              <Field label="Date of formation" hint="(optional)">
+                <Input type="date" value={dateOfIncorporation} onChange={e => setDateOfIncorporation(e.target.value)} />
+              </Field>
+              <Field label="Date of dissolution" hint="(if closed)">
+                <Input type="date" value={dateOfClosure} onChange={e => setDateOfClosure(e.target.value)} />
+              </Field>
+            </Row>
+            <Row>
+              <Field label="Total assets at year-end (USD)" hint="(optional)">
+                <Input type="number" min="0" step="0.01" value={totalAssets} onChange={e => setTotalAssets(e.target.value)} placeholder="0.00" />
+              </Field>
+              <Field label="NAICS code" hint="(6-digit, optional)">
+                <Input value={naicsCode} onChange={e => setNaicsCode(e.target.value)} placeholder="e.g. 541511" />
+              </Field>
+            </Row>
+            <Field label="Principal business activity" hint="(optional)">
+              <Input value={naicsDescription} onChange={e => setNaicsDescription(e.target.value)} placeholder="e.g. Custom Computer Programming Services" />
+            </Field>
             <SectionLabel>Mailing address <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></SectionLabel>
             <AddressFields value={mailingAddress} onChange={setMailingAddress} />
             <Actions>
@@ -407,28 +474,54 @@ export function FilingWizard() {
           </Card>
         )}
 
-        {/* ── Step 2 ── */}
+        {/* ── Step 2: Owner Information ── */}
         {currentStep === 2 && (
           <Card title="Owner Information" subtitle="Details of the foreign owner (you).">
             <Field label="Full legal name" required hint="As on passport">
               <Input value={ownerFullName} onChange={e => setOwnerFullName(e.target.value)} placeholder="Full name" />
             </Field>
+
+            <SectionLabel>Country details</SectionLabel>
             <Row>
+              <Field label="Primary country of business" hint="(for Form 5472 Line 4c)">
+                <Input value={ownerPrimaryCountry} onChange={e => setOwnerPrimaryCountry(e.target.value)} placeholder="India" />
+              </Field>
               <Field label="Country of residence" required>
                 <Input value={ownerCountryResidence} onChange={e => setOwnerCountryResidence(e.target.value)} placeholder="India" />
               </Field>
-              <Field label="Country of citizenship">
-                <Input value={ownerCountryCitizenship} onChange={e => setOwnerCountryCitizenship(e.target.value)} placeholder="India" />
+            </Row>
+            <Field label="Country of citizenship" hint="(leave blank if same as residence)">
+              <Input value={ownerCountryCitizenship} onChange={e => setOwnerCountryCitizenship(e.target.value)} placeholder="India" />
+            </Field>
+
+            <SectionLabel>Tax identifiers</SectionLabel>
+            <Row>
+              <Field label="Foreign tax ID" hint="(PAN, etc.)">
+                <Input value={ownerForeignTaxId} onChange={e => setOwnerForeignTaxId(e.target.value)} placeholder="e.g. ABCDE1234F" />
+              </Field>
+              <Field label="US TIN / ITIN" hint="(if any)">
+                <Input value={ownerUsTin} onChange={e => setOwnerUsTin(e.target.value)} placeholder="e.g. 9XX-XX-XXXX" />
               </Field>
             </Row>
             <Row>
               <Field label="Passport number">
                 <Input value={ownerPassport} onChange={e => setOwnerPassport(e.target.value)} placeholder="Passport number" />
               </Field>
-              <Field label="Foreign tax ID" hint="(PAN, etc.)">
-                <Input value={ownerForeignTaxId} onChange={e => setOwnerForeignTaxId(e.target.value)} placeholder="e.g. ABCDE1234F" />
+              <Field label="Reference ID" hint="(if assigned by filer)">
+                <Input value={ownerReferenceId} onChange={e => setOwnerReferenceId(e.target.value)} placeholder="Optional reference" />
               </Field>
             </Row>
+
+            <SectionLabel>Owner's business activity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — for Form 5472 Part III)</span></SectionLabel>
+            <Row>
+              <Field label="NAICS code">
+                <Input value={ownerNaicsCode} onChange={e => setOwnerNaicsCode(e.target.value)} placeholder="e.g. 541511" />
+              </Field>
+              <Field label="Business activity description">
+                <Input value={ownerNaicsDescription} onChange={e => setOwnerNaicsDescription(e.target.value)} placeholder="e.g. Software consulting" />
+              </Field>
+            </Row>
+
             <SectionLabel>Owner address <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></SectionLabel>
             <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
             <Actions>
@@ -440,7 +533,7 @@ export function FilingWizard() {
           </Card>
         )}
 
-        {/* ── Step 3 ── */}
+        {/* ── Step 3: Transactions ── */}
         {currentStep === 3 && (
           <Card
             title="Reportable Transactions"
@@ -477,8 +570,6 @@ export function FilingWizard() {
                 ))}
               </div>
             )}
-
-            {/* Add form */}
             <div style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1.25rem' }}>
               <p style={{ fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--tf-muted)', marginBottom: '1rem' }}>Add transaction</p>
               <Row>
@@ -513,7 +604,6 @@ export function FilingWizard() {
                 {addingTx ? 'Adding…' : '+ Add'}
               </button>
             </div>
-
             <Actions>
               <button style={btnGhost()} onClick={() => saveStep(3, {}, 2)} disabled={saving}>← Back</button>
               <button style={btnPrimary()} onClick={() => saveStep(3, {}, 4)} disabled={saving}>
@@ -523,7 +613,7 @@ export function FilingWizard() {
           </Card>
         )}
 
-        {/* ── Step 4 ── */}
+        {/* ── Step 4: Review & Submit ── */}
         {currentStep === 4 && filing && (
           <Card title="Review & Submit" subtitle="Check everything before we prepare your forms.">
 
@@ -533,15 +623,21 @@ export function FilingWizard() {
               <p><strong>EIN:</strong> {filing.ein ?? '—'}</p>
               <p><strong>State:</strong> {filing.state_of_formation ?? '—'}</p>
               <p><strong>Tax year:</strong> {filing.tax_year ?? '—'}</p>
+              {filing.date_of_incorporation && <p><strong>Date of formation:</strong> {filing.date_of_incorporation}</p>}
+              {filing.total_assets != null && <p><strong>Total assets:</strong> ${Number(filing.total_assets).toLocaleString()}</p>}
+              {filing.naics_code && <p><strong>NAICS code:</strong> {filing.naics_code} {filing.naics_description ? `— ${filing.naics_description}` : ''}</p>}
             </div>
 
             <SectionLabel>Owner</SectionLabel>
             <div style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9375rem', marginBottom: '0.5rem' }}>
               <p><strong>Name:</strong> {filing.owner_full_name ?? '—'}</p>
+              <p><strong>Primary country:</strong> {filing.owner_primary_country ?? '—'}</p>
               <p><strong>Residence:</strong> {filing.owner_country_residence ?? '—'}</p>
               <p><strong>Citizenship:</strong> {filing.owner_country_citizenship ?? '—'}</p>
               <p><strong>Passport:</strong> {filing.owner_passport_number ?? '—'}</p>
               <p><strong>Foreign tax ID:</strong> {filing.owner_foreign_tax_id ?? '—'}</p>
+              {filing.owner_us_tin && <p><strong>US TIN / ITIN:</strong> {filing.owner_us_tin}</p>}
+              {filing.owner_naics_code && <p><strong>Owner NAICS:</strong> {filing.owner_naics_code} {filing.owner_naics_description ? `— ${filing.owner_naics_description}` : ''}</p>}
             </div>
 
             <SectionLabel>Transactions ({transactions.length})</SectionLabel>
