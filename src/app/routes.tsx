@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 import { Layout } from './components/Layout';
+import { RequireAuth } from './components/RequireAuth';
 import { Home } from './pages/Home';
 import { Pricing } from './pages/Pricing';
 import { Services } from './pages/Services';
@@ -11,6 +12,7 @@ import { Article } from './pages/Article';
 import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
+import { Intake } from './pages/Intake';
 import { FilingWizard } from './pages/FilingWizard';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
@@ -40,11 +42,17 @@ export const router = createBrowserRouter([
       { path: 'resources/:slug', Component: Article },
       { path: 'faq', Component: FAQ },
       { path: 'auth', Component: Auth },
-      { path: 'dashboard', Component: Dashboard },
-      { path: 'filing/:id', Component: FilingWizard },
       { path: 'waitlist', Component: Waitlist },
       { path: 'terms', Component: Terms },
       { path: 'privacy', Component: Privacy },
+      {
+        Component: RequireAuth,
+        children: [
+          { path: 'dashboard', Component: Dashboard },
+          { path: 'intake/:filingId', Component: Intake },
+          { path: 'filing/:id', Component: FilingWizard },
+        ],
+      },
       { path: '*', Component: NotFound },
     ],
   },
