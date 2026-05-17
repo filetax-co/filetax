@@ -32,7 +32,7 @@
   </url>
   <url>
     <loc>https://filetax.co/resources</loc>
-    <lastmod>2026-04-29</lastmod>
+    <lastmod>2026-05-17</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -60,6 +60,7 @@
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
+
   <url>
     <loc>https://filetax.co/resources/missed-form-5472-penalty-exposure-relief-paths</loc>
     <lastmod>2026-04-19</lastmod>
@@ -81,6 +82,36 @@
   <url>
     <loc>https://filetax.co/resources/stripe-atlas-llc-tax-filing-deadline</loc>
     <lastmod>2026-04-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://filetax.co/resources/irs-cp15-cp215-notices-foreign-llcs</loc>
+    <lastmod>2026-05-17</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://filetax.co/resources/firstbase-llc-form-5472-boi-update</loc>
+    <lastmod>2026-05-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://filetax.co/resources/filed-5472-multiple-years-late-penalty-exposure</loc>
+    <lastmod>2026-05-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://filetax.co/resources/us-llc-tax-filing-uae-residents</loc>
+    <lastmod>2026-05-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://filetax.co/resources/form-843-form-5472-penalty-abatement</loc>
+    <lastmod>2026-05-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
