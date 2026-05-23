@@ -34,6 +34,16 @@ const STEPS = [
   { n: 4, label: 'Review' },
 ];
 
+// ── date formatter ────────────────────────────────────────────────────────────
+// Accepts ISO date strings like "2023-05-15" and returns "May 15, 2023".
+// Appends "T12:00:00" to avoid UTC-to-local midnight rollback issues.
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(`${iso}T12:00:00`);
+  if (isNaN(d.getTime())) return iso; // fallback: return raw if unparseable
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 // ── shared field primitives ──────────────────────────────────────────────────
 
 function Field({ label, required, hint, children }: {
@@ -623,7 +633,12 @@ export function FilingWizard() {
               <p><strong>EIN:</strong> {filing.ein ?? '—'}</p>
               <p><strong>State:</strong> {filing.state_of_formation ?? '—'}</p>
               <p><strong>Tax year:</strong> {filing.tax_year ?? '—'}</p>
-              {filing.date_of_incorporation && <p><strong>Date of formation:</strong> {filing.date_of_incorporation}</p>}
+              {filing.date_of_incorporation && (
+                <p><strong>Date of formation:</strong> {formatDate(filing.date_of_incorporation)}</p>
+              )}
+              {filing.date_of_closure && (
+                <p><strong>Date of dissolution:</strong> {formatDate(filing.date_of_closure)}</p>
+              )}
               {filing.total_assets != null && <p><strong>Total assets:</strong> ${Number(filing.total_assets).toLocaleString()}</p>}
               {filing.naics_code && <p><strong>NAICS code:</strong> {filing.naics_code} {filing.naics_description ? `— ${filing.naics_description}` : ''}</p>}
             </div>
