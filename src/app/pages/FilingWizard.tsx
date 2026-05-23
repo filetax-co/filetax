@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { supabase, Filing, FilingTransaction, FilingTransactionCategory, Address } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
@@ -328,6 +328,14 @@ export function FilingWizard() {
   // Date of dissolution — still a single date field
   const [dateOfClosure, setDateOfClosure] = useState('');
 
+  // ── Derived: Initial Return flag ────────────────────────────
+  // Automatically true when the LLC was incorporated in the year immediately
+  // preceding the selected tax year (e.g. incorp 2025 + tax year 2026 → initial return).
+  const isInitialReturn = useMemo(
+    () => Boolean(incorpYear && taxYear && incorpYear === String(Number(taxYear) - 1)),
+    [incorpYear, taxYear],
+  );
+
   // ── Step 2 state ────────────────────────────────────────────
   const [ownerFullName, setOwnerFullName] = useState('');
   const [ownerPrimaryCountry, setOwnerPrimaryCountry] = useState('');
@@ -423,6 +431,9 @@ export function FilingWizard() {
       naics_description: naicsDescription.trim() || null,
       date_of_incorporation: buildIso(incorpMonth, incorpDay, incorpYear),
       date_of_closure: dateOfClosure || null,
+      // Auto-derived: check "Initial Return" box on Form 5472 / Pro Forma 1120
+      // when the LLC was incorporated in the year immediately before the tax year.
+      initial_return: isInitialReturn,
     }, 2);
   };
 
@@ -551,6 +562,22 @@ export function FilingWizard() {
               onMonth={setIncorpMonth} onDay={setIncorpDay} onYear={setIncorpYear}
             />
 
+            {/* Initial Return pill — shown automatically when incorp year = tax year − 1 */}
+            {isInitialReturn && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                background: '#E0F2FE', border: '1px solid #BAE6FD',
+                borderRadius: '9999px', padding: '0.3rem 0.85rem',
+                fontSize: '0.8125rem', fontWeight: 700, color: '#075985',
+                marginBottom: '1.25rem',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Initial Return — will be checked on Form 5472 &amp; Pro Forma 1120
+              </div>
+            )}
+
             <Field label="Date of dissolution" hint="(if closed)">
               <Input type="date" value={dateOfClosure} onChange={e => setDateOfClosure(e.target.value)} />
             </Field>
@@ -615,7 +642,7 @@ export function FilingWizard() {
               </Field>
             </Row>
 
-            <SectionLabel>Owner’s business activity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — for Form 5472 Part III)</span></SectionLabel>
+            <SectionLabel>Owner's business activity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — for Form 5472 Part III)</span></SectionLabel>
             <Row>
               <Field label="NAICS code">
                 <Input value={ownerNaicsCode} onChange={e => setOwnerNaicsCode(e.target.value)} placeholder="e.g. 541511" />
@@ -731,6 +758,20 @@ export function FilingWizard() {
               )}
               {filing.date_of_closure && (
                 <p><strong>Date of dissolution:</strong> {formatDate(filing.date_of_closure)}</p>
+              )}
+              {/* Show Initial Return badge in review if flag is set */}
+              {filing.initial_return && (
+                <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <strong>Initial Return:</strong>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                    background: '#E0F2FE', border: '1px solid #BAE6FD',
+                    borderRadius: '9999px', padding: '0.15rem 0.65rem',
+                    fontSize: '0.8125rem', fontWeight: 700, color: '#075985',
+                  }}>
+                    ✓ Yes — box will be checked
+                  </span>
+                </p>
               )}
               {filing.total_assets != null && <p><strong>Total assets:</strong> ${Number(filing.total_assets).toLocaleString()}</p>}
               {filing.naics_code && <p><strong>NAICS code:</strong> {filing.naics_code} {filing.naics_description ? `— ${filing.naics_description}` : ''}</p>}
