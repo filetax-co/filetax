@@ -27,6 +27,25 @@ const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
 
 const TAX_YEARS = ['2024', '2023', '2022', '2021', '2020'];
 
+const MONTHS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+
+const YEARS_INCORP = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
+
 const STEPS = [
   { n: 1, label: 'LLC Details' },
   { n: 2, label: 'Owner Info' },
@@ -34,17 +53,73 @@ const STEPS = [
   { n: 4, label: 'Review' },
 ];
 
-// ── date formatter ────────────────────────────────────────────────────────────
-// Accepts ISO date strings like "2023-05-15" and returns "05/15/2023".
-// Appends "T12:00:00" to avoid UTC-to-local midnight rollback issues.
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Parse an ISO date string "YYYY-MM-DD" into { m, d, y } parts. */
+function parseIso(iso: string | null | undefined): { m: string; d: string; y: string } {
+  if (!iso) return { m: '', d: '', y: '' };
+  const parts = iso.split('-');
+  return { y: parts[0] ?? '', m: parts[1] ?? '', d: parts[2] ?? '' };
+}
+
+/** Build an ISO "YYYY-MM-DD" string from parts; returns null if incomplete. */
+function buildIso(m: string, d: string, y: string): string | null {
+  if (!m || !d || !y || y.length < 4) return null;
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+/** Format ISO date as MM/DD/YYYY for display. */
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(`${iso}T12:00:00`);
-  if (isNaN(d.getTime())) return iso; // fallback: return raw if unparseable
+  if (isNaN(d.getTime())) return iso;
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${mm}/${dd}/${yyyy}`;
+  return `${mm}/${dd}/${d.getFullYear()}`;
+}
+
+// ── DateParts: three-field Month / Day / Year selector ────────────────────────
+
+function DateParts({
+  month, day, year,
+  onMonth, onDay, onYear,
+  label, hint,
+}: {
+  month: string; day: string; year: string;
+  onMonth: (v: string) => void;
+  onDay:   (v: string) => void;
+  onYear:  (v: string) => void;
+  label: string;
+  hint?: string;
+}) {
+  const selectStyle: React.CSSProperties = {
+    width: '100%', padding: '0.6rem 0.5rem',
+    border: '1px solid var(--tf-border)', borderRadius: '0.5rem',
+    background: 'var(--tf-bg)', color: 'var(--tf-text)',
+    fontSize: '0.9375rem', boxSizing: 'border-box', minHeight: '42px',
+  };
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.35rem', color: 'var(--tf-text)' }}>
+        {label}
+        {hint && <span style={{ fontWeight: 400, color: 'var(--tf-muted)', marginLeft: '0.35rem' }}>{hint}</span>}
+      </label>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr', gap: '0.5rem' }}>
+        <select style={selectStyle} value={month} onChange={e => onMonth(e.target.value)} aria-label="Month">
+          <option value="">Month</option>
+          {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        <select style={selectStyle} value={day} onChange={e => onDay(e.target.value)} aria-label="Day">
+          <option value="">Day</option>
+          {DAYS.map(d => <option key={d} value={d}>{Number(d)}</option>)}
+        </select>
+        <select style={selectStyle} value={year} onChange={e => onYear(e.target.value)} aria-label="Year">
+          <option value="">Year</option>
+          {YEARS_INCORP.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+    </div>
+  );
 }
 
 // ── shared field primitives ──────────────────────────────────────────────────
@@ -244,7 +319,13 @@ export function FilingWizard() {
   const [totalAssets, setTotalAssets] = useState('');
   const [naicsCode, setNaicsCode] = useState('');
   const [naicsDescription, setNaicsDescription] = useState('');
-  const [dateOfIncorporation, setDateOfIncorporation] = useState('');
+
+  // Date of incorporation — split into three parts
+  const [incorpMonth, setIncorpMonth] = useState('');
+  const [incorpDay,   setIncorpDay]   = useState('');
+  const [incorpYear,  setIncorpYear]  = useState('');
+
+  // Date of dissolution — still a single date field
   const [dateOfClosure, setDateOfClosure] = useState('');
 
   // ── Step 2 state ────────────────────────────────────────────
@@ -291,7 +372,11 @@ export function FilingWizard() {
       setTotalAssets(fi.total_assets != null ? String(fi.total_assets) : '');
       setNaicsCode(fi.naics_code ?? '');
       setNaicsDescription(fi.naics_description ?? '');
-      setDateOfIncorporation(fi.date_of_incorporation ?? '');
+      // Parse incorporation date into parts
+      const incorp = parseIso(fi.date_of_incorporation);
+      setIncorpMonth(incorp.m);
+      setIncorpDay(incorp.d);
+      setIncorpYear(incorp.y);
       setDateOfClosure(fi.date_of_closure ?? '');
       // Step 2
       setOwnerFullName(fi.owner_full_name ?? '');
@@ -336,7 +421,7 @@ export function FilingWizard() {
       total_assets: totalAssets ? Number(totalAssets) : null,
       naics_code: naicsCode.trim() || null,
       naics_description: naicsDescription.trim() || null,
-      date_of_incorporation: dateOfIncorporation || null,
+      date_of_incorporation: buildIso(incorpMonth, incorpDay, incorpYear),
       date_of_closure: dateOfClosure || null,
     }, 2);
   };
@@ -457,14 +542,19 @@ export function FilingWizard() {
                 </Select>
               </Field>
             </Row>
-            <Row>
-              <Field label="Date of formation" hint="(optional)">
-                <Input type="date" value={dateOfIncorporation} onChange={e => setDateOfIncorporation(e.target.value)} />
-              </Field>
-              <Field label="Date of dissolution" hint="(if closed)">
-                <Input type="date" value={dateOfClosure} onChange={e => setDateOfClosure(e.target.value)} />
-              </Field>
-            </Row>
+
+            {/* Date of incorporation — separate Month / Day / Year dropdowns */}
+            <DateParts
+              label="Date of incorporation"
+              hint="(optional)"
+              month={incorpMonth} day={incorpDay} year={incorpYear}
+              onMonth={setIncorpMonth} onDay={setIncorpDay} onYear={setIncorpYear}
+            />
+
+            <Field label="Date of dissolution" hint="(if closed)">
+              <Input type="date" value={dateOfClosure} onChange={e => setDateOfClosure(e.target.value)} />
+            </Field>
+
             <Row>
               <Field label="Total assets at year-end (USD)" hint="(optional)">
                 <Input type="number" min="0" step="0.01" value={totalAssets} onChange={e => setTotalAssets(e.target.value)} placeholder="0.00" />
@@ -525,7 +615,7 @@ export function FilingWizard() {
               </Field>
             </Row>
 
-            <SectionLabel>Owner's business activity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — for Form 5472 Part III)</span></SectionLabel>
+            <SectionLabel>Owner’s business activity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — for Form 5472 Part III)</span></SectionLabel>
             <Row>
               <Field label="NAICS code">
                 <Input value={ownerNaicsCode} onChange={e => setOwnerNaicsCode(e.target.value)} placeholder="e.g. 541511" />
@@ -637,7 +727,7 @@ export function FilingWizard() {
               <p><strong>State:</strong> {filing.state_of_formation ?? '—'}</p>
               <p><strong>Tax year:</strong> {filing.tax_year ?? '—'}</p>
               {filing.date_of_incorporation && (
-                <p><strong>Date of formation:</strong> {formatDate(filing.date_of_incorporation)}</p>
+                <p><strong>Date of incorporation:</strong> {formatDate(filing.date_of_incorporation)}</p>
               )}
               {filing.date_of_closure && (
                 <p><strong>Date of dissolution:</strong> {formatDate(filing.date_of_closure)}</p>
