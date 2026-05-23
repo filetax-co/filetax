@@ -63,6 +63,12 @@ function actionLabel(status: Filing['status']): string {
   return 'View';
 }
 
+/** Route draft/in_progress → Intake wizard; paid/completed → FilingWizard (download step) */
+function filingPath(f: Filing): string {
+  if (f.status === 'paid' || f.status === 'completed') return `/filing/${f.id}`;
+  return `/intake/${f.id}`;
+}
+
 export function Dashboard() {
   usePageMeta({
     title: 'Dashboard | FileTax.co',
@@ -279,7 +285,10 @@ export function Dashboard() {
                         {(f.status === 'draft' || f.status === 'in_progress') ? ` (Step ${f.current_step} of 4)` : ''}
                       </p>
                     </div>
-                    <Link to={`/intake/${f.id}`} style={{ background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center' }}>
+                    <Link
+                      to={filingPath(f)}
+                      style={{ background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center' }}
+                    >
                       {actionLabel(f.status)}
                     </Link>
                   </div>
