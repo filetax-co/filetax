@@ -55,6 +55,7 @@ export function Portal() {
   const hasPriorYears = !!years;
   const hasConfig = hasPriorYears || activeSections.length > 0 || parties > 1;
 
+  // FIX: open='-' closed='+'
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -185,7 +186,10 @@ export function Portal() {
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: '52px' }}
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
-              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '+' : '+'}</span>
+              {/* FIX: show − when open, + when closed */}
+              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>
+                {howItWorksOpen ? '−' : '+'}
+              </span>
             </button>
             {howItWorksOpen && (
               <div style={{ borderTop: '1px solid var(--tf-border)', padding: '1.25rem 1.25rem 1.5rem' }}>
