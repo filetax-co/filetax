@@ -17,15 +17,23 @@ export function ResetPassword() {
   const [error, setError] = useState('');
   const [sessionReady, setSessionReady] = useState(false);
 
-  // Supabase sends a RECOVERY event via the URL hash when the user clicks the
-  // reset link. We wait for onAuthStateChange to detect it and set up the
-  // session before allowing the form to submit.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+    // 1. The PASSWORD_RECOVERY event often fires BEFORE this component mounts
+    //    (Supabase exchanges the URL hash tokens immediately on page load).
+    //    So we first check whether a recovery session already exists.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
         setSessionReady(true);
       }
     });
+
+    // 2. Also subscribe in case the event fires after mount (e.g. slow redirects).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        setSessionReady(true);
+      }
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
