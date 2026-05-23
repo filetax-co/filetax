@@ -25,18 +25,6 @@ const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
   { value: 'other',                label: 'Other' },
 ];
 
-/**
- * TAX_YEARS — dynamically built so it never needs a manual update.
- *
- * The IRS filing deadline for a given tax year falls in the following
- * calendar year (e.g. 2025 returns are due April 2026). We therefore
- * surface (current_calendar_year − 1) as the default "current" tax year
- * and offer 5 years of history.
- *
- * Examples (auto-updates every January 1):
- *   Year 2026 → ['2025', '2024', '2023', '2022', '2021']  default: '2025'
- *   Year 2027 → ['2026', '2025', '2024', '2023', '2022']  default: '2026'
- */
 const CURRENT_TAX_YEAR = String(new Date().getFullYear() - 1);
 const TAX_YEARS = Array.from({ length: 5 }, (_, i) => String(Number(CURRENT_TAX_YEAR) - i));
 
@@ -68,20 +56,17 @@ const STEPS = [
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/** Parse an ISO date string "YYYY-MM-DD" into { m, d, y } parts. */
 function parseIso(iso: string | null | undefined): { m: string; d: string; y: string } {
   if (!iso) return { m: '', d: '', y: '' };
   const parts = iso.split('-');
   return { y: parts[0] ?? '', m: parts[1] ?? '', d: parts[2] ?? '' };
 }
 
-/** Build an ISO "YYYY-MM-DD" string from parts; returns null if incomplete. */
 function buildIso(m: string, d: string, y: string): string | null {
   if (!m || !d || !y || y.length < 4) return null;
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 
-/** Format ISO date as MM/DD/YYYY for display. */
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(`${iso}T12:00:00`);
@@ -91,7 +76,7 @@ function formatDate(iso: string | null | undefined): string {
   return `${mm}/${dd}/${d.getFullYear()}`;
 }
 
-// ── DateParts: three-field Month / Day / Year selector ────────────────────────
+// ── DateParts ────────────────────────────────────────────────────────────────
 
 function DateParts({
   month, day, year,
@@ -333,12 +318,9 @@ export function FilingWizard() {
   const [naicsCode, setNaicsCode] = useState('');
   const [naicsDescription, setNaicsDescription] = useState('');
 
-  // Date of incorporation — split into three parts
   const [incorpMonth, setIncorpMonth] = useState('');
   const [incorpDay,   setIncorpDay]   = useState('');
   const [incorpYear,  setIncorpYear]  = useState('');
-
-  // Date of dissolution — still a single date field
   const [dateOfClosure, setDateOfClosure] = useState('');
 
   // ── Derived: Initial Return flag ────────────────────────────
@@ -368,16 +350,23 @@ export function FilingWizard() {
   const [txDesc, setTxDesc] = useState('');
   const [addingTx, setAddingTx] = useState(false);
 
+  // Redirect if not logged in once auth resolves
   useEffect(() => {
     if (!authLoading && !user) navigate('/portal?mode=login');
   }, [authLoading, user, navigate]);
 
+  // Load filing — wait until auth is resolved and user is available
   useEffect(() => {
-    if (!id || !user) return;
+    if (authLoading) return;          // ← wait for auth to finish
+    if (!id || !user) return;         // ← bail if no id or still no user
+
+    let cancelled = false;
+
     Promise.all([
       supabase.from('filings').select('*').eq('id', id).eq('user_id', user.id).single(),
       supabase.from('filing_transactions').select('*').eq('filing_id', id).order('created_at'),
     ]).then(([{ data: f }, { data: txs }]) => {
+      if (cancelled) return;
       if (!f) { navigate('/dashboard'); return; }
       const fi = f as Filing;
       setFiling(fi);
@@ -391,7 +380,6 @@ export function FilingWizard() {
       setTotalAssets(fi.total_assets != null ? String(fi.total_assets) : '');
       setNaicsCode(fi.naics_code ?? '');
       setNaicsDescription(fi.naics_description ?? '');
-      // Parse incorporation date into parts
       const incorp = parseIso(fi.date_of_incorporation);
       setIncorpMonth(incorp.m);
       setIncorpDay(incorp.d);
@@ -411,7 +399,9 @@ export function FilingWizard() {
       setOwnerAddress(fi.owner_address ?? {});
       setLoadingFiling(false);
     });
-  }, [id, user]);
+
+    return () => { cancelled = true; };
+  }, [id, user, authLoading]); // ← authLoading added to deps
 
   const currentStep = filing?.current_step ?? 1;
 
@@ -826,3 +816,13 @@ export function FilingWizard() {
     </section>
   );
 }
+
+const cardStyle: React.CSSProperties = {
+  background: 'var(--tf-bg)',
+  border: '1px solid var(--tf-border)',
+  borderRadius: '0.75rem',
+  padding: '1.5rem',
+  boxShadow: '0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)',
+  display: 'flex',
+  flexDirection: 'column',
+};
