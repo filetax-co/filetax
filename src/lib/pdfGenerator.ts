@@ -9,13 +9,13 @@
  *   1. Fetch the IRS PDF bytes (cached in memory after first load)
  *   2. Load into pdf-lib and get the AcroForm
  *   3. Fill text + checkbox fields using the F5472 field map
- *   4. Flatten (optional) and return Uint8Array
+ *   4. Flatten and return Uint8Array
  *   5. Caller bundles into a ZIP with jszip
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
 import { F5472 } from './form5472Fields';
-import type { Filing, Transaction } from './supabase';
+import type { Filing, Transaction, Address } from './supabase';
 
 // ─── IRS PDF URLs ────────────────────────────────────────────
 const IRS_FORM_5472_URL = 'https://www.irs.gov/pub/irs-pdf/f5472.pdf';
@@ -79,6 +79,23 @@ function fmtDate(val: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+/**
+ * Flatten an Address object into a single string for PDF text fields.
+ * Returns empty string if address is null/undefined.
+ */
+function fmtAddress(addr: Address | null | undefined): string {
+  if (!addr) return '';
+  return [addr.line1, addr.line2].filter(Boolean).join(', ');
+}
+
+/**
+ * Flatten an Address object into city/region/postal/country string.
+ */
+function fmtCityStateZip(addr: Address | null | undefined): string {
+  if (!addr) return '';
+  return [addr.city, addr.region, addr.postal_code, addr.country].filter(Boolean).join(', ');
+}
+
 function splitPeriodDate(
   isoDate: string | null | undefined,
   fallbackMonth: number,
@@ -103,7 +120,8 @@ function splitPeriodDate(
   };
 }
 
-// ─── Part V categories (used both here and by callers) ────────────
+// ─── Part V categories (used both here and by callers) ────────
+
 export const PART_V_CATEGORIES = [
   'capital_contribution',
   'distribution',
@@ -112,7 +130,7 @@ export const PART_V_CATEGORIES = [
   'nonmonetary_other',
 ] as const;
 
-// ─── Transaction aggregator ────────────────────────────────────────
+// ─── Transaction aggregator ───────────────────────────────────
 
 interface TxnTotals {
   sales_received: number;
@@ -213,7 +231,7 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
   return t;
 }
 
-// ─── Form 5472 filler ─────────────────────────────────────────────────
+// ─── Form 5472 filler ─────────────────────────────────────────
 
 export async function fillForm5472(
   filing: Filing,
@@ -224,7 +242,7 @@ export async function fillForm5472(
   const txn = aggregateTransactions(transactions);
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  // ── Header — Tax Period ────────────────────────────────────────
+  // ── Header — Tax Period ────────────────────────────────────
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
   const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
   setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
@@ -232,17 +250,16 @@ export async function fillForm5472(
   setText(doc, F5472.TAX_YEAR_END,        end.label);
   setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
-  // ── Part I — Reporting Corporation ──────────────────────────
-  setText(doc, F5472.CORP_NAME, filing.llc_name ?? '');
-  setText(doc, F5472.CORP_ADDRESS, filing.mailing_address ?? '');
-  setText(doc, F5472.CORP_CITY_STATE_ZIP,
-    [filing.city, filing.state, filing.zip_code].filter(Boolean).join(', '));
-  setText(doc, F5472.CORP_EIN, fmtEin(filing.ein));
-  setText(doc, F5472.CORP_TOTAL_ASSETS, fmt(filing.total_assets));
-  setText(doc, F5472.CORP_ACTIVITY, filing.naics_description ?? '');
-  setText(doc, F5472.CORP_NAICS, filing.naics_code ?? '');
+  // ── Part I — Reporting Corporation ────────────────────────
+  setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
+  setText(doc, F5472.CORP_ADDRESS,        fmtAddress(filing.mailing_address));
+  setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
+  setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
+  setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
+  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '');
+  setText(doc, F5472.CORP_NAICS,          filing.naics_code ?? '');
   setText(doc, F5472.CORP_STATE_OF_FORMATION, filing.state_of_formation ?? '');
-  setText(doc, F5472.CORP_NUM_FORMS, '1');
+  setText(doc, F5472.CORP_NUM_FORMS,      '1');
   setText(doc, F5472.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
 
   // Header checkboxes
@@ -256,58 +273,51 @@ export async function fillForm5472(
   );
   setCheck(doc, F5472.FINAL_RETURN_YES, isFinal);
 
-  // ── Part III header radio pair ──────────────────────────────
+  // ── Part III header radio pair ─────────────────────────────
   // STATIC: This portal is exclusively for foreign-owned US LLCs.
-  // The related party is always a foreign person — never a US person.
   setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);   // ✓ always
   setCheck(doc, F5472.RELATED_PARTY_IS_US,      false);  // □ always
 
-  // ── Part II — 25% Foreign Shareholder ───────────────────────
-  setText(doc, F5472.SHAREHOLDER_NAME, filing.owner_full_name ?? '');
-  setText(doc, F5472.SHAREHOLDER_ADDRESS, filing.owner_address ?? '');
-  setText(doc, F5472.SHAREHOLDER_CITY_STATE_ZIP,
-    [filing.owner_city, filing.owner_country_citizenship].filter(Boolean).join(', '));
+  // ── Part II — 25% Foreign Shareholder ─────────────────────
+  setText(doc, F5472.SHAREHOLDER_NAME,               filing.owner_full_name          ?? '');
+  setText(doc, F5472.SHAREHOLDER_ADDRESS,            fmtAddress(filing.owner_address));
+  setText(doc, F5472.SHAREHOLDER_CITY_STATE_ZIP,     fmtCityStateZip(filing.owner_address));
   setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   setText(doc, F5472.SHAREHOLDER_COUNTRY_RESIDENCE,   filing.owner_country_residence   ?? '');
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,    filing.owner_resident_country    ?? '');
-  setText(doc, F5472.SHAREHOLDER_US_TIN,        filing.owner_us_tin        ?? '');
-  setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,  filing.owner_reference_id  ?? '');
-  setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,   filing.owner_foreign_tax_id ?? '');
+  setText(doc, F5472.SHAREHOLDER_US_TIN,              filing.owner_us_tin              ?? '');
+  setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id        ?? '');
+  setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id      ?? '');
 
-  // ── Part III — Related Party (Page 1 portion) ───────────────
-  // For a foreign-owned SMLLC the owner IS the related party.
-  setText(doc, F5472.RELATED_PARTY_NAME,        filing.owner_full_name         ?? '');
-  setText(doc, F5472.RELATED_PARTY_COUNTRY,     filing.owner_country_citizenship ?? '');
-  setText(doc, F5472.RELATED_PARTY_US_TIN,      filing.owner_us_tin             ?? '');
-  setText(doc, F5472.RELATED_PARTY_REFERENCE_ID, filing.owner_reference_id      ?? '');
-  setText(doc, F5472.RELATED_PARTY_FOREIGN_TIN,  filing.owner_foreign_tax_id    ?? '');
+  // ── Part III — Related Party (Page 1) ─────────────────────
+  setText(doc, F5472.RELATED_PARTY_NAME,         filing.owner_full_name          ?? '');
+  setText(doc, F5472.RELATED_PARTY_COUNTRY,      filing.owner_country_citizenship ?? '');
+  setText(doc, F5472.RELATED_PARTY_US_TIN,       filing.owner_us_tin              ?? '');
+  setText(doc, F5472.RELATED_PARTY_REFERENCE_ID, filing.owner_reference_id        ?? '');
+  setText(doc, F5472.RELATED_PARTY_FOREIGN_TIN,  filing.owner_foreign_tax_id      ?? '');
 
-  // ── Part III — Related Party (Page 2 continuation) ───────────
-  //
-  // RP2 foreign/US radio pair — always foreign for this portal
+  // ── Part III — Related Party (Page 2 continuation) ────────
   setCheck(doc, F5472.RP2_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP2_IS_US_PERSON,      false);
 
-  setText(doc, F5472.RP2_NAME,                filing.owner_full_name         ?? '');
-  setText(doc, F5472.RP2_US_TIN,              filing.owner_us_tin             ?? '');
-  setText(doc, F5472.RP2_REFERENCE_ID,        filing.owner_reference_id       ?? '');
-  setText(doc, F5472.RP2_FOREIGN_TIN,         filing.owner_foreign_tax_id     ?? '');
-  setText(doc, F5472.RP2_ACTIVITY,            filing.naics_description         ?? '');
-  setText(doc, F5472.RP2_COUNTRY_RESIDENCE,   filing.owner_country_residence   ?? '');
-  setText(doc, F5472.RP2_RESIDENT_COUNTRY,    filing.owner_resident_country    ?? '');
-  setText(doc, F5472.RP2_COUNTRY_OF_INCORPORATION, filing.owner_country_citizenship ?? '');
+  setText(doc, F5472.RP2_NAME,                     filing.owner_full_name           ?? '');
+  setText(doc, F5472.RP2_US_TIN,                   filing.owner_us_tin              ?? '');
+  setText(doc, F5472.RP2_REFERENCE_ID,             filing.owner_reference_id        ?? '');
+  setText(doc, F5472.RP2_FOREIGN_TIN,              filing.owner_foreign_tax_id      ?? '');
+  setText(doc, F5472.RP2_ACTIVITY,                 filing.naics_description          ?? '');
+  setText(doc, F5472.RP2_COUNTRY_RESIDENCE,        filing.owner_country_residence    ?? '');
+  setText(doc, F5472.RP2_RESIDENT_COUNTRY,         filing.owner_resident_country     ?? '');
+  setText(doc, F5472.RP2_COUNTRY_OF_INCORPORATION, filing.owner_country_citizenship  ?? '');
 
-  // Part III 8e relationship checkboxes — exactly one must be true.
-  // For a foreign-owned SMLLC: owner IS the 25% foreign shareholder.
-  // The other two options apply when the related party is a different entity.
-  const isDirectShareholder   = !filing.rp_is_related_only;          // default: true
-  const isRelatedOnly         = filing.rp_is_related_only  ?? false;
-  const isBoth                = filing.rp_is_both          ?? false;
-  setCheck(doc, F5472.RP2_IS_25PCT_SHAREHOLDER,    isDirectShareholder && !isBoth);
-  setCheck(doc, F5472.RP2_IS_RELATED_TO_SHAREHOLDER, isRelatedOnly && !isBoth);
-  setCheck(doc, F5472.RP2_IS_25PCT_AND_RELATED,     isBoth);
+  // Part III 8e — exactly one checkbox must be true
+  const isDirectShareholder = !(filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
+  const isRelatedOnly       = (filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
+  const isBoth              = filing.rp_is_both ?? false;
+  setCheck(doc, F5472.RP2_IS_25PCT_SHAREHOLDER,      isDirectShareholder);
+  setCheck(doc, F5472.RP2_IS_RELATED_TO_SHAREHOLDER, isRelatedOnly);
+  setCheck(doc, F5472.RP2_IS_25PCT_AND_RELATED,       isBoth);
 
-  // ── Part IV — Monetary Transactions ─────────────────────────
+  // ── Part IV — Monetary Transactions ───────────────────────
   setCheck(doc, F5472.PART_IV_APPLIES, txn.hasPartIV);
   if (txn.hasPartIV) {
     setText(doc, F5472.LINE_9_SALES_RECEIVED,         fmt(txn.sales_received));
@@ -345,19 +355,11 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_29_TOTAL_RECEIVED, fmt(totalReceived));
   }
 
-  // ── Part V — DE-Specific Transactions flag ──────────────────
-  // PART_V_APPLIES is a single checkbox (not a Yes/No pair).
-  // Check it when there are DE-specific Part V transactions.
-  setCheck(doc, F5472.PART_V_APPLIES, txn.hasPartV);
-  // Dollar amounts + descriptions go on the attached Part V statement.
-
-  // ── Part VI — flag ─────────────────────────────────────────
-  // Not applicable for foreign-owned SMLLC scope.
+  // ── Part V flag ────────────────────────────────────────────
+  setCheck(doc, F5472.PART_V_APPLIES,  txn.hasPartV);
   setCheck(doc, F5472.PART_VI_APPLIES, false);
 
-  // ── Part VII — Additional Information (Yes/No pairs) ─────────
-  // STATIC: All No. Portal is scoped to foreign-owned single-member
-  // LLCs — none of these cost-sharing / BEAT scenarios apply.
+  // ── Part VII — All No ──────────────────────────────────────
   setCheck(doc, F5472.LINE_37_YES,  false); setCheck(doc, F5472.LINE_37_NO,  true);
   setCheck(doc, F5472.LINE_38A_YES, false); setCheck(doc, F5472.LINE_38A_NO, true);
   setCheck(doc, F5472.LINE_38B_YES, false); setCheck(doc, F5472.LINE_38B_NO, true);
@@ -365,15 +367,12 @@ export async function fillForm5472(
   setCheck(doc, F5472.LINE_40_YES,  false); setCheck(doc, F5472.LINE_40_NO,  true);
   setCheck(doc, F5472.LINE_41_YES,  false); setCheck(doc, F5472.LINE_41_NO,  true);
 
-  // ── Part VIII — Additional Yes/No questions ─────────────────
-  // STATIC: All No. Foreign-owned single-member LLCs do not
-  // participate in these arrangements within this portal's scope.
+  // ── Part VIII — All No ─────────────────────────────────────
   setCheck(doc, F5472.LINE_45_YES,  false); setCheck(doc, F5472.LINE_45_NO,  true);
   setCheck(doc, F5472.LINE_46_YES,  false); setCheck(doc, F5472.LINE_46_NO,  true);
   setCheck(doc, F5472.LINE_48C_YES, false); setCheck(doc, F5472.LINE_48C_NO, true);
 
-  // ── Part IX — Additional Yes/No + text lines ────────────────
-  // STATIC: All No / blank. Not applicable for this portal's scope.
+  // ── Part IX — All No / blank ───────────────────────────────
   setCheck(doc, F5472.LINE_49A_YES, false); setCheck(doc, F5472.LINE_49A_NO, true);
   setCheck(doc, F5472.LINE_49B_YES, false); setCheck(doc, F5472.LINE_49B_NO, true);
   setText(doc,  F5472.LINE_50, '');
@@ -385,7 +384,7 @@ export async function fillForm5472(
   return doc.save();
 }
 
-// ─── Pro Forma Form 1120 filler ──────────────────────────────────────────────
+// ─── Pro Forma Form 1120 filler ───────────────────────────────
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(IRS_FORM_1120_URL);
@@ -411,9 +410,8 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   };
 
   set('topmostSubform[0].Page1[0].f1_1[0]', filing.llc_name ?? '');
-  set('topmostSubform[0].Page1[0].f1_2[0]', filing.mailing_address ?? '');
-  set('topmostSubform[0].Page1[0].f1_3[0]',
-    [filing.city, filing.state, filing.zip_code].filter(Boolean).join(', '));
+  set('topmostSubform[0].Page1[0].f1_2[0]', fmtAddress(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].f1_3[0]', fmtCityStateZip(filing.mailing_address));
   set('topmostSubform[0].Page1[0].f1_4[0]', fmtEin(filing.ein));
 
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
@@ -424,24 +422,20 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('topmostSubform[0].Page1[0].f1_7[0]', fmtDate(filing.date_of_incorporation));
   set('topmostSubform[0].Page1[0].f1_8[0]', fmt(filing.total_assets));
 
-  // Header checkboxes — initial, final, name change, address change
-  chk('topmostSubform[0].Page1[0].c1_1[0]', filing.initial_return  === true);
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
   );
+  chk('topmostSubform[0].Page1[0].c1_1[0]', filing.initial_return  === true);
   chk('topmostSubform[0].Page1[0].c1_2[0]', isFinal);
   chk('topmostSubform[0].Page1[0].c1_3[0]', filing.name_change    ?? false);
   chk('topmostSubform[0].Page1[0].c1_4[0]', filing.address_change ?? false);
-
-  // All income/deduction/tax lines intentionally left blank
-  // per IRS instructions for foreign-owned U.S. disregarded entities.
 
   form.flatten();
   return doc.save();
 }
 
-// ─── Part V Attachment Statement ──────────────────────────────────────────────
+// ─── Part V Attachment Statement ─────────────────────────────
 
 export function generatePartVStatement(
   filing: Filing,
@@ -460,18 +454,14 @@ export function generatePartVStatement(
   lines.push('disregarded entity and its foreign owner during the tax year:');
   lines.push('');
 
-  if (txn.capital_contribution > 0) {
+  if (txn.capital_contribution > 0)
     lines.push(`Capital contributions made by owner to LLC: $${fmt(txn.capital_contribution)}`);
-  }
-  if (txn.distribution > 0) {
+  if (txn.distribution > 0)
     lines.push(`Distributions made by LLC to owner: $${fmt(txn.distribution)}`);
-  }
-  if (txn.formation_costs > 0) {
+  if (txn.formation_costs > 0)
     lines.push(`Formation/organization costs paid on behalf of LLC: $${fmt(txn.formation_costs)}`);
-  }
-  if (txn.property_transfer > 0) {
+  if (txn.property_transfer > 0)
     lines.push(`Property transferred to/from LLC: $${fmt(txn.property_transfer)}`);
-  }
 
   lines.push('');
   lines.push('These transactions are reported pursuant to Reg. § 1.6038A-2(b)(7).');
@@ -479,7 +469,7 @@ export function generatePartVStatement(
   return lines.join('\n');
 }
 
-// ─── Package generator ──────────────────────────────────────────────────
+// ─── Package generator ───────────────────────────────────────
 
 export interface FilingPackage {
   form5472Bytes: Uint8Array;

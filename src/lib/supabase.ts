@@ -50,74 +50,52 @@ export type Filing = {
   current_step: number;
   service_type: ServiceType;
 
-  // ── Tax period ────────────────────────────────────────────────────────────
-  tax_year?: string | null;           // e.g. '2024' — used for year-level logic
-  /**
-   * tax_period_begin — ISO date (YYYY-MM-DD) for the start of the tax year.
-   * Collected from the user in the wizard.
-   * For a standard calendar-year LLC: '2024-01-01'.
-   * For a fiscal-year LLC the user enters their actual start date.
-   *
-   * Maps to the Form 5472 header fields:
-   *   f1_1[0] — month/day label  (e.g. 'January 1')
-   *   f1_2[0] — year             (e.g. '2024')
-   * and the equivalent fields on Pro Forma 1120.
-   *
-   * Fallback: if null, pdfGenerator infers '01/01/{tax_year}'.
-   */
-  tax_period_begin?: string | null;   // ISO date: YYYY-MM-DD
-  /**
-   * tax_period_end — ISO date (YYYY-MM-DD) for the end of the tax year.
-   * Collected from the user in the wizard.
-   * For a standard calendar-year LLC: '2024-12-31'.
-   *
-   * Maps to the Form 5472 header fields:
-   *   f1_3[0] — month/day label  (e.g. 'December 31')
-   *   f1_4[0] — year             (e.g. '2024')
-   * and the equivalent fields on Pro Forma 1120.
-   *
-   * Fallback: if null, pdfGenerator infers '12/31/{tax_year}'.
-   */
-  tax_period_end?: string | null;     // ISO date: YYYY-MM-DD
+  // ── Tax period ──────────────────────────────────────────────────────────
+  tax_year?: string | null;
+  tax_period_begin?: string | null;
+  tax_period_end?: string | null;
 
-  // ── Entity ───────────────────────────────────────────────────────────────
+  // ── Entity ──────────────────────────────────────────────────────────────
   llc_name?: string | null;
   ein?: string | null;
   state_of_formation?: string | null;
   mailing_address?: Address | null;
 
-  // ── Form 5472 / Pro Forma 1120 fields ────────────────────────────────────
-  total_assets?: number | null;             // Line 1c
-  naics_code?: string | null;              // Line 1f
-  naics_description?: string | null;       // Line 1e
-  date_of_incorporation?: string | null;   // Line 1m  (ISO date)
-  date_of_closure?: string | null;         // tax year end when closed (ISO date)
-  /**
-   * initial_return — maps to the "Initial return" checkbox on Form 5472
-   * (top of page 1) and the equivalent checkbox on the Pro Forma 1120.
-   *
-   * Automatically set to true by FilingWizard when:
-   *   incorp_year === tax_year - 1
-   * (i.e. the LLC was incorporated in the year immediately preceding the
-   * filing year, so this is its first full-year return).
-   *
-   * The value is persisted here so the PDF-generation layer can read it
-   * directly without re-deriving it from dates.
-   */
+  // ── Form 5472 / Pro Forma 1120 fields ───────────────────────────────────
+  total_assets?: number | null;
+  naics_code?: string | null;
+  naics_description?: string | null;
+  date_of_incorporation?: string | null;
+  date_of_closure?: string | null;
   initial_return?: boolean | null;
-  owner_primary_country?: string | null;   // Line 4c
-  owner_us_tin?: string | null;            // Lines 4b-1, 8b-1
-  owner_reference_id?: string | null;      // Lines 4b-2, 8b-2
-  owner_naics_code?: string | null;        // Line 8d
-  owner_naics_description?: string | null; // Line 8c
+  /** Pro Forma 1120 header checkboxes */
+  name_change?: boolean | null;
+  address_change?: boolean | null;
+  owner_primary_country?: string | null;
+  owner_us_tin?: string | null;
+  owner_reference_id?: string | null;
+  owner_naics_code?: string | null;
+  owner_naics_description?: string | null;
 
   // ── Foreign owner / related party ───────────────────────────────────────
   owner_full_name?: string | null;
   owner_country_residence?: string | null;
   owner_country_citizenship?: string | null;
+  owner_resident_country?: string | null;
   owner_passport_number?: string | null;
   owner_foreign_tax_id?: string | null;
   owner_address?: Address | null;
+
+  /**
+   * Part III 8e — which relationship checkbox to tick.
+   * true  = related party is ONLY related to the 25% shareholder (not the shareholder itself)
+   * false / undefined = related party IS the 25% shareholder (default for SMLLC)
+   */
+  rp_is_related_only?: boolean | null;
+  /**
+   * true = tick the third box: "both 25% shareholder AND related to another 25% shareholder"
+   */
+  rp_is_both?: boolean | null;
 
   // ── Filing options ───────────────────────────────────────────────────────
   include_irs_fax: boolean;
@@ -126,12 +104,12 @@ export type Filing = {
   parties_count: number;
   complex_sections: string[];
 
-  // ── Payment ──────────────────────────────────────────────────────────────
+  // ── Payment ─────────────────────────────────────────────────────────────
   paid_at?: string | null;
   payment_id?: string | null;
   payment_amount_cents?: number | null;
 
-  // ── Output ───────────────────────────────────────────────────────────────
+  // ── Output ──────────────────────────────────────────────────────────────
   forms_generated_at?: string | null;
   download_count: number;
 };
@@ -153,6 +131,36 @@ export type FilingTransaction = {
   direction: 'to_llc' | 'from_llc';
   amount: number;
   currency: string;
+  transaction_date?: string | null;
+  description?: string | null;
+};
+
+/**
+ * Transaction — canonical type used by pdfGenerator and DownloadPackageButton.
+ * Maps to the reportable_transactions table in Supabase.
+ */
+export type Transaction = {
+  id: string;
+  filing_id: string;
+  created_at?: string | null;
+  transaction_type:
+    | 'sales'
+    | 'service_payment'
+    | 'rent_royalty'
+    | 'loan_to_llc'
+    | 'loan_from_llc'
+    | 'interest'
+    | 'insurance'
+    | 'dividend'
+    | 'commission'
+    | 'intangible'
+    | 'other'
+    | 'capital_contribution'
+    | 'distribution'
+    | 'formation_costs'
+    | 'property_transfer';
+  direction: 'paid' | 'received';
+  amount_usd?: number | null;
   transaction_date?: string | null;
   description?: string | null;
 };
