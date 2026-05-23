@@ -69,7 +69,7 @@ export function Dashboard() {
     description: 'Your filings dashboard.',
   });
 
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
 
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
@@ -81,9 +81,16 @@ export function Dashboard() {
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
+    // Wait for auth to resolve before deciding what to do
+    if (authLoading) return;
+
+    if (!effectiveUserId) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     async function load() {
-      if (!effectiveUserId) return;
       setLoading(true);
 
       const filingsRes = await supabase
@@ -120,7 +127,7 @@ export function Dashboard() {
     }
     load();
     return () => { cancelled = true; };
-  }, [effectiveUserId]);
+  }, [effectiveUserId, authLoading]);
 
   async function startFromEligibility() {
     if (!effectiveUserId || !pendingIntake || busy) return;
