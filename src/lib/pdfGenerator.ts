@@ -2,34 +2,37 @@
  * PDF Generation Layer — Form 5472 + Pro Forma 1120
  *
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
- * Field names are sourced from form5472Fields.ts, extracted
- * directly from the live IRS PDF AcroForm widget layer.
+ * PDFs are served from /pdf/ (public/pdf/) to avoid CORS.
  *
  * Flow:
- *   1. Fetch the IRS PDF bytes (cached in memory after first load)
- *   2. Load into pdf-lib and get the AcroForm
- *   3. Fill text + checkbox fields using the F5472 field map
- *   4. Flatten and return Uint8Array
- *   5. Caller bundles into a ZIP with jszip
+ *   1. Fetch local PDF bytes (cached after first load)
+ *   2. Load into pdf-lib and fill AcroForm fields
+ *   3. Flatten and return Uint8Array
+ *   4. Caller bundles into a ZIP with jszip
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
-// ─── IRS PDF URLs ────────────────────────────────────────────
-const IRS_FORM_5472_URL = 'https://www.irs.gov/pub/irs-pdf/f5472.pdf';
-const IRS_FORM_1120_URL = 'https://www.irs.gov/pub/irs-pdf/f1120.pdf';
+// ─── Local PDF paths (served from public/pdf/) ───────────────
+// DO NOT use irs.gov URLs — CORS blocks browser fetches.
+// Run: scripts/download-irs-pdfs.sh  (or manually place files)
+const FORM_5472_PATH = '/pdf/f5472.pdf';
+const FORM_1120_PATH = '/pdf/f1120.pdf';
 
 // Simple in-memory cache so we don't re-fetch on every generation
 const pdfCache: Record<string, ArrayBuffer> = {};
 
-async function fetchPdfBytes(url: string): Promise<ArrayBuffer> {
-  if (pdfCache[url]) return pdfCache[url];
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch PDF from ${url}: ${res.status}`);
+async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
+  if (pdfCache[path]) return pdfCache[path];
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(
+    `Could not load PDF template at ${path} (${res.status}). ` +
+    `Run: curl -o public/pdf/f5472.pdf https://www.irs.gov/pub/irs-pdf/f5472.pdf`
+  );
   const bytes = await res.arrayBuffer();
-  pdfCache[url] = bytes;
+  pdfCache[path] = bytes;
   return bytes;
 }
 
@@ -79,18 +82,11 @@ function fmtDate(val: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-/**
- * Flatten an Address object into a single string for PDF text fields.
- * Returns empty string if address is null/undefined.
- */
 function fmtAddress(addr: Address | null | undefined): string {
   if (!addr) return '';
   return [addr.line1, addr.line2].filter(Boolean).join(', ');
 }
 
-/**
- * Flatten an Address object into city/region/postal/country string.
- */
 function fmtCityStateZip(addr: Address | null | undefined): string {
   if (!addr) return '';
   return [addr.city, addr.region, addr.postal_code, addr.country].filter(Boolean).join(', ');
@@ -120,7 +116,7 @@ function splitPeriodDate(
   };
 }
 
-// ─── Part V categories (used both here and by callers) ────────
+// ─── Part V categories ────────────────────────────────────────
 
 export const PART_V_CATEGORIES = [
   'capital_contribution',
@@ -154,7 +150,6 @@ interface TxnTotals {
   other_paid: number;
   other_received: number;
   other_desc: string;
-  // Part V (DE-specific)
   capital_contribution: number;
   distribution: number;
   formation_costs: number;
@@ -217,7 +212,6 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         if (tx.description && !t.other_desc) t.other_desc = tx.description;
         t.hasPartIV = true; break;
-      // Part V — DE-specific
       case 'capital_contribution':
         t.capital_contribution += amt; t.hasPartV = true; break;
       case 'distribution':
@@ -237,12 +231,11 @@ export async function fillForm5472(
   filing: Filing,
   transactions: Transaction[]
 ): Promise<Uint8Array> {
-  const bytes = await fetchPdfBytes(IRS_FORM_5472_URL);
+  const bytes = await fetchPdfBytes(FORM_5472_PATH);
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const txn = aggregateTransactions(transactions);
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  // ── Header — Tax Period ────────────────────────────────────
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
   const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
   setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
@@ -250,7 +243,6 @@ export async function fillForm5472(
   setText(doc, F5472.TAX_YEAR_END,        end.label);
   setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
-  // ── Part I — Reporting Corporation ────────────────────────
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
   setText(doc, F5472.CORP_ADDRESS,        fmtAddress(filing.mailing_address));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
@@ -262,7 +254,6 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_NUM_FORMS,      '1');
   setText(doc, F5472.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
 
-  // Header checkboxes
   setCheck(doc, F5472.INITIAL_RETURN_YES, filing.initial_return === true);
   if (filing.initial_return) {
     setText(doc, F5472.INITIAL_RETURN_YEAR, taxYear);
@@ -273,12 +264,9 @@ export async function fillForm5472(
   );
   setCheck(doc, F5472.FINAL_RETURN_YES, isFinal);
 
-  // ── Part III header radio pair ─────────────────────────────
-  // STATIC: This portal is exclusively for foreign-owned US LLCs.
-  setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);   // ✓ always
-  setCheck(doc, F5472.RELATED_PARTY_IS_US,      false);  // □ always
+  setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);
+  setCheck(doc, F5472.RELATED_PARTY_IS_US,      false);
 
-  // ── Part II — 25% Foreign Shareholder ─────────────────────
   setText(doc, F5472.SHAREHOLDER_NAME,               filing.owner_full_name          ?? '');
   setText(doc, F5472.SHAREHOLDER_ADDRESS,            fmtAddress(filing.owner_address));
   setText(doc, F5472.SHAREHOLDER_CITY_STATE_ZIP,     fmtCityStateZip(filing.owner_address));
@@ -289,14 +277,12 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id        ?? '');
   setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id      ?? '');
 
-  // ── Part III — Related Party (Page 1) ─────────────────────
   setText(doc, F5472.RELATED_PARTY_NAME,         filing.owner_full_name          ?? '');
   setText(doc, F5472.RELATED_PARTY_COUNTRY,      filing.owner_country_citizenship ?? '');
   setText(doc, F5472.RELATED_PARTY_US_TIN,       filing.owner_us_tin              ?? '');
   setText(doc, F5472.RELATED_PARTY_REFERENCE_ID, filing.owner_reference_id        ?? '');
   setText(doc, F5472.RELATED_PARTY_FOREIGN_TIN,  filing.owner_foreign_tax_id      ?? '');
 
-  // ── Part III — Related Party (Page 2 continuation) ────────
   setCheck(doc, F5472.RP2_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP2_IS_US_PERSON,      false);
 
@@ -309,7 +295,6 @@ export async function fillForm5472(
   setText(doc, F5472.RP2_RESIDENT_COUNTRY,         filing.owner_resident_country     ?? '');
   setText(doc, F5472.RP2_COUNTRY_OF_INCORPORATION, filing.owner_country_citizenship  ?? '');
 
-  // Part III 8e — exactly one checkbox must be true
   const isDirectShareholder = !(filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
   const isRelatedOnly       = (filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
   const isBoth              = filing.rp_is_both ?? false;
@@ -317,7 +302,6 @@ export async function fillForm5472(
   setCheck(doc, F5472.RP2_IS_RELATED_TO_SHAREHOLDER, isRelatedOnly);
   setCheck(doc, F5472.RP2_IS_25PCT_AND_RELATED,       isBoth);
 
-  // ── Part IV — Monetary Transactions ───────────────────────
   setCheck(doc, F5472.PART_IV_APPLIES, txn.hasPartIV);
   if (txn.hasPartIV) {
     setText(doc, F5472.LINE_9_SALES_RECEIVED,         fmt(txn.sales_received));
@@ -355,11 +339,9 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_29_TOTAL_RECEIVED, fmt(totalReceived));
   }
 
-  // ── Part V flag ────────────────────────────────────────────
   setCheck(doc, F5472.PART_V_APPLIES,  txn.hasPartV);
   setCheck(doc, F5472.PART_VI_APPLIES, false);
 
-  // ── Part VII — All No ──────────────────────────────────────
   setCheck(doc, F5472.LINE_37_YES,  false); setCheck(doc, F5472.LINE_37_NO,  true);
   setCheck(doc, F5472.LINE_38A_YES, false); setCheck(doc, F5472.LINE_38A_NO, true);
   setCheck(doc, F5472.LINE_38B_YES, false); setCheck(doc, F5472.LINE_38B_NO, true);
@@ -367,12 +349,10 @@ export async function fillForm5472(
   setCheck(doc, F5472.LINE_40_YES,  false); setCheck(doc, F5472.LINE_40_NO,  true);
   setCheck(doc, F5472.LINE_41_YES,  false); setCheck(doc, F5472.LINE_41_NO,  true);
 
-  // ── Part VIII — All No ─────────────────────────────────────
   setCheck(doc, F5472.LINE_45_YES,  false); setCheck(doc, F5472.LINE_45_NO,  true);
   setCheck(doc, F5472.LINE_46_YES,  false); setCheck(doc, F5472.LINE_46_NO,  true);
   setCheck(doc, F5472.LINE_48C_YES, false); setCheck(doc, F5472.LINE_48C_NO, true);
 
-  // ── Part IX — All No / blank ───────────────────────────────
   setCheck(doc, F5472.LINE_49A_YES, false); setCheck(doc, F5472.LINE_49A_NO, true);
   setCheck(doc, F5472.LINE_49B_YES, false); setCheck(doc, F5472.LINE_49B_NO, true);
   setText(doc,  F5472.LINE_50, '');
@@ -387,7 +367,7 @@ export async function fillForm5472(
 // ─── Pro Forma Form 1120 filler ───────────────────────────────
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
-  const bytes = await fetchPdfBytes(IRS_FORM_1120_URL);
+  const bytes = await fetchPdfBytes(FORM_1120_PATH);
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const form = doc.getForm();
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
