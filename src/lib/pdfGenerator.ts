@@ -42,7 +42,6 @@ function setText(doc: PDFDocument, fieldName: string, value: string | null | und
       field.setText(value ?? '');
     }
   } catch {
-    // Field not found — skip silently (form version mismatch)
     console.warn(`[pdfGenerator] TextField not found: ${fieldName}`);
   }
 }
@@ -80,22 +79,9 @@ function fmtDate(val: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-/**
- * Split an ISO date (YYYY-MM-DD) into the two values the Form 5472
- * header needs:
- *   label  — month + day in long form, e.g. 'January 1' or 'March 15'
- *   year   — four-digit year string, e.g. '2024'
- *
- * Fallback behaviour when no date is stored:
- *   - tax_period_begin falls back to January 1 of tax_year
- *   - tax_period_end   falls back to December 31 of tax_year
- *
- * This keeps existing calendar-year filings working automatically
- * while allowing fiscal-year LLCs to supply their exact dates.
- */
 function splitPeriodDate(
   isoDate: string | null | undefined,
-  fallbackMonth: number,  // 1-based
+  fallbackMonth: number,
   fallbackDay: number,
   fallbackYear: string
 ): { label: string; year: string } {
@@ -103,26 +89,29 @@ function splitPeriodDate(
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
-
   if (isoDate) {
-    // Parse as local date to avoid UTC midnight offset shifting the day
     const [yearStr, monthStr, dayStr] = isoDate.split('-');
-    const month = parseInt(monthStr, 10);  // 1-based
+    const month = parseInt(monthStr, 10);
     const day   = parseInt(dayStr, 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      return {
-        label: `${MONTH_NAMES[month - 1]} ${day}`,
-        year:  yearStr,
-      };
+      return { label: `${MONTH_NAMES[month - 1]} ${day}`, year: yearStr };
     }
   }
-
-  // Fallback: infer from tax_year
   return {
     label: `${MONTH_NAMES[fallbackMonth - 1]} ${fallbackDay}`,
     year:  fallbackYear,
   };
 }
+
+// ─── Part V categories (used both here and by callers) ────────
+
+export const PART_V_CATEGORIES = [
+  'capital_contribution',
+  'distribution',
+  'formation_costs',
+  'property_transfer',
+  'nonmonetary_other',
+] as const;
 
 // ─── Transaction aggregator ───────────────────────────────────
 
@@ -176,7 +165,7 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
 
   for (const tx of txns) {
     const amt = tx.amount_usd ?? 0;
-    const dir = tx.direction; // 'received' | 'paid'
+    const dir = tx.direction;
 
     switch (tx.transaction_type) {
       case 'sales':
@@ -237,19 +226,8 @@ export async function fillForm5472(
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
   // ── Header — Tax Period ────────────────────────────────────
-  // Form 5472 has four header fields:
-  //   f1_1: begin month+day label  (e.g. 'January 1' or 'April 1')
-  //   f1_2: begin year             (e.g. '2024')
-  //   f1_3: end month+day label    (e.g. 'December 31' or 'March 31')
-  //   f1_4: end year               (e.g. '2024' or '2025')
-  //
-  // Values come from filing.tax_period_begin and filing.tax_period_end
-  // (ISO dates collected from the user). Falls back to Jan 1 / Dec 31
-  // of tax_year if those fields are not yet populated, so existing
-  // calendar-year filings continue to work without re-entry.
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
   const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
-
   setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
   setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year);
   setText(doc, F5472.TAX_YEAR_END,        end.label);
@@ -268,20 +246,22 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_NUM_FORMS, '1');
   setText(doc, F5472.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
 
-  // Initial / Final return checkboxes
+  // Header checkboxes
   setCheck(doc, F5472.INITIAL_RETURN_YES, filing.initial_return === true);
   if (filing.initial_return) {
     setText(doc, F5472.INITIAL_RETURN_YEAR, taxYear);
   }
-  // Final return: auto-derive when date_of_closure falls in tax year
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
   );
   setCheck(doc, F5472.FINAL_RETURN_YES, isFinal);
 
-  // Related party is foreign person (always true for our use case)
-  setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);
+  // ── Part III header ────────────────────────────────────────
+  // STATIC: This portal is exclusively for foreign-owned US LLCs.
+  // The related party is always a foreign person — never a US person.
+  setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);   // ✓ always
+  setCheck(doc, F5472.RELATED_PARTY_IS_US,      false);  // □ always
 
   // ── Part II — 25% Foreign Shareholder (direct, slot 4) ────
   setText(doc, F5472.SHAREHOLDER_NAME, filing.owner_full_name ?? '');
@@ -295,8 +275,6 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN, filing.owner_foreign_tax_id ?? '');
 
   // ── Part II — Ultimate indirect shareholder (slot 6) ──────
-  // For a single-member DE the direct owner IS the ultimate indirect
-  // owner — fill slot 6 with the same data as slot 4.
   setText(doc, F5472.ULTIMATE_SHAREHOLDER_NAME, filing.owner_full_name ?? '');
   setText(doc, F5472.ULTIMATE_SHAREHOLDER_US_TIN, filing.owner_us_tin ?? '');
   setText(doc, F5472.ULTIMATE_SHAREHOLDER_REFERENCE_ID, filing.owner_reference_id ?? '');
@@ -305,7 +283,7 @@ export async function fillForm5472(
   setText(doc, F5472.ULTIMATE_SHAREHOLDER_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   setText(doc, F5472.ULTIMATE_SHAREHOLDER_RESIDENCE, filing.owner_country_residence ?? '');
 
-  // ── Part III — Related Party (mirrors Part II for single-member DE)
+  // ── Part III — Related Party ───────────────────────────────
   setText(doc, F5472.RELATED_PARTY_NAME, filing.owner_full_name ?? '');
   setText(doc, F5472.RELATED_PARTY_COUNTRY, filing.owner_primary_country ?? filing.owner_country_citizenship ?? '');
   setText(doc, F5472.RELATED_PARTY_US_TIN, filing.owner_us_tin ?? '');
@@ -318,8 +296,17 @@ export async function fillForm5472(
   setText(doc, F5472.RP2_REFERENCE_ID, filing.owner_reference_id ?? '');
   setText(doc, F5472.RP2_FOREIGN_TIN, filing.owner_foreign_tax_id ?? '');
   setText(doc, F5472.RP2_COUNTRY_RESIDENCE, filing.owner_country_residence ?? '');
-  // Relationship: 25% foreign shareholder
-  setCheck(doc, F5472.RP2_IS_25PCT_SHAREHOLDER, true);
+
+  // Part III 8e relationship checkboxes
+  // STATIC: '25% foreign shareholder' is always true for this portal.
+  // The other two are user-driven (stored in filing).
+  setCheck(doc, F5472.RP2_IS_25PCT_SHAREHOLDER,         true);                              // ✓ static
+  setCheck(doc, F5472.RP2_RELATED_TO_CORP,              filing.rp_related_to_corp   ?? false); // user
+  setCheck(doc, F5472.RP2_RELATED_TO_SHAREHOLDER,       filing.rp_related_to_shareholder ?? false); // user
+
+  // Part III 8f / 8g
+  setText(doc, F5472.RP2_COUNTRY_BUSINESS,    filing.related_party_country_business      ?? '');
+  setText(doc, F5472.RP2_COUNTRY_TAX_RESIDENT, filing.related_party_country_tax_resident ?? '');
 
   // ── Part IV — Monetary Transactions ───────────────────────
   setCheck(doc, F5472.PART_IV_APPLIES, txn.hasPartIV);
@@ -345,7 +332,6 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_26_OTHER_PAID,             fmt(txn.other_paid));
     setText(doc, F5472.LINE_27A_OTHER_RECEIVED,        fmt(txn.other_received));
     setText(doc, F5472.LINE_27B_OTHER_DESC,            txn.other_desc);
-    // Totals
     const totalPaid = txn.purchases_paid + txn.services_received + txn.rents_paid +
       txn.borrowed + txn.interest_paid + txn.insurance_paid + txn.dividends_paid +
       txn.commission_paid + txn.intangible_paid + txn.other_paid;
@@ -357,14 +343,41 @@ export async function fillForm5472(
   }
 
   // ── Part V — DE-Specific Transactions ─────────────────────
-  setCheck(doc, F5472.PART_V_APPLIES, txn.hasPartV);
-  // Part V dollar amounts go on a separate attachment statement —
-  // the PDF form only has the checkbox; dollar values are in the
-  // attached statement generated by generatePartVStatement().
+  // DYNAMIC: Yes if any Part V transactions exist, No otherwise.
+  setCheck(doc, F5472.PART_V_YES, txn.hasPartV);
+  setCheck(doc, F5472.PART_V_NO,  !txn.hasPartV);
+  // Dollar amounts go on the attached Part V statement.
 
-  // Flatten form fields so the PDF is print-ready and non-editable
+  // ── Part VII — Additional Information ─────────────────────
+  // STATIC: All No. Portal is scoped to foreign-owned single-member
+  // LLCs — none of these scenarios apply by definition.
+  setCheck(doc, F5472.LINE_37_YES,   false); setCheck(doc, F5472.LINE_37_NO,   true);
+  setCheck(doc, F5472.LINE_38A_YES,  false); setCheck(doc, F5472.LINE_38A_NO,  true);
+  setCheck(doc, F5472.LINE_38C_YES,  false); setCheck(doc, F5472.LINE_38C_NO,  true);
+  setCheck(doc, F5472.LINE_39_YES,   false); setCheck(doc, F5472.LINE_39_NO,   true);
+  setCheck(doc, F5472.LINE_40A_YES,  false); setCheck(doc, F5472.LINE_40A_NO,  true);
+  setCheck(doc, F5472.LINE_41A_YES,  false); setCheck(doc, F5472.LINE_41A_NO,  true);
+  setCheck(doc, F5472.LINE_42A_YES,  false); setCheck(doc, F5472.LINE_42A_NO,  true);
+  setCheck(doc, F5472.LINE_42B_YES,  false); setCheck(doc, F5472.LINE_42B_NO,  true);
+  setCheck(doc, F5472.LINE_43A_YES,  false); setCheck(doc, F5472.LINE_43A_NO,  true);
+
+  // ── Part VIII — Cost Sharing Arrangement ──────────────────
+  // STATIC: All No. Foreign-owned single-member LLCs do not
+  // participate in CSAs by definition for this portal's scope.
+  setCheck(doc, F5472.LINE_45_YES,   false); setCheck(doc, F5472.LINE_45_NO,   true);
+  setCheck(doc, F5472.LINE_46_YES,   false); setCheck(doc, F5472.LINE_46_NO,   true);
+  setCheck(doc, F5472.LINE_48C_YES,  false); setCheck(doc, F5472.LINE_48C_NO,  true);
+
+  // ── Part IX — Base Erosion Payments ───────────────────────
+  // STATIC: All blank. Not applicable for this portal's scope.
+  // Lines 50–52 are dollar amounts; leave as empty string (no entry).
+  // Line 53 is reserved for future use by IRS — always blank.
+  setText(doc, F5472.LINE_50, '');
+  setText(doc, F5472.LINE_51, '');
+  setText(doc, F5472.LINE_52, '');
+  setText(doc, F5472.LINE_53, '');
+
   doc.getForm().flatten();
-
   return doc.save();
 }
 
@@ -376,7 +389,6 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const form = doc.getForm();
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  // Helper scoped to this doc
   const set = (name: string, val: string) => {
     try {
       const f = form.getField(name);
@@ -394,35 +406,29 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
     }
   };
 
-  // The Pro Forma 1120 uses the standard Form 1120 PDF with only
-  // identifying information filled in — all income/deduction lines
-  // are left blank per IRS instructions for foreign-owned DEs.
-  //
-  // Form 1120 field names (Rev. 2024):
   set('topmostSubform[0].Page1[0].f1_1[0]', filing.llc_name ?? '');
   set('topmostSubform[0].Page1[0].f1_2[0]', filing.mailing_address ?? '');
   set('topmostSubform[0].Page1[0].f1_3[0]',
     [filing.city, filing.state, filing.zip_code].filter(Boolean).join(', '));
   set('topmostSubform[0].Page1[0].f1_4[0]', fmtEin(filing.ein));
 
-  // Tax period — use dynamic dates matching Form 5472 header logic
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
   const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
   set('topmostSubform[0].Page1[0].f1_5[0]', begin.year);
   set('topmostSubform[0].Page1[0].f1_6[0]', end.year);
 
-  // Date incorporated (Item E)
   set('topmostSubform[0].Page1[0].f1_7[0]', fmtDate(filing.date_of_incorporation));
-  // Total assets (Item D)
   set('topmostSubform[0].Page1[0].f1_8[0]', fmt(filing.total_assets));
 
-  // Initial / Final return checkboxes on 1120
+  // Header checkboxes — initial, final, name change, address change
   chk('topmostSubform[0].Page1[0].c1_1[0]', filing.initial_return === true);
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
   );
   chk('topmostSubform[0].Page1[0].c1_2[0]', isFinal);
+  chk('topmostSubform[0].Page1[0].c1_3[0]', filing.name_change    ?? false);
+  chk('topmostSubform[0].Page1[0].c1_4[0]', filing.address_change ?? false);
 
   // All income/deduction/tax lines intentionally left blank
   // per IRS instructions for foreign-owned U.S. disregarded entities.
