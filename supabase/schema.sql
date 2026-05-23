@@ -38,7 +38,12 @@ create table if not exists public.filings (
   form_type   text not null default 'Form 5472 + Pro Forma 1120',
   status      text not null default 'pending' check (status in ('pending','in_progress','completed')),
   notes       text,
-  file_path   text
+  file_path   text,
+  -- Auto-derived checkbox: true when the LLC was incorporated in tax_year - 1.
+  -- Maps to the "Initial return" checkbox on Form 5472 (top of page 1)
+  -- and the equivalent checkbox on the Pro Forma 1120 cover sheet.
+  -- Never manually set by users — always written by the wizard rules engine.
+  initial_return boolean not null default false
 );
 
 alter table public.filings enable row level security;
@@ -70,3 +75,23 @@ create policy "Users read own filings" on storage.objects
     bucket_id = 'filings' and
     auth.uid()::text = (storage.foldername(name))[1]
   );
+
+
+-- =============================================================================
+-- MIGRATION: add initial_return to existing filings table
+-- Run this block ONLY if your filings table already exists in production.
+-- Safe to run multiple times (checks column existence before adding).
+-- =============================================================================
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name   = 'filings'
+      and column_name  = 'initial_return'
+  ) then
+    alter table public.filings
+      add column initial_return boolean not null default false;
+  end if;
+end;
+$$;

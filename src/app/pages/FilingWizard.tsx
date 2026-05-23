@@ -25,7 +25,20 @@ const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
   { value: 'other',                label: 'Other' },
 ];
 
-const TAX_YEARS = ['2024', '2023', '2022', '2021', '2020'];
+/**
+ * TAX_YEARS — dynamically built so it never needs a manual update.
+ *
+ * The IRS filing deadline for a given tax year falls in the following
+ * calendar year (e.g. 2025 returns are due April 2026). We therefore
+ * surface (current_calendar_year − 1) as the default “current” tax year
+ * and offer 5 years of history.
+ *
+ * Examples (auto-updates every January 1):
+ *   Year 2026 → ['2025', '2024', '2023', '2022', '2021']  default: '2025'
+ *   Year 2027 → ['2026', '2025', '2024', '2023', '2022']  default: '2026'
+ */
+const CURRENT_TAX_YEAR = String(new Date().getFullYear() - 1);
+const TAX_YEARS = Array.from({ length: 5 }, (_, i) => String(Number(CURRENT_TAX_YEAR) - i));
 
 const MONTHS = [
   { value: '01', label: 'January' },
@@ -314,7 +327,7 @@ export function FilingWizard() {
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
   const [stateOfFormation, setStateOfFormation] = useState('');
-  const [taxYear, setTaxYear] = useState('2024');
+  const [taxYear, setTaxYear] = useState(CURRENT_TAX_YEAR);
   const [mailingAddress, setMailingAddress] = useState<Address>({});
   const [totalAssets, setTotalAssets] = useState('');
   const [naicsCode, setNaicsCode] = useState('');
@@ -331,6 +344,8 @@ export function FilingWizard() {
   // ── Derived: Initial Return flag ────────────────────────────
   // Automatically true when the LLC was incorporated in the year immediately
   // preceding the selected tax year (e.g. incorp 2025 + tax year 2026 → initial return).
+  // This is purely derived — never manually set — and updates live as the user
+  // changes either the Tax Year or the Year of Incorporation dropdown.
   const isInitialReturn = useMemo(
     () => Boolean(incorpYear && taxYear && incorpYear === String(Number(taxYear) - 1)),
     [incorpYear, taxYear],
@@ -375,7 +390,7 @@ export function FilingWizard() {
       setLlcName(fi.llc_name ?? '');
       setEin(fi.ein ?? '');
       setStateOfFormation(fi.state_of_formation ?? '');
-      setTaxYear(fi.tax_year ?? '2024');
+      setTaxYear(fi.tax_year ?? CURRENT_TAX_YEAR);
       setMailingAddress(fi.mailing_address ?? {});
       setTotalAssets(fi.total_assets != null ? String(fi.total_assets) : '');
       setNaicsCode(fi.naics_code ?? '');
