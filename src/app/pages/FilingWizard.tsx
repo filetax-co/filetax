@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { supabase, Filing, FilingTransaction, FilingTransactionCategory, Address } from '../../lib/supabase';
-import { useAuth } from '../../lib/useAuth';
+import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
 const US_STATES = [
@@ -30,7 +30,7 @@ const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
  *
  * The IRS filing deadline for a given tax year falls in the following
  * calendar year (e.g. 2025 returns are due April 2026). We therefore
- * surface (current_calendar_year − 1) as the default “current” tax year
+ * surface (current_calendar_year − 1) as the default "current" tax year
  * and offer 5 years of history.
  *
  * Examples (auto-updates every January 1):
@@ -342,10 +342,6 @@ export function FilingWizard() {
   const [dateOfClosure, setDateOfClosure] = useState('');
 
   // ── Derived: Initial Return flag ────────────────────────────
-  // Automatically true when the LLC was incorporated in the year immediately
-  // preceding the selected tax year (e.g. incorp 2025 + tax year 2026 → initial return).
-  // This is purely derived — never manually set — and updates live as the user
-  // changes either the Tax Year or the Year of Incorporation dropdown.
   const isInitialReturn = useMemo(
     () => Boolean(incorpYear && taxYear && incorpYear === String(Number(taxYear) - 1)),
     [incorpYear, taxYear],
@@ -446,8 +442,6 @@ export function FilingWizard() {
       naics_description: naicsDescription.trim() || null,
       date_of_incorporation: buildIso(incorpMonth, incorpDay, incorpYear),
       date_of_closure: dateOfClosure || null,
-      // Auto-derived: check "Initial Return" box on Form 5472 / Pro Forma 1120
-      // when the LLC was incorporated in the year immediately before the tax year.
       initial_return: isInitialReturn,
     }, 2);
   };
@@ -569,7 +563,6 @@ export function FilingWizard() {
               </Field>
             </Row>
 
-            {/* Date of incorporation — separate Month / Day / Year dropdowns */}
             <DateParts
               label="Date of incorporation"
               hint="(optional)"
@@ -577,7 +570,6 @@ export function FilingWizard() {
               onMonth={setIncorpMonth} onDay={setIncorpDay} onYear={setIncorpYear}
             />
 
-            {/* Initial Return pill — shown automatically when incorp year = tax year − 1 */}
             {isInitialReturn && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
@@ -774,7 +766,6 @@ export function FilingWizard() {
               {filing.date_of_closure && (
                 <p><strong>Date of dissolution:</strong> {formatDate(filing.date_of_closure)}</p>
               )}
-              {/* Show Initial Return badge in review if flag is set */}
               {filing.initial_return && (
                 <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <strong>Initial Return:</strong>
