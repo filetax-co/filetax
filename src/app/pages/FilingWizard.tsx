@@ -35,13 +35,16 @@ const STEPS = [
 ];
 
 // ── date formatter ────────────────────────────────────────────────────────────
-// Accepts ISO date strings like "2023-05-15" and returns "May 15, 2023".
+// Accepts ISO date strings like "2023-05-15" and returns "05/15/2023".
 // Appends "T12:00:00" to avoid UTC-to-local midnight rollback issues.
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(`${iso}T12:00:00`);
   if (isNaN(d.getTime())) return iso; // fallback: return raw if unparseable
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 // ── shared field primitives ──────────────────────────────────────────────────
