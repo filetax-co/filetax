@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
+import JSZip from 'jszip';
 import { supabase, Filing, FilingTransaction, FilingTransactionCategory, Address } from '../../lib/supabase';
+import { generateFilingPackage } from '../../lib/pdfGenerator';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
@@ -350,6 +352,10 @@ export function FilingWizard() {
   const [txDesc, setTxDesc] = useState('');
   const [addingTx, setAddingTx] = useState(false);
 
+  // ── Step 4: download state ───────────────────────────────────
+  const [generating, setGenerating] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
   // Redirect if not logged in once auth resolves
   useEffect(() => {
     if (!authLoading && !user) navigate('/portal?mode=login');
@@ -357,8 +363,8 @@ export function FilingWizard() {
 
   // Load filing — wait until auth is resolved and user is available
   useEffect(() => {
-    if (authLoading) return;          // ← wait for auth to finish
-    if (!id || !user) return;         // ← bail if no id or still no user
+    if (authLoading) return;
+    if (!id || !user) return;
 
     let cancelled = false;
 
@@ -401,7 +407,7 @@ export function FilingWizard() {
     });
 
     return () => { cancelled = true; };
-  }, [id, user, authLoading]); // ← authLoading added to deps
+  }, [id, user, authLoading]);
 
   const currentStep = filing?.current_step ?? 1;
 
@@ -473,6 +479,56 @@ export function FilingWizard() {
   const handleDeleteTransaction = async (txId: string) => {
     await supabase.from('filing_transactions').delete().eq('id', txId);
     setTransactions(prev => prev.filter(t => t.id !== txId));
+  };
+
+  // ── Download ZIP ─────────────────────────────────────────────
+  const handleDownload = async () => {
+    if (!filing) return;
+    setGenerating(true);
+    setDownloadError('');
+    try {
+      // Cast filing_transactions to Transaction[] — pdfGenerator uses amount_usd
+      // and transaction_type; FilingTransaction uses amount and category.
+      // We bridge the difference here so pdfGenerator stays type-safe.
+      const txsForPdf = transactions.map(tx => ({
+        ...tx,
+        amount_usd: tx.amount,
+        transaction_type: tx.category,
+      })) as any;
+
+      const pkg = await generateFilingPackage(filing, txsForPdf);
+
+      const zip = new JSZip();
+      const folderName = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}`;
+      const folder = zip.folder(folderName)!;
+
+      folder.file('Form_5472.pdf',        pkg.form5472Bytes);
+      folder.file('ProForma_1120.pdf',    pkg.proForma1120Bytes);
+      if (pkg.hasPartV) {
+        folder.file('PartV_Statement.txt', pkg.partVStatement);
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${folderName}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // Mark filing as completed
+      await supabase.from('filings').update({ status: 'completed' }).eq('id', id);
+      setFiling(prev => prev ? { ...prev, status: 'completed' } : prev);
+    } catch (e: any) {
+      console.error('[download]', e);
+      setDownloadError(
+        e?.message?.includes('Could not load PDF')
+          ? 'PDF templates not found. In your Codespace terminal run: bash scripts/download-irs-pdfs.sh'
+          : (e?.message ?? 'Failed to generate PDF. Please try again.')
+      );
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -740,9 +796,9 @@ export function FilingWizard() {
           </Card>
         )}
 
-        {/* ── Step 4: Review & Submit ── */}
+        {/* ── Step 4: Review & Download ── */}
         {currentStep === 4 && filing && (
-          <Card title="Review & Submit" subtitle="Check everything before we prepare your forms.">
+          <Card title="Review & Download" subtitle="Check everything, then download your completed forms.">
 
             <SectionLabel>LLC</SectionLabel>
             <div style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9375rem', marginBottom: '0.5rem' }}>
@@ -799,16 +855,63 @@ export function FilingWizard() {
               </div>
             )}
 
-            <div style={{ background: 'rgba(2,132,199,0.04)', border: '1px solid #BAE6FD', borderRadius: '0.5rem', padding: '1rem 1.1rem', marginTop: '1.5rem', fontSize: '0.9rem', color: 'var(--tf-text)', lineHeight: 1.6 }}>
-              <strong>What happens next —</strong> Our CPA team will review your information and prepare your Form 5472 + Pro Forma 1120. You will receive an email with a secure payment link to download your completed forms.
-            </div>
+            {/* Download error */}
+            {downloadError && (
+              <div style={{
+                background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.5rem',
+                padding: '0.75rem 1rem', marginTop: '1.25rem',
+                color: '#991B1B', fontSize: '0.875rem', lineHeight: 1.5,
+              }}>
+                {downloadError}
+              </div>
+            )}
+
+            {/* Download success badge */}
+            {filing.status === 'completed' && !downloadError && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                background: '#ECFDF5', border: '1px solid #A7F3D0',
+                borderRadius: '9999px', padding: '0.3rem 0.85rem',
+                fontSize: '0.8125rem', fontWeight: 700, color: '#065F46',
+                marginTop: '1rem',
+              }}>
+                ✓ Forms downloaded — filing marked complete
+              </div>
+            )}
 
             <Actions>
-              <button style={btnGhost()} onClick={() => saveStep(4, {}, 3)} disabled={saving}>← Edit Transactions</button>
-              <button style={btnPrimary({ background: '#059669' })} onClick={handleSubmit} disabled={saving}>
-                {saving ? 'Submitting…' : '✓ Submit Filing'}
-              </button>
+              <button style={btnGhost()} onClick={() => saveStep(4, {}, 3)} disabled={saving || generating}>← Edit Transactions</button>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                {/* Download ZIP button */}
+                <button
+                  style={btnPrimary({ background: '#059669', cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.65 : 1 })}
+                  onClick={handleDownload}
+                  disabled={generating}
+                >
+                  {generating ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true">
+                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                      </svg>
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      Download ZIP
+                    </>
+                  )}
+                </button>
+              </div>
             </Actions>
+
+            <style>{`
+              @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            `}</style>
           </Card>
         )}
 
