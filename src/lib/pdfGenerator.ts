@@ -18,8 +18,8 @@ import type { Filing, Transaction, Address } from './supabase';
 // ─── Local PDF paths (served from public/pdf/) ───────────────
 // DO NOT use irs.gov URLs — CORS blocks browser fetches.
 // Run: scripts/download-irs-pdfs.sh  (or manually place files)
-const FORM_5472_PATH = '/pdf/f5472.pdf';
-const FORM_1120_PATH = '/pdf/f1120.pdf';
+const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/f5472.pdf`;
+const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/f1120.pdf`;
 
 // Simple in-memory cache so we don't re-fetch on every generation
 const pdfCache: Record<string, ArrayBuffer> = {};
