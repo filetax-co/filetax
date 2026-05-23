@@ -47,7 +47,6 @@ export function Portal() {
   const sectionsParam = searchParams.get('sections');
   const partiesParam = searchParams.get('parties');
   const rclParam = searchParams.get('rcl');
-  // When coming from Dashboard "+ Start new filing", we redirect back with this flag
   const newFiling = searchParams.get('new-filing') === '1';
 
   const activeSections = sectionsParam ? sectionsParam.split(',').filter(Boolean) : [];
@@ -65,8 +64,6 @@ export function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  // Build the post-auth redirect URL
-  // If new-filing=1 is present, land on /dashboard?new-filing=1 so Dashboard creates the draft
   const redirectBase = window.location.origin + '/dashboard';
   const emailRedirectTo = newFiling ? redirectBase + '?new-filing=1' : redirectBase;
 
@@ -91,8 +88,11 @@ export function Portal() {
       return;
     }
 
+    // authData.user may be null for magic-link OTP flows (user is created on click)
+    const userId: string | null = (authData as { user?: { id?: string } | null })?.user?.id ?? null;
+
     await supabase.from('intake_submissions').insert({
-      user_id: authData?.user?.id ?? null,
+      user_id: userId,
       full_name: name.trim() || email.trim(),
       email: email.trim(),
       years_param: years ?? null,
