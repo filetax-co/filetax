@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router';
+import JSZip from 'jszip';
 import {
   supabase,
   type Filing,
@@ -7,6 +8,7 @@ import {
   type FilingTransactionCategory,
   type Address,
 } from '../../lib/supabase';
+import { generateFilingPackage } from '../../lib/pdfGenerator';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
@@ -42,16 +44,6 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(0)}`;
 }
 
-function downloadPlaceholder(filename: string, content: string) {
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function Intake() {
   usePageMeta({ title: 'Filing intake | FileTax.co', description: 'Complete your filing.' });
 
@@ -68,6 +60,10 @@ export function Intake() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState<number>(1);
+
+  // Download state
+  const [generating, setGenerating] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
 
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
@@ -233,25 +229,54 @@ export function Intake() {
     window.scrollTo({ top: 0 });
   }
 
-  async function recordDownload(formName: string) {
+  async function handleDownload() {
     if (!filing) return;
-    const newCount = (filing.download_count ?? 0) + 1;
-    const newStatus: Filing['status'] = filing.status === 'paid' ? 'completed' : filing.status;
-    await supabase.from('filings').update({ download_count: newCount, status: newStatus }).eq('id', filing.id);
-    setFiling((f) => f ? { ...f, download_count: newCount, status: newStatus } as Filing : f);
-    const placeholder = [
-      'IRS FORM 5472 / PRO FORMA 1120 PLACEHOLDER',
-      '----------------------------------------',
-      `Document: ${formName}`,
-      `LLC name: ${llcName || '(not provided)'}`,
-      `EIN: ${ein || '(not provided)'}`,
-      `Tax year: ${taxYear || '(not provided)'}`,
-      `Owner: ${ownerName || '(not provided)'}`,
-      '',
-      'NOTE: This is a placeholder file. The real PDF generation',
-      'will produce IRS-compliant filled forms ready to mail or fax.',
-    ].join('\n');
-    downloadPlaceholder(formName.toLowerCase().replace(/\s+/g, '-') + '.txt', placeholder);
+    setGenerating(true);
+    setDownloadError('');
+    try {
+      const txsForPdf = transactions.map((tx) => ({
+        ...tx,
+        amount_usd: tx.amount,
+        transaction_type: tx.category,
+      })) as any;
+
+      const pkg = await generateFilingPackage(filing, txsForPdf);
+
+      const zip = new JSZip();
+      const folderName = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}`;
+      const folder = zip.folder(folderName)!;
+
+      folder.file('Form_5472.pdf', pkg.form5472Bytes);
+      folder.file('ProForma_1120.pdf', pkg.proForma1120Bytes);
+      if (pkg.hasPartV) {
+        folder.file('PartV_Statement.txt', pkg.partVStatement);
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${folderName}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // Update download count and mark completed
+      const newCount = (filing.download_count ?? 0) + 1;
+      await supabase
+        .from('filings')
+        .update({ download_count: newCount, status: 'completed' })
+        .eq('id', filing.id);
+      setFiling((f) => f ? { ...f, download_count: newCount, status: 'completed' } as Filing : f);
+    } catch (e: any) {
+      console.error('[download]', e);
+      setDownloadError(
+        e?.message?.includes('Could not load PDF')
+          ? 'PDF templates not found. In your Codespace terminal run: bash scripts/download-irs-pdfs.sh'
+          : (e?.message ?? 'Failed to generate PDF. Please try again.'),
+      );
+    } finally {
+      setGenerating(false);
+    }
   }
 
   if (loading) {
@@ -375,10 +400,40 @@ export function Intake() {
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.25rem' }}>Your forms are ready</h2>
                 <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>Print-ready PDFs, structured exactly as the IRS requires.</p>
               </div>
-              <DownloadRow title={`Form 5472 (Tax year ${filing.tax_year ?? 'n/a'})`} subtitle="Ready to mail or fax" onDownload={() => recordDownload('Form 5472')} />
-              <DownloadRow title="Pro Forma Form 1120" subtitle="Submit alongside Form 5472" onDownload={() => recordDownload('Pro Forma 1120')} />
+
+              {/* Download error */}
+              {downloadError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem', color: '#991B1B', fontSize: '0.875rem', lineHeight: 1.5 }}>
+                  {downloadError}
+                </div>
+              )}
+
+              {/* Completed badge */}
+              {filing.status === 'completed' && !downloadError && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '9999px', padding: '0.3rem 0.85rem', fontSize: '0.8125rem', fontWeight: 700, color: '#065F46', marginBottom: '1rem' }}>
+                  ✓ Forms downloaded — filing marked complete
+                </div>
+              )}
+
+              <DownloadRow
+                title={`Form 5472 (Tax year ${filing.tax_year ?? 'n/a'})`}
+                subtitle="Ready to mail or fax"
+                generating={generating}
+                onDownload={handleDownload}
+              />
+              <DownloadRow
+                title="Pro Forma Form 1120"
+                subtitle="Submit alongside Form 5472"
+                generating={generating}
+                onDownload={handleDownload}
+              />
               {filing.include_rcl && (
-                <DownloadRow title="Reasonable Cause Letter" subtitle="CPA-prepared. For penalty abatement." onDownload={() => recordDownload('Reasonable Cause Letter')} />
+                <DownloadRow
+                  title="Reasonable Cause Letter"
+                  subtitle="CPA-prepared. For penalty abatement."
+                  generating={generating}
+                  onDownload={handleDownload}
+                />
               )}
               <div style={{ background: 'rgba(2,132,199,0.04)', border: '1px solid rgba(2,132,199,0.25)', borderRadius: '0.5rem', padding: '1rem 1.125rem', marginTop: '1.25rem' }}>
                 <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--tf-text)', marginBottom: '0.25rem' }}>Next steps</p>
@@ -390,6 +445,7 @@ export function Intake() {
             </div>
           </div>
         </section>
+        <style>{`@keyframes tf-spin { to { transform: rotate(360deg); } }`}</style>
       </>
     );
   }
@@ -538,7 +594,7 @@ export function Intake() {
   );
 }
 
-function DownloadRow({ title, subtitle, onDownload }: { title: string; subtitle: string; onDownload: () => void }) {
+function DownloadRow({ title, subtitle, generating, onDownload }: { title: string; subtitle: string; generating: boolean; onDownload: () => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', marginBottom: '0.625rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: 0 }}>
@@ -550,7 +606,13 @@ function DownloadRow({ title, subtitle, onDownload }: { title: string; subtitle:
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, margin: 0 }}>{subtitle}</p>
         </div>
       </div>
-      <button onClick={onDownload} style={{ background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', flexShrink: 0 }}>Download</button>
+      <button
+        onClick={onDownload}
+        disabled={generating}
+        style={{ background: generating ? '#6B7280' : '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: generating ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: generating ? 0.7 : 1 }}
+      >
+        {generating ? 'Generating...' : 'Download'}
+      </button>
     </div>
   );
 }
