@@ -56,6 +56,10 @@ alter table public.filings enable row level security;
 create policy "Users can read own filings" on public.filings
   for select using (auth.uid() = user_id);
 
+-- Users must be able to create their own filing records
+create policy "Users can insert own filings" on public.filings
+  for insert with check (auth.uid() = user_id);
+
 create policy "Users can update own filings" on public.filings
   for update using (auth.uid() = user_id);
 
@@ -81,6 +85,23 @@ create policy "Users read own filings" on storage.objects
 -- =============================================================================
 -- MIGRATIONS — safe to run on an existing database (idempotent)
 -- =============================================================================
+
+-- Migration: add filings INSERT policy (if upgrading from schema without it)
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename  = 'filings'
+      and policyname = 'Users can insert own filings'
+  ) then
+    execute $policy$
+      create policy "Users can insert own filings" on public.filings
+        for insert with check (auth.uid() = user_id)
+    $policy$;
+  end if;
+end;
+$$;
 
 -- Migration: add initial_return (if upgrading from schema before this column)
 do $$
