@@ -81,7 +81,6 @@ export function Dashboard() {
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    // Wait for auth to resolve before deciding what to do
     if (authLoading) return;
 
     if (!effectiveUserId) {
@@ -190,6 +189,11 @@ export function Dashboard() {
     navigate(`/intake/${data.id}`);
   }
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
   const displayName = (() => {
     const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
     const fullName = typeof meta.full_name === 'string' ? meta.full_name : '';
@@ -211,7 +215,7 @@ export function Dashboard() {
               Manage your filings and start new ones below.
             </p>
           </div>
-          <button onClick={() => signOut()} style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
+          <button onClick={handleSignOut} style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
             Sign out
           </button>
         </div>

@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { Link } from 'react-router';
 import { Layout } from './components/Layout';
 import { RequireAuth } from './components/RequireAuth';
 import { Home } from './pages/Home';
@@ -22,7 +23,7 @@ function NotFound() {
   return (
     <section style={{ padding: '5rem 1rem', textAlign: 'center' }}>
       <h1 style={{ marginBottom: '1rem' }}>Page not found</h1>
-      <a href="/" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>← Back to Home</a>
+      <Link to="/" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>← Back to Home</Link>
     </section>
   );
 }
