@@ -49,17 +49,49 @@ export type Filing = {
   status: FilingStatus;
   current_step: number;
   service_type: ServiceType;
-  tax_year?: string | null;
+
+  // ── Tax period ────────────────────────────────────────────────────────────
+  tax_year?: string | null;           // e.g. '2024' — used for year-level logic
+  /**
+   * tax_period_begin — ISO date (YYYY-MM-DD) for the start of the tax year.
+   * Collected from the user in the wizard.
+   * For a standard calendar-year LLC: '2024-01-01'.
+   * For a fiscal-year LLC the user enters their actual start date.
+   *
+   * Maps to the Form 5472 header fields:
+   *   f1_1[0] — month/day label  (e.g. 'January 1')
+   *   f1_2[0] — year             (e.g. '2024')
+   * and the equivalent fields on Pro Forma 1120.
+   *
+   * Fallback: if null, pdfGenerator infers '01/01/{tax_year}'.
+   */
+  tax_period_begin?: string | null;   // ISO date: YYYY-MM-DD
+  /**
+   * tax_period_end — ISO date (YYYY-MM-DD) for the end of the tax year.
+   * Collected from the user in the wizard.
+   * For a standard calendar-year LLC: '2024-12-31'.
+   *
+   * Maps to the Form 5472 header fields:
+   *   f1_3[0] — month/day label  (e.g. 'December 31')
+   *   f1_4[0] — year             (e.g. '2024')
+   * and the equivalent fields on Pro Forma 1120.
+   *
+   * Fallback: if null, pdfGenerator infers '12/31/{tax_year}'.
+   */
+  tax_period_end?: string | null;     // ISO date: YYYY-MM-DD
+
+  // ── Entity ───────────────────────────────────────────────────────────────
   llc_name?: string | null;
   ein?: string | null;
   state_of_formation?: string | null;
   mailing_address?: Address | null;
-  // ── Form 5472 / Pro Forma 1120 fields ────────────────────────────────
+
+  // ── Form 5472 / Pro Forma 1120 fields ────────────────────────────────────
   total_assets?: number | null;             // Line 1c
-  naics_code?: string | null;              // Line 1e
-  naics_description?: string | null;       // Line 1d
+  naics_code?: string | null;              // Line 1f
+  naics_description?: string | null;       // Line 1e
   date_of_incorporation?: string | null;   // Line 1m  (ISO date)
-  date_of_closure?: string | null;         // tax year end when closed
+  date_of_closure?: string | null;         // tax year end when closed (ISO date)
   /**
    * initial_return — maps to the "Initial return" checkbox on Form 5472
    * (top of page 1) and the equivalent checkbox on the Pro Forma 1120.
@@ -78,21 +110,28 @@ export type Filing = {
   owner_reference_id?: string | null;      // Lines 4b-2, 8b-2
   owner_naics_code?: string | null;        // Line 8d
   owner_naics_description?: string | null; // Line 8c
-  // ────────────────────────────────────────────────────────────────
+
+  // ── Foreign owner / related party ───────────────────────────────────────
   owner_full_name?: string | null;
   owner_country_residence?: string | null;
   owner_country_citizenship?: string | null;
   owner_passport_number?: string | null;
   owner_foreign_tax_id?: string | null;
   owner_address?: Address | null;
+
+  // ── Filing options ───────────────────────────────────────────────────────
   include_irs_fax: boolean;
   include_rcl: boolean;
   notes?: string | null;
   parties_count: number;
   complex_sections: string[];
+
+  // ── Payment ──────────────────────────────────────────────────────────────
   paid_at?: string | null;
   payment_id?: string | null;
   payment_amount_cents?: number | null;
+
+  // ── Output ───────────────────────────────────────────────────────────────
   forms_generated_at?: string | null;
   download_count: number;
 };

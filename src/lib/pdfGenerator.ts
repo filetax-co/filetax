@@ -80,6 +80,50 @@ function fmtDate(val: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+/**
+ * Split an ISO date (YYYY-MM-DD) into the two values the Form 5472
+ * header needs:
+ *   label  — month + day in long form, e.g. 'January 1' or 'March 15'
+ *   year   — four-digit year string, e.g. '2024'
+ *
+ * Fallback behaviour when no date is stored:
+ *   - tax_period_begin falls back to January 1 of tax_year
+ *   - tax_period_end   falls back to December 31 of tax_year
+ *
+ * This keeps existing calendar-year filings working automatically
+ * while allowing fiscal-year LLCs to supply their exact dates.
+ */
+function splitPeriodDate(
+  isoDate: string | null | undefined,
+  fallbackMonth: number,  // 1-based
+  fallbackDay: number,
+  fallbackYear: string
+): { label: string; year: string } {
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  if (isoDate) {
+    // Parse as local date to avoid UTC midnight offset shifting the day
+    const [yearStr, monthStr, dayStr] = isoDate.split('-');
+    const month = parseInt(monthStr, 10);  // 1-based
+    const day   = parseInt(dayStr, 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return {
+        label: `${MONTH_NAMES[month - 1]} ${day}`,
+        year:  yearStr,
+      };
+    }
+  }
+
+  // Fallback: infer from tax_year
+  return {
+    label: `${MONTH_NAMES[fallbackMonth - 1]} ${fallbackDay}`,
+    year:  fallbackYear,
+  };
+}
+
 // ─── Transaction aggregator ───────────────────────────────────
 
 interface TxnTotals {
@@ -192,11 +236,24 @@ export async function fillForm5472(
   const txn = aggregateTransactions(transactions);
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  // ── Header — Tax Year ──────────────────────────────────────
-  setText(doc, F5472.TAX_YEAR_BEGIN, 'January 1');
-  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, taxYear);
-  setText(doc, F5472.TAX_YEAR_END, 'December 31');
-  setText(doc, F5472.TAX_YEAR_END_YEAR, taxYear);
+  // ── Header — Tax Period ────────────────────────────────────
+  // Form 5472 has four header fields:
+  //   f1_1: begin month+day label  (e.g. 'January 1' or 'April 1')
+  //   f1_2: begin year             (e.g. '2024')
+  //   f1_3: end month+day label    (e.g. 'December 31' or 'March 31')
+  //   f1_4: end year               (e.g. '2024' or '2025')
+  //
+  // Values come from filing.tax_period_begin and filing.tax_period_end
+  // (ISO dates collected from the user). Falls back to Jan 1 / Dec 31
+  // of tax_year if those fields are not yet populated, so existing
+  // calendar-year filings continue to work without re-entry.
+  const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
+  const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
+
+  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
+  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year);
+  setText(doc, F5472.TAX_YEAR_END,        end.label);
+  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
   // ── Part I — Reporting Corporation ────────────────────────
   setText(doc, F5472.CORP_NAME, filing.llc_name ?? '');
@@ -226,7 +283,7 @@ export async function fillForm5472(
   // Related party is foreign person (always true for our use case)
   setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);
 
-  // ── Part II — 25% Foreign Shareholder ─────────────────────
+  // ── Part II — 25% Foreign Shareholder (direct, slot 4) ────
   setText(doc, F5472.SHAREHOLDER_NAME, filing.owner_full_name ?? '');
   setText(doc, F5472.SHAREHOLDER_ADDRESS, filing.owner_address ?? '');
   setText(doc, F5472.SHAREHOLDER_CITY_STATE_ZIP,
@@ -236,6 +293,17 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_US_TIN, filing.owner_us_tin ?? '');
   setText(doc, F5472.SHAREHOLDER_REFERENCE_ID, filing.owner_reference_id ?? '');
   setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN, filing.owner_foreign_tax_id ?? '');
+
+  // ── Part II — Ultimate indirect shareholder (slot 6) ──────
+  // For a single-member DE the direct owner IS the ultimate indirect
+  // owner — fill slot 6 with the same data as slot 4.
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_NAME, filing.owner_full_name ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_US_TIN, filing.owner_us_tin ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_REFERENCE_ID, filing.owner_reference_id ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_FOREIGN_TIN, filing.owner_foreign_tax_id ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_PRIMARY_COUNTRY, filing.owner_primary_country ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_CITIZENSHIP, filing.owner_country_citizenship ?? '');
+  setText(doc, F5472.ULTIMATE_SHAREHOLDER_RESIDENCE, filing.owner_country_residence ?? '');
 
   // ── Part III — Related Party (mirrors Part II for single-member DE)
   setText(doc, F5472.RELATED_PARTY_NAME, filing.owner_full_name ?? '');
@@ -336,9 +404,13 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('topmostSubform[0].Page1[0].f1_3[0]',
     [filing.city, filing.state, filing.zip_code].filter(Boolean).join(', '));
   set('topmostSubform[0].Page1[0].f1_4[0]', fmtEin(filing.ein));
-  // Tax year
-  set('topmostSubform[0].Page1[0].f1_5[0]', taxYear);
-  set('topmostSubform[0].Page1[0].f1_6[0]', taxYear);
+
+  // Tax period — use dynamic dates matching Form 5472 header logic
+  const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
+  const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
+  set('topmostSubform[0].Page1[0].f1_5[0]', begin.year);
+  set('topmostSubform[0].Page1[0].f1_6[0]', end.year);
+
   // Date incorporated (Item E)
   set('topmostSubform[0].Page1[0].f1_7[0]', fmtDate(filing.date_of_incorporation));
   // Total assets (Item D)

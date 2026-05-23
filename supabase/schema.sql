@@ -17,24 +17,29 @@ create table if not exists public.intake_submissions (
   status       text not null default 'pending' check (status in ('pending','in_progress','completed'))
 );
 
--- Enable RLS
 alter table public.intake_submissions enable row level security;
 
--- Policy: users can read their own submissions
 create policy "Users can read own submissions" on public.intake_submissions
   for select using (auth.uid() = user_id);
 
--- Policy: anyone (anon) can insert (signup from portal)
 create policy "Anyone can insert intake" on public.intake_submissions
   for insert with check (true);
 
 
--- 2. filings — CPA updates status here; users read their own
+-- 2. filings — core filing table
 create table if not exists public.filings (
   id          uuid primary key default gen_random_uuid(),
   created_at  timestamptz default now(),
   user_id     uuid references auth.users(id) on delete cascade not null,
   tax_year    text not null,
+  -- Tax period begin/end (ISO date: YYYY-MM-DD).
+  -- Collected from the user during the wizard.
+  -- For a standard calendar-year LLC: '2024-01-01' / '2024-12-31'.
+  -- For a fiscal-year LLC the user enters their actual dates.
+  -- Used to fill the four header fields on Form 5472 (f1_1–f1_4)
+  -- and the equivalent fields on Pro Forma 1120.
+  tax_period_begin  date,
+  tax_period_end    date,
   form_type   text not null default 'Form 5472 + Pro Forma 1120',
   status      text not null default 'pending' check (status in ('pending','in_progress','completed')),
   notes       text,
@@ -48,11 +53,9 @@ create table if not exists public.filings (
 
 alter table public.filings enable row level security;
 
--- Policy: users can read their own filings
 create policy "Users can read own filings" on public.filings
   for select using (auth.uid() = user_id);
 
--- Policy: users can update their own filings (for file_path after upload)
 create policy "Users can update own filings" on public.filings
   for update using (auth.uid() = user_id);
 
@@ -62,14 +65,12 @@ insert into storage.buckets (id, name, public)
 values ('filings', 'filings', false)
 on conflict do nothing;
 
--- Storage policy: users can upload to their own folder
 create policy "Users upload own filings" on storage.objects
   for insert with check (
     bucket_id = 'filings' and
     auth.uid()::text = (storage.foldername(name))[1]
   );
 
--- Storage policy: users can read their own files
 create policy "Users read own filings" on storage.objects
   for select using (
     bucket_id = 'filings' and
@@ -78,10 +79,10 @@ create policy "Users read own filings" on storage.objects
 
 
 -- =============================================================================
--- MIGRATION: add initial_return to existing filings table
--- Run this block ONLY if your filings table already exists in production.
--- Safe to run multiple times (checks column existence before adding).
+-- MIGRATIONS — safe to run on an existing database (idempotent)
 -- =============================================================================
+
+-- Migration: add initial_return (if upgrading from schema before this column)
 do $$
 begin
   if not exists (
@@ -92,6 +93,32 @@ begin
   ) then
     alter table public.filings
       add column initial_return boolean not null default false;
+  end if;
+end;
+$$;
+
+-- Migration: add tax_period_begin and tax_period_end (dynamic tax year header)
+-- These replace the previously hardcoded 'January 1' / 'December 31' values.
+-- Collecting exact dates from the user supports fiscal-year LLCs and ensures
+-- the four header fields on Form 5472 (f1_1–f1_4) are always correct.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name   = 'filings'
+      and column_name  = 'tax_period_begin'
+  ) then
+    alter table public.filings add column tax_period_begin date;
+  end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name   = 'filings'
+      and column_name  = 'tax_period_end'
+  ) then
+    alter table public.filings add column tax_period_end date;
   end if;
 end;
 $$;
