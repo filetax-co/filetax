@@ -9,19 +9,22 @@
  *   2. Load into pdf-lib and fill AcroForm fields
  *   3. Flatten and return Uint8Array
  *   4. Caller bundles into a ZIP with jszip
+ *
+ * f1120 field mapping (confirmed from live PDF dump 2026-05-23):
+ *   Page1 PgHeader:           f1_1 = tax year begin year, f1_2 = end year, f1_3 = date incorporated
+ *   NameFieldsReadOrder:      f1_4 = corp name, f1_5 = care-of name, f1_6 = street addr,
+ *                             f1_7 = city/state/zip, f1_8 = total assets
+ *                             f1_9 = EIN, f1_10 = phone
+ *   A_ReadOrder checkboxes:   c1_1–c1_5 = initial/final/name change/address change/amended
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
-// ─── Local PDF paths (served from public/pdf/) ───────────────
-// DO NOT use irs.gov URLs — CORS blocks browser fetches.
-// Run: scripts/download-irs-pdfs.sh  (or manually place files)
 const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/f5472.pdf`;
 const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/f1120.pdf`;
 
-// Simple in-memory cache so we don't re-fetch on every generation
 const pdfCache: Record<string, ArrayBuffer> = {};
 
 async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
@@ -32,6 +35,10 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
     `Run: curl -o public/pdf/f5472.pdf https://www.irs.gov/pub/irs-pdf/f5472.pdf`
   );
   const bytes = await res.arrayBuffer();
+  if (bytes.byteLength < 1000) throw new Error(
+    `PDF at ${path} is empty or too small (${bytes.byteLength} bytes). ` +
+    `Re-download: curl -Lo public/pdf/f5472.pdf https://www.irs.gov/pub/irs-pdf/f5472.pdf`
+  );
   pdfCache[path] = bytes;
   return bytes;
 }
@@ -243,9 +250,12 @@ export async function fillForm5472(
   setText(doc, F5472.TAX_YEAR_END,        end.label);
   setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
+  // Part I — Reporting Corporation
+  // Line1a group: f1_5 = name, f1_6 = street, f1_7 = city/state/zip
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
   setText(doc, F5472.CORP_ADDRESS,        fmtAddress(filing.mailing_address));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
+  // f1_8 = EIN, f1_9 = total assets
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
   setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '');
@@ -365,6 +375,23 @@ export async function fillForm5472(
 }
 
 // ─── Pro Forma Form 1120 filler ───────────────────────────────
+//
+// f1120 Page 1 field layout (verified from live PDF dump):
+//   PgHeader:          f1_1 = tax year begin year
+//                      f1_2 = tax year end year
+//                      f1_3 = date incorporated
+//   NameFieldsReadOrder: f1_4 = corp name
+//                        f1_5 = care-of / DBA (leave blank)
+//                        f1_6 = street address
+//                        f1_7 = city, state, ZIP
+//                        f1_8 = total assets
+//                        f1_9 = EIN
+//                        f1_10= phone number (optional)
+//   A_ReadOrder:       c1_1 = initial return
+//                      c1_2 = final return
+//                      c1_3 = name change
+//                      c1_4 = address change
+//                      c1_5 = amended return
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
@@ -389,27 +416,32 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
     }
   };
 
-  set('topmostSubform[0].Page1[0].f1_1[0]', filing.llc_name ?? '');
-  set('topmostSubform[0].Page1[0].f1_2[0]', fmtAddress(filing.mailing_address));
-  set('topmostSubform[0].Page1[0].f1_3[0]', fmtCityStateZip(filing.mailing_address));
-  set('topmostSubform[0].Page1[0].f1_4[0]', fmtEin(filing.ein));
-
   const begin = splitPeriodDate(filing.tax_period_begin, 1,  1,  taxYear);
   const end   = splitPeriodDate(filing.tax_period_end,   12, 31, taxYear);
-  set('topmostSubform[0].Page1[0].f1_5[0]', begin.year);
-  set('topmostSubform[0].Page1[0].f1_6[0]', end.year);
 
-  set('topmostSubform[0].Page1[0].f1_7[0]', fmtDate(filing.date_of_incorporation));
-  set('topmostSubform[0].Page1[0].f1_8[0]', fmt(filing.total_assets));
+  // PgHeader — tax year dates and date incorporated
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.year);
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', end.year);
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', fmtDate(filing.date_of_incorporation));
 
+  // NameFieldsReadOrder — corp identity
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]', filing.llc_name ?? '');
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_5[0]', ''); // care-of
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_6[0]', fmtAddress(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]', fmtCityStateZip(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]', fmt(filing.total_assets));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]', fmtEin(filing.ein));
+
+  // Box A checkboxes
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
   );
-  chk('topmostSubform[0].Page1[0].c1_1[0]', filing.initial_return  === true);
-  chk('topmostSubform[0].Page1[0].c1_2[0]', isFinal);
-  chk('topmostSubform[0].Page1[0].c1_3[0]', filing.name_change    ?? false);
-  chk('topmostSubform[0].Page1[0].c1_4[0]', filing.address_change ?? false);
+  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_1[0]', filing.initial_return  === true);
+  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_2[0]', isFinal);
+  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_3[0]', filing.name_change    ?? false);
+  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_4[0]', filing.address_change ?? false);
+  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_5[0]', false); // amended
 
   form.flatten();
   return doc.save();
