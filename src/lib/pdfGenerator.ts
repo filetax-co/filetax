@@ -23,7 +23,7 @@
  *   4b(2) = SHAREHOLDER_REFERENCE_ID (f1_27) ← was incorrectly f1_29
  *   4b(3) = SHAREHOLDER_FOREIGN_TIN (f1_28) ← was incorrectly f1_30
  *   4c  = SHAREHOLDER_COUNTRY_BUSINESS (f1_21)
- *   4d  = SHAREHOLDER_COUNTRY_CITIZENSHIP (f1_22)
+ *   4d  = SHAREHOLDER_COUNTRY_CITIZENSHIP (f1_22) — blank only if same as 4e
  *   4e  = SHAREHOLDER_RESIDENT_COUNTRY (f1_23)
  *   5a  = SHAREHOLDER2_ADDRESS / SHAREHOLDER2_CITY_STATE_ZIP → MUST BE BLANK
  *   5b  = SHAREHOLDER2_US_TIN / SHAREHOLDER2_REFERENCE_ID   → MUST BE BLANK
@@ -44,15 +44,15 @@
  *   f1_3 = tax year end month/day     e.g. "December 31" (NO year — template appends it)
  *   f1_3b= tax year end year          e.g. "2025"  ← separate field
  *   f1_4 = date incorporated          MM/DD/YYYY
- * NameFieldsReadOrder:
- *   f1_5 = corp name
- *   f1_6 = street address
- *   f1_7 = city
- *   f1_8 = state           ← f1_7 was state (correct)
- *   f1_9 = ZIP
- *   f1_10= country
- *   f1_11= EIN
- *   f1_12= total assets
+ * NameFieldsReadOrder (verified field indices — 0-based within this sub-form):
+ *   f1_4 = corp name        ← index 4 within NameFieldsReadOrder
+ *   f1_5 = street address
+ *   f1_6 = city
+ *   f1_7 = state
+ *   f1_8 = ZIP
+ *   f1_9 = country          ← blank for US domestic address
+ *   f1_10= EIN
+ *   f1_11= total assets     ← required on Pro Forma for foreign-owned entity
  * Box A top checkboxes — all must be explicitly UNCHECKED:
  *   topmostSubform[0].Page1[0].c1_1[0] through c1_5[0]
  * Box E checkboxes:
@@ -122,12 +122,21 @@ function fmtEin(ein: string | null | undefined): string {
   return ein;
 }
 
-/** Format a date string as MM/DD/YYYY */
+/**
+ * Format a date string as MM/DD/YYYY.
+ * Uses UTC getters to avoid the off-by-one that occurs when a date stored as
+ * "YYYY-MM-DD" is parsed as UTC midnight and then rendered in a local time
+ * zone west of UTC (e.g. 2024-01-15 → Jan 14 in US Eastern time).
+ */
 function fmtDate(val: string | null | undefined): string {
   if (!val) return '';
   const d = new Date(val);
   if (isNaN(d.getTime())) return val;
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+  return (
+    `${String(d.getUTCMonth() + 1).padStart(2, '0')}/` +
+    `${String(d.getUTCDate()).padStart(2, '0')}/` +
+    `${d.getUTCFullYear()}`
+  );
 }
 
 /** Street address only — line1 + line2 */
@@ -178,9 +187,9 @@ function resolvePeriodBegin(
 
   if (filing.initial_return && filing.date_of_incorporation) {
     const d = new Date(filing.date_of_incorporation);
-    if (!isNaN(d.getTime()) && String(d.getFullYear()) === taxYear) {
+    if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
       return {
-        label: `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`,
+        label: `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`,
         year: taxYear,
       };
     }
@@ -367,14 +376,14 @@ export async function fillForm5472(
   // 1i — Initial return: flag OR auto-detect from incorporation year
   const isInitial5472 = filing.initial_return === true || !!(
     filing.date_of_incorporation &&
-    String(new Date(filing.date_of_incorporation).getFullYear()) === taxYear
+    String(new Date(filing.date_of_incorporation).getUTCFullYear()) === taxYear
   );
   setCheck(doc, F5472.INITIAL_RETURN_YES, isInitial5472);
 
   // 1j — Final return
   const isFinal5472 = !!(
     filing.date_of_closure &&
-    String(new Date(filing.date_of_closure).getFullYear()) === taxYear
+    String(new Date(filing.date_of_closure).getUTCFullYear()) === taxYear
   );
   setCheck(doc, F5472.FINAL_RETURN_YES, isFinal5472);
 
@@ -395,7 +404,8 @@ export async function fillForm5472(
   // 1o — Country under whose laws reporting corp is resident (f1_19)
   setText(doc, F5472.CORP_RESIDENT_COUNTRY, 'United States');
 
-  // 1f gross payments — total of all Part IV + Part V amounts on this form
+  // 1f gross payments — total of all Part IV + Part V amounts on this form.
+  // Always write this field (IRS expects '0' not blank when there are transactions).
   const partVTotal =
     txn.capital_contribution + txn.distribution +
     txn.formation_costs + txn.property_transfer;
@@ -409,9 +419,7 @@ export async function fillForm5472(
     txn.dividends_received + txn.commission_received +
     txn.intangible_received + txn.other_received;
   const grossPaymentsTotal = partIVTotalPaid + partIVTotalReceived + partVTotal;
-  if (grossPaymentsTotal > 0) {
-    setText(doc, F5472.CORP_GROSS_PAYMENTS, fmt(grossPaymentsTotal));
-  }
+  setText(doc, F5472.CORP_GROSS_PAYMENTS, fmt(grossPaymentsTotal));
 
   // ── Checkbox 3 — Related party is a foreign person ────────────────────
   setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);
@@ -432,8 +440,11 @@ export async function fillForm5472(
 
   // 4c — Principal country where business is conducted
   setText(doc, F5472.SHAREHOLDER_COUNTRY_BUSINESS, filing.owner_country_citizenship ?? '');
-  // 4d — Country of citizenship / incorporation (blank if same as 4e per IRS instructions)
-  setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, '');
+  // 4d — Country of citizenship / incorporation.
+  // IRS instructions: leave blank ONLY if identical to 4e. We populate it from the
+  // filing data and let the caller supply the correct value; an individual owner
+  // will naturally have this set to their country of citizenship.
+  setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   // 4e — Country under whose laws shareholder files as resident
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
@@ -465,10 +476,11 @@ export async function fillForm5472(
   setText(doc, F5472.RP2_REFERENCE_ID, filing.owner_reference_id ?? '');
   setText(doc, F5472.RP2_FOREIGN_TIN,  filing.owner_foreign_tax_id ?? '');
 
-  // 8c — Principal business activity: blank for individual owner
-  setText(doc, F5472.RP2_ACTIVITY, '');
-  // 8d — Country of residence
-  setText(doc, F5472.RP2_COUNTRY_RESIDENCE, '');
+  // 8c — Principal business activity: blank for an individual owner
+  // (individual owners have no business activity description to report).
+  setText(doc, F5472.RP2_ACTIVITY, filing.owner_business_activity ?? '');
+  // 8d — Country of residence: required for a foreign individual related party.
+  setText(doc, F5472.RP2_COUNTRY_RESIDENCE, filing.owner_country_residence ?? '');
 
   // 8e — Relationship checkboxes: exactly ONE checked; all others explicitly unchecked.
   // For a direct Indian individual owner of a DE LLC, c2_2 (25% shareholder) is correct.
@@ -554,14 +566,14 @@ export async function fillForm5472(
 //   PgHeader f1_4 = date incorporated MM/DD/YYYY
 //
 // NameFieldsReadOrder address order (verified from live PDF):
-//   f1_5 = corp name
-//   f1_6 = street address
-//   f1_7 = city
-//   f1_8 = state
-//   f1_9 = ZIP
-//   f1_10= country
-//   f1_11= EIN
-//   f1_12= total assets
+//   f1_4 = corp name
+//   f1_5 = street address
+//   f1_6 = city
+//   f1_7 = state
+//   f1_8 = ZIP
+//   f1_9 = country  (blank for US domestic address)
+//   f1_10= EIN
+//   f1_11= total assets  (required on Pro Forma for foreign-owned entity)
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
@@ -600,53 +612,46 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   // f1_1 = begin month/day ONLY (e.g. "January 1") — the template prints ", YYYY" after it.
   // f1_2 = begin year (e.g. "2025").
   // f1_3 = end month/day ONLY (e.g. "December 31").
-  // The end-year field is a small standalone field to the right of the end-date label.
+  // f1_3b = end year (separate small standalone field).
   // Writing a full string like "January 1, 2025" into f1_1 duplicates the year.
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.label);  // "January 1"
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', begin.year);   // "2025"
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', end.label);    // "December 31"
-  // End-year: try f1_3b first (some versions), fall back to a secondary field name
+  // End-year: f1_3b is the correct field in current IRS PDF versions.
+  // If it doesn't exist (older template), we skip rather than clobbering f1_4
+  // (which is date-incorporated, not year).
   try {
-    const endYearField = form.getTextField('topmostSubform[0].Page1[0].PgHeader[0].f1_3b[0]');
-    endYearField.setText(end.year);
+    form.getTextField('topmostSubform[0].Page1[0].PgHeader[0].f1_3b[0]').setText(end.year);
   } catch {
-    // If f1_3b doesn't exist, try the next sequential field after f1_3
-    set('topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]', end.year);
+    console.warn('[proForma1120] f1_3b not found — end-year field skipped');
   }
 
-  // ── PgHeader — Date incorporated (required on Pro Forma) ─────────────
-  // If the end-year used f1_4, date incorporated may be at f1_5 — try both paths.
-  const dateIncField = [
-    'topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]',
-    'topmostSubform[0].Page1[0].PgHeader[0].f1_5[0]',
-  ];
-  for (const fieldPath of dateIncField) {
-    try {
-      const f = form.getTextField(fieldPath);
-      // Only write to the first field that exists and is currently empty
-      if (f.getText() === '' || f.getText() == null) {
-        f.setText(fmtDate(filing.date_of_incorporation));
-        break;
-      }
-    } catch { /* field doesn't exist, try next */ }
-  }
+  // ── PgHeader — Date incorporated ─────────────────────────────────────
+  // f1_4 is always the date-incorporated field in current IRS 1120 templates.
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]', fmtDate(filing.date_of_incorporation));
 
   // ── NameFieldsReadOrder — Corp identity and address ───────────────────
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]', filing.llc_name ?? '');
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_5[0]', fmtStreet(filing.mailing_address));
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_6[0]', fmtCity(filing.mailing_address));
-  // f1_7 = state, f1_8 = ZIP (NOT swapped)
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]', fmtState(filing.mailing_address));
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]', fmtZip(filing.mailing_address));
-  // f1_9 = country (US corporations: blank or "US")
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]', '');
-  // f1_10 = EIN
+  // Field indices verified against the live IRS f1120.pdf AcroForm:
+  //   f1_4 = corp name  (index 4 in the NameFieldsReadOrder sub-form)
+  //   f1_5 = street address
+  //   f1_6 = city
+  //   f1_7 = state
+  //   f1_8 = ZIP
+  //   f1_9 = country (blank for US domestic address)
+  //   f1_10= EIN
+  //   f1_11= total assets
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]',  filing.llc_name ?? '');
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_5[0]',  fmtStreet(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_6[0]',  fmtCity(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]',  fmtState(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]',  fmtZip(filing.mailing_address));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]',  '');           // country — blank for US
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', fmtEin(filing.ein));
-  // f1_11 = total assets — required on Pro Forma 1120 for foreign-owned entity
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_11[0]', fmt(filing.total_assets));
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_11[0]', fmt(filing.total_assets)); // required
 
   // ── Box A top checkboxes — all must be explicitly UNCHECKED ──────────
   // The PDF template pre-checks c1_1[0] (Consolidated return) by default.
+  // These are at the Page1 level, NOT inside A_ReadOrder.
   chk('topmostSubform[0].Page1[0].c1_1[0]', false); // Consolidated return
   chk('topmostSubform[0].Page1[0].c1_2[0]', false); // Life/nonlife consolidated
   chk('topmostSubform[0].Page1[0].c1_3[0]', false); // Personal holding co
@@ -656,11 +661,11 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   // ── Box E checkboxes (initial, final, name change, address change) ────
   const isFinal = !!(
     filing.date_of_closure &&
-    String(new Date(filing.date_of_closure).getFullYear()) === taxYear
+    String(new Date(filing.date_of_closure).getUTCFullYear()) === taxYear
   );
   const isInitial = filing.initial_return === true || !!(
     filing.date_of_incorporation &&
-    String(new Date(filing.date_of_incorporation).getFullYear()) === taxYear
+    String(new Date(filing.date_of_incorporation).getUTCFullYear()) === taxYear
   );
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_1[0]', isInitial);
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_2[0]', isFinal);
