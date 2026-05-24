@@ -71,8 +71,15 @@
  *   c2_2[0] = 8e  25% foreign shareholder
  *   c2_3[0] = 8e  related to 25% foreign shareholder
  *   c2_4[0] = 8e  both
- *   — ALSO: c2_5[0] = "Related to reporting corporation" (pre-checked in template)
- *     Must explicitly UNCHECK this for a direct shareholder who IS the reporting corp owner.
+ *
+ * IMPORTANT — c2_5 dual-use:
+ *   c2_5[0] appears TWICE in the form logic:
+ *   1. As the Part IV "applies" checkbox (PartIV[0].c2_5[0]).
+ *   2. As the "Related to reporting corporation" pre-checked box in Part III 8e
+ *      (Page2[0].c2_5[0]) — must be explicitly UNCHECKED for a direct shareholder
+ *      who IS the reporting corp owner.
+ *   These are DIFFERENT fields at different XFA paths — see below.
+ *
  *   f2_7    = 8f  country under whose laws RP files as resident
  *   f2_8    = 8g  country of incorporation
  */
@@ -265,10 +272,6 @@ export const F5472 = {
    * c2_2[0] = 25% foreign shareholder
    * c2_3[0] = related to 25% foreign shareholder (NOT the shareholder themselves)
    * c2_4[0] = 25% foreign shareholder AND related to reporting corp
-   *
-   * IMPORTANT: The PDF template also has a separate "Related to reporting corporation"
-   * pre-checked state. c2_3 maps to that and must be explicitly unchecked when
-   * the related party IS the direct 25% shareholder (c2_2 checked).
    */
   RP2_IS_25PCT_SHAREHOLDER:
     'topmostSubform[0].Page2[0].c2_2[0]',
@@ -276,6 +279,17 @@ export const F5472 = {
     'topmostSubform[0].Page2[0].c2_3[0]',
   RP2_IS_25PCT_AND_RELATED:
     'topmostSubform[0].Page2[0].c2_4[0]',
+
+  /**
+   * Part III 8e — "Related to reporting corporation" pre-checked box.
+   * This is Page2[0].c2_5[0] — a SEPARATE field from PartIV[0].c2_5[0].
+   * Must be explicitly UNCHECKED when the related party IS the direct 25%
+   * shareholder (i.e. when RP2_IS_25PCT_SHAREHOLDER is checked).
+   * Leaving this un-addressed causes the PDF template's pre-checked state
+   * to bleed through after flatten().
+   */
+  RP2_RELATED_TO_CORP_UNCHECK:
+    'topmostSubform[0].Page2[0].c2_5[0]',
 
   /** Part III 8f — Country under whose laws RP files as resident */
   RP2_RESIDENT_COUNTRY:
@@ -285,7 +299,11 @@ export const F5472 = {
     'topmostSubform[0].Page2[0].f2_8[0]',
 
   // ── Part IV — Monetary Transactions ─────────────────────────
-  /** Part IV — checkbox: mark if Part IV applies */
+  /**
+   * Part IV — checkbox: mark if Part IV applies.
+   * NOTE: This is PartIV[0].c2_5[0] — distinct from Page2[0].c2_5[0]
+   * which is the "Related to reporting corporation" checkbox above.
+   */
   PART_IV_APPLIES:
     'topmostSubform[0].Page2[0].PartIV[0].c2_5[0]',
 
