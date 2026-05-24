@@ -26,7 +26,7 @@
  * ── Pro Forma 1120 field notes (from live PDF dump) ─────────────────────
  * PgHeader f1_1 = tax year begin year
  * PgHeader f1_2 = tax year end year
- * PgHeader f1_3 = date incorporated
+ * PgHeader f1_3 = date incorporated  ← LEAVE BLANK for foreign-owned single-member LLC
  * NameFieldsReadOrder:
  *   f1_4 = corp name
  *   f1_5 = street address          ← NOT care-of; actual street goes here
@@ -34,7 +34,13 @@
  *   f1_7 = state
  *   f1_8 = ZIP
  *   f1_9 = EIN
- *   f1_10= total assets            ← leave blank for Pro Forma
+ *   f1_10= total assets            ← LEAVE BLANK for foreign-owned single-member LLC
+ * Box A top checkboxes (must be explicitly UNCHECKED for foreign-owned single-member LLC):
+ *   topmostSubform[0].Page1[0].c1_1[0] = Consolidated return
+ *   topmostSubform[0].Page1[0].c1_2[0] = Life/nonlife consolidated return
+ *   topmostSubform[0].Page1[0].c1_3[0] = Personal holding co
+ *   topmostSubform[0].Page1[0].c1_4[0] = Personal service corp
+ *   topmostSubform[0].Page1[0].c1_5[0] = Schedule M-3 attached
  * A_ReadOrder: c1_1=initial, c1_2=final, c1_3=name change, c1_4=addr change, c1_5=amended
  */
 
@@ -530,7 +536,13 @@ export async function fillForm5472(
 //                             f1_7 = state
 //                             f1_8 = ZIP
 //                             f1_9 = EIN
-//                             f1_10= total assets (leave blank for Pro Forma)
+//                             f1_10= total assets (always blank for foreign-owned single-member LLC)
+//   Box A top checkboxes — must be explicitly UNCHECKED for foreign-owned single-member LLC:
+//                             topmostSubform[0].Page1[0].c1_1[0] = Consolidated return
+//                             topmostSubform[0].Page1[0].c1_2[0] = Life/nonlife consolidated
+//                             topmostSubform[0].Page1[0].c1_3[0] = Personal holding co
+//                             topmostSubform[0].Page1[0].c1_4[0] = Personal service corp
+//                             topmostSubform[0].Page1[0].c1_5[0] = Schedule M-3 attached
 //   A_ReadOrder[0]:           c1_1 = initial return
 //                             c1_2 = final return
 //                             c1_3 = name change
@@ -563,10 +575,12 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
-  // PgHeader — tax year dates + date incorporated
+  // PgHeader — tax year dates only
+  // f1_3 (date incorporated) is left blank — not required on Pro Forma 1120
+  // for a foreign-owned single-member LLC treated as a disregarded entity
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.year);
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', end.year);
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', fmtDate(filing.date_of_incorporation));
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', '');
 
   // NameFieldsReadOrder — corp name and split address fields
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]', filing.llc_name ?? '');
@@ -575,10 +589,19 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]', fmtState(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]', fmtZip(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]', fmtEin(filing.ein));
-  // f1_10 = total assets — leave blank for Pro Forma 1120 (not required)
+  // f1_10 = total assets — always blank for foreign-owned single-member LLC (Pro Forma only)
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', '');
 
-  // Box A checkboxes
+  // Box A top checkboxes — explicitly uncheck all for foreign-owned single-member LLC.
+  // These are at the Page1 level and are DISTINCT from the A_ReadOrder checkboxes below.
+  // The PDF template pre-checks c1_1[0] (Consolidated return) by default — must force off.
+  chk('topmostSubform[0].Page1[0].c1_1[0]', false); // Consolidated return        ← MUST be unchecked
+  chk('topmostSubform[0].Page1[0].c1_2[0]', false); // Life/nonlife consolidated  ← MUST be unchecked
+  chk('topmostSubform[0].Page1[0].c1_3[0]', false); // Personal holding co        ← MUST be unchecked
+  chk('topmostSubform[0].Page1[0].c1_4[0]', false); // Personal service corp      ← MUST be unchecked
+  chk('topmostSubform[0].Page1[0].c1_5[0]', false); // Schedule M-3 attached      ← MUST be unchecked
+
+  // Box E checkboxes (initial, final, name change, address change, amended)
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
