@@ -620,18 +620,9 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── PgHeader — Tax year dates ─────────────────────────────────────────
-  // The 1120 template has FOUR separate fields for the header dates.
-  // f1_1 = begin month/day ONLY (e.g. "January 1") — the template prints ", YYYY" after it.
-  // f1_2 = begin year (e.g. "2025").
-  // f1_3 = end month/day ONLY (e.g. "December 31").
-  // f1_3b = end year (separate small standalone field).
-  // Writing a full string like "January 1, 2025" into f1_1 duplicates the year.
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.label);  // "January 1"
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', begin.year);   // "2025"
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', end.label);    // "December 31"
-  // End-year: f1_3b is the correct field in current IRS PDF versions.
-  // If it doesn't exist (older template), we skip rather than clobbering f1_4
-  // (which is date-incorporated, not year).
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.label);
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', begin.year);
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', end.label);
   try {
     form.getTextField('topmostSubform[0].Page1[0].PgHeader[0].f1_3b[0]').setText(end.year);
   } catch {
@@ -640,33 +631,19 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
 
   // ── PgHeader — Date incorporated ───────────────────────────────────
   // Pro Forma 1120 for a foreign-owned disregarded entity: leave blank.
-  // The date-incorporated line on the full Form 1120 is for domestic C-corps;
-  // a DE/LLC filing a Pro Forma does not complete this field.
   set('topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]', '');
 
   // ── NameFieldsReadOrder — Corp identity and address ───────────────────
-  // Field indices verified against the live IRS f1120.pdf AcroForm:
-  //   f1_4 = corp name  (index 4 in the NameFieldsReadOrder sub-form)
-  //   f1_5 = street address
-  //   f1_6 = city
-  //   f1_7 = state
-  //   f1_8 = ZIP
-  //   f1_9 = country (blank for US domestic address)
-  //   f1_10= EIN
-  //   f1_11= total assets  (required on Pro Forma for foreign-owned entity)
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]',  filing.llc_name ?? '');
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_5[0]',  fmtStreet(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_6[0]',  fmtCity(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]',  fmtState(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]',  fmtZip(filing.mailing_address));
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]',  '');           // country — blank for US
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]',  '');
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', fmtEin(filing.ein));
-  // Total assets: required on Pro Forma 1120 for a foreign-owned single-member LLC.
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_11[0]', fmt(filing.total_assets));
 
   // ── Box A top checkboxes — all must be explicitly UNCHECKED ─────────────
-  // The PDF template pre-checks c1_1[0] (Consolidated return) by default.
-  // These are at the Page1 level, NOT inside A_ReadOrder.
   chk('topmostSubform[0].Page1[0].c1_1[0]', false); // Consolidated return
   chk('topmostSubform[0].Page1[0].c1_2[0]', false); // Life/nonlife consolidated
   chk('topmostSubform[0].Page1[0].c1_3[0]', false); // Personal holding co
@@ -687,6 +664,68 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_3[0]', filing.name_change    ?? false);
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_4[0]', filing.address_change ?? false);
 
-  doc.getForm().flatten();
+  form.flatten();
   return doc.save();
+}
+
+// ─── Part V Attachment Statement ─────────────────────────────────────────────
+
+export function generatePartVStatement(
+  filing: Filing,
+  transactions: Transaction[]
+): string {
+  const txn = aggregateTransactions(transactions);
+  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
+  const lines: string[] = [];
+
+  lines.push('ATTACHMENT TO FORM 5472 — PART V STATEMENT');
+  lines.push(`Tax Year: ${taxYear}`);
+  lines.push(`Reporting Corporation: ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`);
+  lines.push(`Foreign Owner: ${filing.owner_full_name ?? ''}`);
+  lines.push('');
+  lines.push('The following transactions occurred between the foreign-owned U.S.');
+  lines.push('disregarded entity and its foreign owner during the tax year:');
+  lines.push('');
+
+  if (txn.capital_contribution > 0)
+    lines.push(`Capital contributions made by owner to LLC: $${fmt(txn.capital_contribution)}`);
+  if (txn.distribution > 0)
+    lines.push(`Distributions made by LLC to owner: $${fmt(txn.distribution)}`);
+  if (txn.formation_costs > 0)
+    lines.push(`Formation/organization costs paid on behalf of LLC: $${fmt(txn.formation_costs)}`);
+  if (txn.property_transfer > 0)
+    lines.push(`Property transferred to/from LLC: $${fmt(txn.property_transfer)}`);
+
+  lines.push('');
+  lines.push('These transactions are reported pursuant to Reg. § 1.6038A-2(b)(7).');
+
+  return lines.join('\n');
+}
+
+// ─── Package generator ────────────────────────────────────────────────────────
+
+export interface FilingPackage {
+  form5472Bytes: Uint8Array;
+  proForma1120Bytes: Uint8Array;
+  partVStatement: string;
+  hasPartV: boolean;
+}
+
+export async function generateFilingPackage(
+  filing: Filing,
+  transactions: Transaction[]
+): Promise<FilingPackage> {
+  const [form5472Bytes, proForma1120Bytes] = await Promise.all([
+    fillForm5472(filing, transactions),
+    fillProForma1120(filing),
+  ]);
+
+  const txn = aggregateTransactions(transactions);
+
+  return {
+    form5472Bytes,
+    proForma1120Bytes,
+    partVStatement: generatePartVStatement(filing, transactions),
+    hasPartV: txn.hasPartV,
+  };
 }
