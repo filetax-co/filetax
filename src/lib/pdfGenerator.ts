@@ -6,13 +6,17 @@
  *
  * ── Form 5472 field notes ────────────────────────────────────────────────
  * 1c  = CORP_STATE_OF_FORMATION  → always 'Delaware' for our users
- * 1g  = CORP_NUM_FORMS           → always '1' (one Form 5472 per related party)
- * 1h  = CORP_FORMS_COUNT         → blank / '0' (total forms; not required for DE LLC)
- * 1l  = CORP_DATE_OF_INCORPORATION (fmtDate)
- * 1m  = CORP_RESIDENT_COUNTRY    → 'United States'
- * 1n  = INITIAL_RETURN_YEAR field (text) → 'United States' per instructions
- * 1o  = RELATED_PARTY_IS_FOREIGN / RELATED_PARTY_IS_US checkboxes
- * Part II 4a = SHAREHOLDER_NAME  → full name + address on same field
+ * 1f  = gross payments on this return (Part V total when hasPartV)
+ * 1g  = CORP_NUM_FORMS (f1_14)   → always '1' (one Form 5472 per related party)
+ * 1h  = CORP_FORMS_COUNT (f1_17) → '1' (total forms filed with this 1120)
+ * 1i  = INITIAL_RETURN_YES checkbox
+ * 1k  = INITIAL_RETURN_YEAR text field
+ * 1l  = CORP_DATE_OF_INCORPORATION (f1_16) → fmtDate
+ * 1m  = CORP_FORMS_COUNT (f1_17) → '1'
+ * 1n  = CORP_IS_FOREIGN_OWNED_DE checkbox (c1_5)
+ * 1o  = CORP_RESIDENT_COUNTRY (f1_19) → 'United States'
+ * Part II 4a = SHAREHOLDER_NAME  → name only (no address)
+ * Part II 5a = SHAREHOLDER_ADDRESS / SHAREHOLDER_CITY_STATE_ZIP
  * Part II 4b(2) = SHAREHOLDER_REFERENCE_ID
  * Part II 4b(3) = SHAREHOLDER_FOREIGN_TIN
  * Part II 4c   = SHAREHOLDER_COUNTRY_CITIZENSHIP
@@ -24,9 +28,9 @@
  * Part III 8g  = RP2_COUNTRY_OF_INCORPORATION (India)
  *
  * ── Pro Forma 1120 field notes (from live PDF dump) ─────────────────────
- * PgHeader f1_1 = tax year begin year
- * PgHeader f1_2 = tax year end year
- * PgHeader f1_3 = date incorporated  ← LEAVE BLANK for foreign-owned single-member LLC
+ * PgHeader f1_1 = tax year begin date e.g. "January 1, 2025"
+ * PgHeader f1_2 = tax year end date   e.g. "December 31, 2025"
+ * PgHeader f1_3 = date incorporated   (required — fmtDate)
  * NameFieldsReadOrder:
  *   f1_4 = corp name
  *   f1_5 = street address          ← NOT care-of; actual street goes here
@@ -34,7 +38,7 @@
  *   f1_7 = state
  *   f1_8 = ZIP
  *   f1_9 = EIN
- *   f1_10= total assets            ← LEAVE BLANK for foreign-owned single-member LLC
+ *   f1_10= total assets            ← required; write filing.total_assets
  * Box A top checkboxes (must be explicitly UNCHECKED for foreign-owned single-member LLC):
  *   topmostSubform[0].Page1[0].c1_1[0] = Consolidated return
  *   topmostSubform[0].Page1[0].c1_2[0] = Life/nonlife consolidated return
@@ -341,10 +345,10 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
 
-  // 1e — Principal business activity (blank for DE single-member LLC with no US activity)
+  // 1e — Principal business activity
   setText(doc, F5472.CORP_ACTIVITY, filing.naics_description ?? '');
 
-  // 1f — NAICS code: blank/'0' if not applicable
+  // 1f — NAICS code
   setText(doc, F5472.CORP_NAICS,   filing.naics_code ? filing.naics_code : '0');
   setText(doc, F5472.CORP_NAICS_2, '');
 
@@ -354,25 +358,29 @@ export async function fillForm5472(
   // 1h — Number of Forms 5472 filed with this return: always '1'
   setText(doc, F5472.CORP_NUM_FORMS, '1');
 
-  // 1i — Initial return checkbox
-  setCheck(doc, F5472.INITIAL_RETURN_YES, filing.initial_return === true);
+  // 1i — Initial return checkbox: flag OR auto-detect from incorporation year
+  const isInitial5472 = filing.initial_return === true || !!(
+    filing.date_of_incorporation &&
+    String(new Date(filing.date_of_incorporation).getFullYear()) === taxYear
+  );
+  setCheck(doc, F5472.INITIAL_RETURN_YES, isInitial5472);
 
   // 1j — Final return: check if closure date is in this tax year
-  const isFinal = !!(
+  const isFinal5472 = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getFullYear()) === taxYear
   );
-  setCheck(doc, F5472.FINAL_RETURN_YES, isFinal);
+  setCheck(doc, F5472.FINAL_RETURN_YES, isFinal5472);
 
   // 1k — Tax year of initial return (text field next to 1i)
-  if (filing.initial_return) {
+  if (isInitial5472) {
     setText(doc, F5472.INITIAL_RETURN_YEAR, taxYear);
   }
 
-  // 1l — Date of incorporation
+  // 1l — Date of incorporation (f1_16)
   setText(doc, F5472.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
 
-  // 1m — Total number of Forms 5472: '1'
+  // 1m — Total number of Forms 5472 attached (f1_17): always '1'
   setText(doc, F5472.CORP_FORMS_COUNT, '1');
 
   // 1n — Foreign-owned U.S. DE checkbox (c1_5)
@@ -381,33 +389,49 @@ export async function fillForm5472(
   // 1o — Country under whose laws reporting corp is resident: United States
   setText(doc, F5472.CORP_RESIDENT_COUNTRY, 'United States');
 
+  // 1f (gross payments) — Part V total when only Part V transactions exist.
+  // Capital contributions are Part V (not Part IV) so txn.hasPartIV may be false.
+  // Per IRS instructions, line 1f = total gross payments reported on this form.
+  const partVTotal =
+    txn.capital_contribution + txn.distribution +
+    txn.formation_costs + txn.property_transfer;
+  const partIVTotalPaid =
+    txn.purchases_paid + txn.services_received + txn.rents_paid +
+    txn.borrowed + txn.interest_paid + txn.insurance_paid +
+    txn.dividends_paid + txn.commission_paid + txn.intangible_paid + txn.other_paid;
+  const partIVTotalReceived =
+    txn.sales_received + txn.services_rendered + txn.rents_received +
+    txn.loaned + txn.interest_received + txn.insurance_received +
+    txn.dividends_received + txn.commission_received +
+    txn.intangible_received + txn.other_received;
+  const grossPaymentsTotal = partIVTotalPaid + partIVTotalReceived + partVTotal;
+  // CORP_TOTAL_ASSETS (f1_9) is 1d; 1f gross payments uses the NAICS_2 overflow field
+  // on the same line — but the IRS form places 1f in a dedicated text field.
+  // Based on the field map, f1_12 (CORP_NAICS_2) is the 1f gross-payments slot.
+  // Write gross payments there when non-zero.
+  if (grossPaymentsTotal > 0) {
+    setText(doc, F5472.CORP_NAICS_2, fmt(grossPaymentsTotal));
+  }
+
   // ── Checkbox 3 — Related party is a foreign person ────────────────────
   setCheck(doc, F5472.RELATED_PARTY_IS_FOREIGN, true);
   setCheck(doc, F5472.RELATED_PARTY_IS_US,      false);
 
   // ── Part II — 25% Foreign Shareholder ─────────────────────────────────
-  // 4a — Name of direct 25% foreign shareholder
-  //      IRS instructions: name on one line, address below on the same field
+  // 4a — Name only (address goes in 5a fields below — NOT combined here)
+  setText(doc, F5472.SHAREHOLDER_NAME, filing.owner_full_name ?? '');
+
+  // 5a — Street address and city/state/zip (separate fields, no duplication)
   const ownerAddr = filing.owner_address;
-  const ownerAddrLine = [
-    fmtStreet(ownerAddr),
-    fmtCityStateZip(ownerAddr),
-  ].filter(Boolean).join(', ');
-  const shareholderNameAndAddr = [
-    filing.owner_full_name ?? '',
-    ownerAddrLine,
-  ].filter(Boolean).join('\n');
-  setText(doc, F5472.SHAREHOLDER_NAME,           shareholderNameAndAddr);
-  // Address fields (5a) — also fill separately for any split-field forms
   setText(doc, F5472.SHAREHOLDER_ADDRESS,        fmtStreet(ownerAddr));
   setText(doc, F5472.SHAREHOLDER_CITY_STATE_ZIP, fmtCityStateZip(ownerAddr));
 
+  // 4b(1) — US TIN (blank for non-US owner with no SSN/ITIN)
+  setText(doc, F5472.SHAREHOLDER_US_TIN,       filing.owner_us_tin ?? '');
   // 4b(2) — Reference ID number (e.g. CHI001)
   setText(doc, F5472.SHAREHOLDER_REFERENCE_ID, filing.owner_reference_id ?? '');
   // 4b(3) — Foreign tax identifying number (FTIN)
   setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,  filing.owner_foreign_tax_id ?? '');
-  // 4b(1) — US TIN (blank for non-US owner with no SSN/ITIN)
-  setText(doc, F5472.SHAREHOLDER_US_TIN,       filing.owner_us_tin ?? '');
 
   // 4c — Country(ies) of citizenship / incorporation
   setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
@@ -417,7 +441,6 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY, filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
   // ── Part III — Related Party (Page 1) ─────────────────────────────────
-  // For a single-member LLC the owner IS the related party — same data
   setText(doc, F5472.RELATED_PARTY_NAME,         filing.owner_full_name          ?? '');
   setText(doc, F5472.RELATED_PARTY_COUNTRY,      filing.owner_country_citizenship ?? '');
   setText(doc, F5472.RELATED_PARTY_US_TIN,       filing.owner_us_tin              ?? '');
@@ -428,18 +451,15 @@ export async function fillForm5472(
   setCheck(doc, F5472.RP2_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP2_IS_US_PERSON,      false);
 
-  setText(doc, F5472.RP2_NAME,         filing.owner_full_name   ?? '');
-  setText(doc, F5472.RP2_US_TIN,       filing.owner_us_tin      ?? '');
+  setText(doc, F5472.RP2_NAME,         filing.owner_full_name    ?? '');
+  setText(doc, F5472.RP2_US_TIN,       filing.owner_us_tin       ?? '');
   setText(doc, F5472.RP2_REFERENCE_ID, filing.owner_reference_id ?? '');
   setText(doc, F5472.RP2_FOREIGN_TIN,  filing.owner_foreign_tax_id ?? '');
 
-  // 8d — Principal business activity of related party: blank for individual owner
+  // 8d — Principal business activity: blank for individual owner
   setText(doc, F5472.RP2_ACTIVITY, '');
 
-  // 8e — Relationship checkbox:
-  //   isDirectShareholder = owner IS the 25% shareholder (most common for SMLLC)
-  //   isRelatedOnly       = related to the 25% shareholder but not the shareholder
-  //   isBoth              = both shareholder and related to another shareholder
+  // 8e — Relationship checkboxes: exactly one must be checked; uncheck the others
   const isDirectShareholder = !(filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
   const isRelatedOnly       = (filing.rp_is_related_only ?? false) && !(filing.rp_is_both ?? false);
   const isBoth              = filing.rp_is_both ?? false;
@@ -447,7 +467,7 @@ export async function fillForm5472(
   setCheck(doc, F5472.RP2_IS_RELATED_TO_SHAREHOLDER, isRelatedOnly);
   setCheck(doc, F5472.RP2_IS_25PCT_AND_RELATED,       isBoth);
 
-  // 8f — Country under whose laws related party files as resident (India)
+  // 8f — Country under whose laws related party files as resident
   setText(doc, F5472.RP2_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
@@ -455,7 +475,7 @@ export async function fillForm5472(
   setText(doc, F5472.RP2_COUNTRY_OF_INCORPORATION,
     filing.owner_country_citizenship ?? filing.owner_country_residence ?? '');
 
-  // 8d (country of residence) — leave blank per IRS instructions if same as 8f
+  // 8d (country of residence) — leave blank per IRS if same as 8f
   setText(doc, F5472.RP2_COUNTRY_RESIDENCE, '');
 
   // ── Part IV — Monetary Transactions ──────────────────────────────────
@@ -483,18 +503,8 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_27A_OTHER_RECEIVED,     fmt(txn.other_received));
     setText(doc, F5472.LINE_27B_OTHER_DESC,         txn.other_desc);
 
-    const totalPaid =
-      txn.purchases_paid + txn.services_received + txn.rents_paid +
-      txn.borrowed + txn.interest_paid + txn.insurance_paid +
-      txn.dividends_paid + txn.commission_paid + txn.intangible_paid + txn.other_paid;
-    const totalReceived =
-      txn.sales_received + txn.services_rendered + txn.rents_received +
-      txn.loaned + txn.interest_received + txn.insurance_received +
-      txn.dividends_received + txn.commission_received +
-      txn.intangible_received + txn.other_received;
-
-    setText(doc, F5472.LINE_28_TOTAL_PAID,     fmt(totalPaid));
-    setText(doc, F5472.LINE_29_TOTAL_RECEIVED, fmt(totalReceived));
+    setText(doc, F5472.LINE_28_TOTAL_PAID,     fmt(partIVTotalPaid));
+    setText(doc, F5472.LINE_29_TOTAL_RECEIVED, fmt(partIVTotalReceived));
   }
 
   // ── Part V / VI ───────────────────────────────────────────────────────
@@ -529,14 +539,16 @@ export async function fillForm5472(
 // ─── Pro Forma Form 1120 filler ───────────────────────────────────────────────
 //
 // Actual field layout verified from the live 1120 PDF AcroForm dump:
-//   PgHeader[0]:              f1_1 = begin year, f1_2 = end year, f1_3 = date incorporated
+//   PgHeader[0]:              f1_1 = begin date e.g. "January 1, 2025"
+//                             f1_2 = end date   e.g. "December 31, 2025"
+//                             f1_3 = date incorporated (required — MM/DD/YYYY)
 //   NameFieldsReadOrder[0]:   f1_4 = corp name
 //                             f1_5 = street address (NOT care-of)
 //                             f1_6 = city
 //                             f1_7 = state
 //                             f1_8 = ZIP
 //                             f1_9 = EIN
-//                             f1_10= total assets (always blank for foreign-owned single-member LLC)
+//                             f1_10= total assets (required)
 //   Box A top checkboxes — must be explicitly UNCHECKED for foreign-owned single-member LLC:
 //                             topmostSubform[0].Page1[0].c1_1[0] = Consolidated return
 //                             topmostSubform[0].Page1[0].c1_2[0] = Life/nonlife consolidated
@@ -552,6 +564,13 @@ export async function fillForm5472(
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+
+  // Remove pages 2–6 (index 1 through end) to suppress blank schedules.
+  // Must be done before field-setting so flatten() only touches Page 1.
+  for (let i = doc.getPageCount() - 1; i >= 1; i--) {
+    doc.removePage(i);
+  }
+
   const form = doc.getForm();
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
@@ -575,12 +594,11 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
-  // PgHeader — tax year dates only
-  // f1_3 (date incorporated) is left blank — not required on Pro Forma 1120
-  // for a foreign-owned single-member LLC treated as a disregarded entity
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', begin.year);
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', end.year);
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', '');
+  // PgHeader — full date strings e.g. "January 1, 2025" / "December 31, 2025"
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_1[0]', `${begin.label}, ${begin.year}`);
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_2[0]', `${end.label}, ${end.year}`);
+  // Date incorporated — required on Pro Forma 1120 for foreign-owned entity
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_3[0]', fmtDate(filing.date_of_incorporation));
 
   // NameFieldsReadOrder — corp name and split address fields
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]', filing.llc_name ?? '');
@@ -589,8 +607,8 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_7[0]', fmtState(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]', fmtZip(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]', fmtEin(filing.ein));
-  // f1_10 = total assets — always blank for foreign-owned single-member LLC (Pro Forma only)
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', '');
+  // Total assets — required on Pro Forma 1120 for foreign-owned entity
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', fmt(filing.total_assets));
 
   // Box A top checkboxes — explicitly uncheck all for foreign-owned single-member LLC.
   // These are at the Page1 level and are DISTINCT from the A_ReadOrder checkboxes below.
