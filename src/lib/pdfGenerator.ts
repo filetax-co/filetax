@@ -4,7 +4,7 @@
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
  * PDFs are served from /pdf/ (public/pdf/) to avoid CORS.
  *
- * ── Form 5472 field notes ────────────────────────────────────────────────
+ * ── Form 5472 field notes ──────────────────────────────────────────────────────
  * 1c  = CORP_TOTAL_ASSETS  (f1_9)
  * 1e  = CORP_ACTIVITY      (f1_10)
  * 1f  = CORP_NAICS         (f1_11) — NAICS code; CORP_GROSS_PAYMENTS (f1_12) = gross payments total
@@ -37,13 +37,18 @@
  *   c2_3[0] = related to 25% foreign shareholder (uncheck for direct owner)
  *   c2_4[0] = both (uncheck for direct owner)
  *
- * ── Pro Forma 1120 field notes ──────────────────────────────────────────
+ * Part III — RP2_RELATED_TO_CORP_UNCHECK (Page2[0].c2_5[0])
+ *   This "Related to reporting corporation" box is PRE-CHECKED in the IRS template.
+ *   It is a DIFFERENT field from PartIV[0].c2_5[0] (the Part IV applies checkbox).
+ *   Must be explicitly UNCHECKED for a direct 25% shareholder.
+ *
+ * ── Pro Forma 1120 field notes ──────────────────────────────────────────────
  * PgHeader:
  *   f1_1 = tax year begin month/day   e.g. "January 1"   (NO year — template appends it)
  *   f1_2 = tax year begin year        e.g. "2025"
  *   f1_3 = tax year end month/day     e.g. "December 31" (NO year — template appends it)
  *   f1_3b= tax year end year          e.g. "2025"  ← separate field
- *   f1_4 = date incorporated          MM/DD/YYYY
+ *   f1_4 = date incorporated          MM/DD/YYYY  ← LEAVE BLANK on Pro Forma for foreign-owned DE
  * NameFieldsReadOrder (verified field indices — 0-based within this sub-form):
  *   f1_4 = corp name        ← index 4 within NameFieldsReadOrder
  *   f1_5 = street address
@@ -84,7 +89,7 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
   return bytes;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────────
 
 function setText(doc: PDFDocument, fieldName: string, value: string | null | undefined) {
   try {
@@ -226,7 +231,7 @@ function resolvePeriodEnd(
   return { label: 'December 31', year: taxYear };
 }
 
-// ─── Part V categories ────────────────────────────────────────────────────────
+// ─── Part V categories ────────────────────────────────────────────────────────────────
 
 export const PART_V_CATEGORIES = [
   'capital_contribution',
@@ -236,7 +241,7 @@ export const PART_V_CATEGORIES = [
   'nonmonetary_other',
 ] as const;
 
-// ─── Transaction aggregator ───────────────────────────────────────────────────
+// ─── Transaction aggregator ───────────────────────────────────────────────────────────────
 
 interface TxnTotals {
   sales_received: number;
@@ -335,7 +340,7 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
   return t;
 }
 
-// ─── Form 5472 filler ─────────────────────────────────────────────────────────
+// ─── Form 5472 filler ─────────────────────────────────────────────────────────────────
 
 export async function fillForm5472(
   filing: Filing,
@@ -346,7 +351,7 @@ export async function fillForm5472(
   const txn = aggregateTransactions(transactions);
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  // ── Header — Tax Year ──────────────────────────────────────────────────
+  // ── Header — Tax Year ────────────────────────────────────────────────
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
   setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
@@ -354,7 +359,7 @@ export async function fillForm5472(
   setText(doc, F5472.TAX_YEAR_END,        end.label);
   setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
-  // ── Part I — Reporting Corporation ────────────────────────────────────
+  // ── Part I — Reporting Corporation ───────────────────────────────────
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
   setText(doc, F5472.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
@@ -449,7 +454,7 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // ── EXPLICITLY BLANK the second-shareholder row (5a/5b) ───────────────
+  // ── EXPLICITLY BLANK the second-shareholder row (5a/5b) ─────────────────
   // We have only one direct shareholder. f1_24/f1_25/f1_29/f1_30 are the
   // "second shareholder" address and TIN fields — must all be empty strings.
   setText(doc, F5472.SHAREHOLDER2_ADDRESS,      '');
@@ -467,7 +472,7 @@ export async function fillForm5472(
   setText(doc, F5472.SECTION6_REFERENCE_ID, '');
   setText(doc, F5472.SECTION6_FOREIGN_TIN,  '');
 
-  // ── Part III — Related Party (Page 2 / 8a–8g) ────────────────────────
+  // ── Part III — Related Party (Page 2 / 8a–8g) ───────────────────────
   setCheck(doc, F5472.RP2_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP2_IS_US_PERSON,      false);
 
@@ -490,6 +495,11 @@ export async function fillForm5472(
   setCheck(doc, F5472.RP2_IS_25PCT_SHAREHOLDER,      isDirectShareholder);
   setCheck(doc, F5472.RP2_IS_RELATED_TO_SHAREHOLDER, isRelatedOnly);  // uncheck for direct owner
   setCheck(doc, F5472.RP2_IS_25PCT_AND_RELATED,       isBoth);         // uncheck for direct owner
+
+  // "Related to reporting corporation" pre-checked box (Page2[0].c2_5[0]).
+  // This is a SEPARATE field from the Part IV applies checkbox (PartIV[0].c2_5[0]).
+  // Must be UNCHECKED for a direct 25% shareholder who owns the reporting corp.
+  setCheck(doc, F5472.RP2_RELATED_TO_CORP_UNCHECK, false);
 
   // 8f — Country under whose laws related party files as resident
   setText(doc, F5472.RP2_RESIDENT_COUNTRY,
@@ -527,7 +537,7 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_29_TOTAL_RECEIVED,      fmt(partIVTotalReceived));
   }
 
-  // ── Part V / VI ───────────────────────────────────────────────────────
+  // ── Part V / VI ──────────────────────────────────────────────────────────────
   setCheck(doc, F5472.PART_V_APPLIES,  txn.hasPartV);
   setCheck(doc, F5472.PART_VI_APPLIES, false);
 
@@ -539,12 +549,12 @@ export async function fillForm5472(
   setCheck(doc, F5472.LINE_40_YES,  false); setCheck(doc, F5472.LINE_40_NO,  true);
   setCheck(doc, F5472.LINE_41_YES,  false); setCheck(doc, F5472.LINE_41_NO,  true);
 
-  // ── Part VIII ─────────────────────────────────────────────────────────
+  // ── Part VIII ───────────────────────────────────────────────────────────────
   setCheck(doc, F5472.LINE_45_YES,  false); setCheck(doc, F5472.LINE_45_NO,  true);
   setCheck(doc, F5472.LINE_46_YES,  false); setCheck(doc, F5472.LINE_46_NO,  true);
   setCheck(doc, F5472.LINE_48C_YES, false); setCheck(doc, F5472.LINE_48C_NO, true);
 
-  // ── Part IX ───────────────────────────────────────────────────────────
+  // ── Part IX ────────────────────────────────────────────────────────────────
   setCheck(doc, F5472.LINE_49A_YES, false); setCheck(doc, F5472.LINE_49A_NO, true);
   setCheck(doc, F5472.LINE_49B_YES, false); setCheck(doc, F5472.LINE_49B_NO, true);
   setText(doc, F5472.LINE_50, '');
@@ -556,14 +566,16 @@ export async function fillForm5472(
   return doc.save();
 }
 
-// ─── Pro Forma Form 1120 filler ───────────────────────────────────────────────
+// ─── Pro Forma Form 1120 filler ─────────────────────────────────────────────────────
 //
 // The 1120 template splits the tax year header into FOUR separate fields:
 //   PgHeader f1_1 = begin month/day  e.g. "January 1"   (template appends ", YYYY")
 //   PgHeader f1_2 = begin year       e.g. "2025"
 //   PgHeader f1_3 = end month/day    e.g. "December 31" (template appends ", YYYY")
 //   PgHeader f1_3b= end year         e.g. "2025"  (separate small field)
-//   PgHeader f1_4 = date incorporated MM/DD/YYYY
+//   PgHeader f1_4 = date incorporated MM/DD/YYYY  — LEAVE BLANK on Pro Forma
+//                   (Pro Forma 1120 for a foreign-owned disregarded entity does not
+//                    require a date-incorporated entry on the header line)
 //
 // NameFieldsReadOrder address order (verified from live PDF):
 //   f1_4 = corp name
@@ -626,9 +638,11 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
     console.warn('[proForma1120] f1_3b not found — end-year field skipped');
   }
 
-  // ── PgHeader — Date incorporated ─────────────────────────────────────
-  // f1_4 is always the date-incorporated field in current IRS 1120 templates.
-  set('topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]', fmtDate(filing.date_of_incorporation));
+  // ── PgHeader — Date incorporated ───────────────────────────────────
+  // Pro Forma 1120 for a foreign-owned disregarded entity: leave blank.
+  // The date-incorporated line on the full Form 1120 is for domestic C-corps;
+  // a DE/LLC filing a Pro Forma does not complete this field.
+  set('topmostSubform[0].Page1[0].PgHeader[0].f1_4[0]', '');
 
   // ── NameFieldsReadOrder — Corp identity and address ───────────────────
   // Field indices verified against the live IRS f1120.pdf AcroForm:
@@ -639,7 +653,7 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   //   f1_8 = ZIP
   //   f1_9 = country (blank for US domestic address)
   //   f1_10= EIN
-  //   f1_11= total assets
+  //   f1_11= total assets  (required on Pro Forma for foreign-owned entity)
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_4[0]',  filing.llc_name ?? '');
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_5[0]',  fmtStreet(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_6[0]',  fmtCity(filing.mailing_address));
@@ -647,9 +661,10 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_8[0]',  fmtZip(filing.mailing_address));
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_9[0]',  '');           // country — blank for US
   set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_10[0]', fmtEin(filing.ein));
-  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_11[0]', fmt(filing.total_assets)); // required
+  // Total assets: required on Pro Forma 1120 for a foreign-owned single-member LLC.
+  set('topmostSubform[0].Page1[0].NameFieldsReadOrder[0].f1_11[0]', fmt(filing.total_assets));
 
-  // ── Box A top checkboxes — all must be explicitly UNCHECKED ──────────
+  // ── Box A top checkboxes — all must be explicitly UNCHECKED ─────────────
   // The PDF template pre-checks c1_1[0] (Consolidated return) by default.
   // These are at the Page1 level, NOT inside A_ReadOrder.
   chk('topmostSubform[0].Page1[0].c1_1[0]', false); // Consolidated return
@@ -658,7 +673,7 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('topmostSubform[0].Page1[0].c1_4[0]', false); // Personal service corp
   chk('topmostSubform[0].Page1[0].c1_5[0]', false); // Schedule M-3 attached
 
-  // ── Box E checkboxes (initial, final, name change, address change) ────
+  // ── Box E checkboxes (initial, final, name change, address change) ───────
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getUTCFullYear()) === taxYear
@@ -671,70 +686,7 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_2[0]', isFinal);
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_3[0]', filing.name_change    ?? false);
   chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_4[0]', filing.address_change ?? false);
-  chk('topmostSubform[0].Page1[0].A_ReadOrder[0].c1_5[0]', false);
 
-  form.flatten();
+  doc.getForm().flatten();
   return doc.save();
-}
-
-// ─── Part V Attachment Statement ─────────────────────────────────────────────
-
-export function generatePartVStatement(
-  filing: Filing,
-  transactions: Transaction[]
-): string {
-  const txn = aggregateTransactions(transactions);
-  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
-  const lines: string[] = [];
-
-  lines.push('ATTACHMENT TO FORM 5472 — PART V STATEMENT');
-  lines.push(`Tax Year: ${taxYear}`);
-  lines.push(`Reporting Corporation: ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`);
-  lines.push(`Foreign Owner: ${filing.owner_full_name ?? ''}`);
-  lines.push('');
-  lines.push('The following transactions occurred between the foreign-owned U.S.');
-  lines.push('disregarded entity and its foreign owner during the tax year:');
-  lines.push('');
-
-  if (txn.capital_contribution > 0)
-    lines.push(`Capital contributions made by owner to LLC: $${fmt(txn.capital_contribution)}`);
-  if (txn.distribution > 0)
-    lines.push(`Distributions made by LLC to owner: $${fmt(txn.distribution)}`);
-  if (txn.formation_costs > 0)
-    lines.push(`Formation/organization costs paid on behalf of LLC: $${fmt(txn.formation_costs)}`);
-  if (txn.property_transfer > 0)
-    lines.push(`Property transferred to/from LLC: $${fmt(txn.property_transfer)}`);
-
-  lines.push('');
-  lines.push('These transactions are reported pursuant to Reg. § 1.6038A-2(b)(7).');
-
-  return lines.join('\n');
-}
-
-// ─── Package generator ────────────────────────────────────────────────────────
-
-export interface FilingPackage {
-  form5472Bytes: Uint8Array;
-  proForma1120Bytes: Uint8Array;
-  partVStatement: string;
-  hasPartV: boolean;
-}
-
-export async function generateFilingPackage(
-  filing: Filing,
-  transactions: Transaction[]
-): Promise<FilingPackage> {
-  const [form5472Bytes, proForma1120Bytes] = await Promise.all([
-    fillForm5472(filing, transactions),
-    fillProForma1120(filing),
-  ]);
-
-  const txn = aggregateTransactions(transactions);
-
-  return {
-    form5472Bytes,
-    proForma1120Bytes,
-    partVStatement: generatePartVStatement(filing, transactions),
-    hasPartV: txn.hasPartV,
-  };
 }
