@@ -15,54 +15,70 @@
  *   These share the same base name — setting one does NOT auto-unset the other.
  *   Always set both explicitly.
  *
- * PAGE 1 field layout (confirmed from dump):
- *   f1_1  = tax year begin month/day
- *   f1_2  = tax year begin year
- *   f1_3  = tax year end month/day
- *   f1_4  = tax year end year
- *   f1_5  = corp name         (Line1a[0])
- *   f1_6  = corp street addr  (Line1a[0])
- *   f1_7  = corp city/st/zip  (Line1a[0])  ← NOT total assets
+ * PAGE 1 field layout (confirmed from live PDF dump):
+ *   f1_1  = tax year begin month/day         e.g. "January 1"
+ *   f1_2  = tax year begin year              e.g. "2025"
+ *   f1_3  = tax year end month/day           e.g. "December 31"
+ *   f1_4  = tax year end year                e.g. "2025"
+ *   f1_5  = corp name
+ *   f1_6  = corp street address
+ *   f1_7  = corp city, state, ZIP
  *   f1_8  = corp EIN
- *   f1_9  = corp total assets
- *   f1_10 = principal activity
- *   f1_11 = NAICS code
- *   f1_12 = NAICS second field (Line1f_ReadOrder)
- *   f1_13 = state of formation
- *   f1_14 = number of Forms 5472
- *   c1_1  = initial return checkbox
- *   c1_2  = final return checkbox
- *   f1_15 = initial return year
- *   f1_16 = date of incorporation
- *   f1_17 = total forms count
- *   f1_18 = (reserved)
- *   f1_19 = corp resident country
- *   c1_3  = related party is foreign
- *   c1_4  = related party is US
- *   c1_5  = corp is foreign-owned DE indicator
- *   f1_20 = shareholder name
- *   f1_21 = shareholder country of citizenship
- *   f1_22 = shareholder country of residence
- *   f1_23 = shareholder resident country
- *   f1_24 = shareholder street address
- *   f1_25 = shareholder city/state/zip
- *   f1_26 = (shareholder field 6)
- *   f1_27 = (shareholder field 7)
- *   f1_28 = shareholder US TIN
- *   f1_29 = shareholder reference ID
- *   f1_30 = shareholder foreign TIN
- *   f1_31 = related party name
- *   f1_32 = related party country
- *   f1_33 = (related party field 3)
- *   f1_34 = (related party field 4)
- *   f1_35 = related party US TIN
- *   f1_36 = related party reference ID
- *   f1_37 = related party foreign TIN
- *   f1_38–47 = additional Part III / overflow fields
+ *   f1_9  = corp total assets (1c)
+ *   f1_10 = principal business activity (1e)
+ *   f1_11 = NAICS code (1f first field)
+ *   f1_12 = gross payments on this form (1f second/overflow field — Line1f_ReadOrder)
+ *   f1_13 = state/country of incorporation (1g)
+ *   f1_14 = number of Forms 5472 filed with this 1120 (1h)
+ *   c1_1  = initial return checkbox (1i)
+ *   c1_2  = final return checkbox   (1j)
+ *   f1_15 = initial return tax year (1k)
+ *   f1_16 = date of incorporation   (1l)
+ *   f1_17 = total Forms 5472 attached (1m)
+ *   f1_18 = (reserved / not used)
+ *   f1_19 = country(ies) under whose laws reporting corp files as resident (1o)
+ *   c1_3  = related party is a foreign person (Part III top / line 3)
+ *   c1_4  = related party is a U.S. person
+ *   c1_5  = reporting corp is a foreign-owned U.S. DE (line 3 checkbox)
+ *
+ * Part II — 25% Foreign Shareholder (direct — FIRST shareholder row only)
+ *   f1_20 = 4a  name of direct 25% foreign shareholder
+ *   f1_21 = 4c  principal country(ies) where business is conducted
+ *   f1_22 = 4d  country of citizenship / organization / incorporation
+ *   f1_23 = 4e  country(ies) under whose laws shareholder files as resident
+ *   f1_24 = 5a  street address  (second direct shareholder row — MUST BE BLANK)
+ *   f1_25 = 5a  city/state/ZIP  (second direct shareholder row — MUST BE BLANK)
+ *   f1_26 = 4b(1) U.S. identifying number (SSN/ITIN/EIN)
+ *   f1_27 = 4b(2) reference ID number
+ *   f1_28 = 4b(3) foreign tax identifying number (FTIN)
+ *   f1_29 = 5b(1) U.S. identifying number  (SECOND shareholder — MUST BE BLANK)
+ *   f1_30 = 5b(2) reference ID             (SECOND shareholder — MUST BE BLANK)
+ *   — 5b(3) FTIN and 5c/5d are overflow fields further down (also blank)
+ *
+ * Part III (Page 1 portion — section 6/7, ultimate indirect shareholder)
+ *   f1_31 = 6a  name of ultimate indirect 25% foreign shareholder (MUST BE BLANK)
+ *   f1_32 = 6a  country                                           (MUST BE BLANK)
+ *   f1_33–f1_37 = 6b/6c/6d/6e fields                             (MUST BE BLANK)
+ *
+ * PAGE 2 — Part III section 8 (the actual Related Party section used by us)
+ *   c2_1[0] = 8  foreign person | c2_1[1] = U.S. person
+ *   f2_1    = 8a name
+ *   f2_2    = 8b(1) US TIN
+ *   f2_3    = 8b(2) reference ID
+ *   f2_4    = 8b(3) foreign TIN
+ *   f2_5    = 8c  principal business activity
+ *   f2_6    = 8d  country of residence
+ *   c2_2[0] = 8e  25% foreign shareholder
+ *   c2_3[0] = 8e  related to 25% foreign shareholder
+ *   c2_4[0] = 8e  both
+ *   — ALSO: c2_5[0] = "Related to reporting corporation" (pre-checked in template)
+ *     Must explicitly UNCHECK this for a direct shareholder who IS the reporting corp owner.
+ *   f2_7    = 8f  country under whose laws RP files as resident
+ *   f2_8    = 8g  country of incorporation
  */
 
 // ─────────────────────────────────────────────────────────────
-// PAGE 1 — Header / Part I / Part II / Part III (start)
+// PAGE 1 — Header / Part I / Part II / Part III (section 6/7)
 // ─────────────────────────────────────────────────────────────
 export const F5472 = {
 
@@ -93,22 +109,26 @@ export const F5472 = {
   /** 1b — EIN */
   CORP_EIN:
     'topmostSubform[0].Page1[0].f1_8[0]',
-  /** 1d — Total assets */
+  /** 1c — Total assets */
   CORP_TOTAL_ASSETS:
     'topmostSubform[0].Page1[0].f1_9[0]',
   /** 1e — Principal business activity */
   CORP_ACTIVITY:
     'topmostSubform[0].Page1[0].f1_10[0]',
-  /** 1f — NAICS code (first field) */
+  /** 1f — NAICS code (first field on line 1f) */
   CORP_NAICS:
     'topmostSubform[0].Page1[0].f1_11[0]',
-  /** 1f — NAICS code (second field on same line) */
-  CORP_NAICS_2:
+  /**
+   * 1f — Gross payments on this Form 5472 (second/overflow field on the 1f line).
+   * Capital contributions (Part V) and Part IV totals both feed into this.
+   * Write the total gross payments amount here — NOT the NAICS code.
+   */
+  CORP_GROSS_PAYMENTS:
     'topmostSubform[0].Page1[0].Line1f_ReadOrder[0].f1_12[0]',
-  /** 1g — Country/state of incorporation */
+  /** 1g — State/country of incorporation — e.g. "Delaware" */
   CORP_STATE_OF_FORMATION:
     'topmostSubform[0].Page1[0].f1_13[0]',
-  /** 1h — Number of Forms 5472 filed */
+  /** 1h — Number of Forms 5472 filed with this return — always "1" */
   CORP_NUM_FORMS:
     'topmostSubform[0].Page1[0].f1_14[0]',
 
@@ -125,18 +145,18 @@ export const F5472 = {
   /** 1l — Date of incorporation */
   CORP_DATE_OF_INCORPORATION:
     'topmostSubform[0].Page1[0].f1_16[0]',
-  /** 1m — Total number of Forms 5472 attached */
+  /** 1m — Total number of Forms 5472 attached — always "1" */
   CORP_FORMS_COUNT:
     'topmostSubform[0].Page1[0].f1_17[0]',
 
-  /** 1n — Related party is a foreign person (checkbox [0]) */
+  /** Checkbox 3 — Related party is a foreign person */
   RELATED_PARTY_IS_FOREIGN:
     'topmostSubform[0].Page1[0].c1_3[0]',
-  /** 1n — Related party is a U.S. person (checkbox [1]) */
+  /** Checkbox 3 — Related party is a U.S. person */
   RELATED_PARTY_IS_US:
     'topmostSubform[0].Page1[0].c1_4[0]',
 
-  /** c1_5[0] — Reporting corporation is a foreign-owned U.S. DE indicator */
+  /** c1_5[0] — Reporting corporation is a foreign-owned U.S. DE */
   CORP_IS_FOREIGN_OWNED_DE:
     'topmostSubform[0].Page1[0].c1_5[0]',
 
@@ -145,50 +165,68 @@ export const F5472 = {
     'topmostSubform[0].Page1[0].f1_19[0]',
 
   // ── Part II — 25% Foreign Shareholder ───────────────────────
+  // Row 4: DIRECT shareholder — name, country fields, and TIN fields
   /** 4a — Name of direct 25% foreign shareholder */
   SHAREHOLDER_NAME:
     'topmostSubform[0].Page1[0].f1_20[0]',
-  /** 4c — Country(ies) of citizenship / incorporation */
-  SHAREHOLDER_COUNTRY_CITIZENSHIP:
+  /** 4c — Principal country(ies) where shareholder conducts business */
+  SHAREHOLDER_COUNTRY_BUSINESS:
     'topmostSubform[0].Page1[0].f1_21[0]',
-  /** 4d — Country of residence for tax purposes */
-  SHAREHOLDER_COUNTRY_RESIDENCE:
+  /** 4d — Country of citizenship / organization / incorporation */
+  SHAREHOLDER_COUNTRY_CITIZENSHIP:
     'topmostSubform[0].Page1[0].f1_22[0]',
-  /** 4e — Country under whose laws shareholder files as resident */
+  /** 4e — Country(ies) under whose laws shareholder files as resident */
   SHAREHOLDER_RESIDENT_COUNTRY:
     'topmostSubform[0].Page1[0].f1_23[0]',
-  /** 5a — Street address of direct 25% foreign shareholder */
-  SHAREHOLDER_ADDRESS:
-    'topmostSubform[0].Page1[0].f1_24[0]',
-  /** 5a — City/state/ZIP of direct 25% foreign shareholder */
-  SHAREHOLDER_CITY_STATE_ZIP:
-    'topmostSubform[0].Page1[0].f1_25[0]',
-  /** 5b(1) — US identifying number (SSN / ITIN / EIN) */
+
+  /**
+   * 4b(1) — U.S. identifying number (SSN / ITIN / EIN) of direct shareholder.
+   * Field f1_26 — verified from live PDF dump.
+   * NOTE: f1_24 and f1_25 are the 5a address fields for the SECOND shareholder row.
+   *       Do NOT use f1_24/f1_25 for TIN data.
+   */
   SHAREHOLDER_US_TIN:
-    'topmostSubform[0].Page1[0].f1_28[0]',
-  /** 5b(2) — Reference ID number */
+    'topmostSubform[0].Page1[0].f1_26[0]',
+  /** 4b(2) — Reference ID number of direct shareholder */
   SHAREHOLDER_REFERENCE_ID:
-    'topmostSubform[0].Page1[0].f1_29[0]',
-  /** 5b(3) — Foreign tax identifying number */
+    'topmostSubform[0].Page1[0].f1_27[0]',
+  /** 4b(3) — Foreign tax identifying number (FTIN) of direct shareholder */
   SHAREHOLDER_FOREIGN_TIN:
+    'topmostSubform[0].Page1[0].f1_28[0]',
+
+  /**
+   * Row 5: SECOND direct shareholder — must be explicitly blanked.
+   * These map to the 5a address row and 5b TIN row for a second shareholder.
+   * We only ever have one shareholder, so these must all be empty strings.
+   */
+  SHAREHOLDER2_ADDRESS:
+    'topmostSubform[0].Page1[0].f1_24[0]',
+  SHAREHOLDER2_CITY_STATE_ZIP:
+    'topmostSubform[0].Page1[0].f1_25[0]',
+  SHAREHOLDER2_US_TIN:
+    'topmostSubform[0].Page1[0].f1_29[0]',
+  SHAREHOLDER2_REFERENCE_ID:
     'topmostSubform[0].Page1[0].f1_30[0]',
 
-  // ── Part III — Related Party (Page 1 portion) ───────────────
-  /** 6a — Name of related party */
-  RELATED_PARTY_NAME:
-    'topmostSubform[0].Page1[0].f1_31[0]',
-  /** 6a — Country of incorporation / principal place of business */
-  RELATED_PARTY_COUNTRY:
-    'topmostSubform[0].Page1[0].f1_32[0]',
-  /** 6b(1) — US identifying number of related party */
-  RELATED_PARTY_US_TIN:
-    'topmostSubform[0].Page1[0].f1_35[0]',
-  /** 6b(2) — Reference ID number of related party */
-  RELATED_PARTY_REFERENCE_ID:
-    'topmostSubform[0].Page1[0].f1_36[0]',
-  /** 6b(3) — Foreign tax identifying number of related party */
-  RELATED_PARTY_FOREIGN_TIN:
-    'topmostSubform[0].Page1[0].f1_37[0]',
+  /**
+   * Part II top — "surrogate foreign corporation under §7874" checkbox.
+   * Must be explicitly UNCHECKED — never applies to Indian individual owner of DE LLC.
+   * Field is at the top of the Part II section header.
+   */
+  PART_II_SURROGATE_CORP_CHECKBOX:
+    'topmostSubform[0].Page1[0].c1_6[0]',
+
+  // ── Section 6 / 7 — Ultimate indirect shareholder (Page 1 portion)
+  // These fields (f1_31–f1_37) appear BELOW Part II and are for a DIFFERENT entity
+  // (the ultimate indirect 25% foreign shareholder, sections 6 and 7).
+  // We only have a direct shareholder, so ALL of these must be blank.
+  SECTION6_NAME:         'topmostSubform[0].Page1[0].f1_31[0]',
+  SECTION6_COUNTRY:      'topmostSubform[0].Page1[0].f1_32[0]',
+  SECTION6_FIELD3:       'topmostSubform[0].Page1[0].f1_33[0]',
+  SECTION6_FIELD4:       'topmostSubform[0].Page1[0].f1_34[0]',
+  SECTION6_US_TIN:       'topmostSubform[0].Page1[0].f1_35[0]',
+  SECTION6_REFERENCE_ID: 'topmostSubform[0].Page1[0].f1_36[0]',
+  SECTION6_FOREIGN_TIN:  'topmostSubform[0].Page1[0].f1_37[0]',
 
   // ─────────────────────────────────────────────────────────────
   // PAGE 2 — Part III (cont.) + Part IV + Part V/VI flags
@@ -223,10 +261,14 @@ export const F5472 = {
     'topmostSubform[0].Page2[0].f2_6[0]',
 
   /**
-   * Part III 8e — Relationship checkboxes (three options, pick one)
+   * Part III 8e — Relationship checkboxes (three options, pick exactly one)
    * c2_2[0] = 25% foreign shareholder
-   * c2_3[0] = related to 25% foreign shareholder
-   * c2_4[0] = 25% foreign shareholder AND related
+   * c2_3[0] = related to 25% foreign shareholder (NOT the shareholder themselves)
+   * c2_4[0] = 25% foreign shareholder AND related to reporting corp
+   *
+   * IMPORTANT: The PDF template also has a separate "Related to reporting corporation"
+   * pre-checked state. c2_3 maps to that and must be explicitly unchecked when
+   * the related party IS the direct 25% shareholder (c2_2 checked).
    */
   RP2_IS_25PCT_SHAREHOLDER:
     'topmostSubform[0].Page2[0].c2_2[0]',
