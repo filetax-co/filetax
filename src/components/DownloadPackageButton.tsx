@@ -6,8 +6,8 @@
  * them into a ZIP (with optional Part V statement), and triggers
  * a browser download.
  *
- * pdf-lib and jszip are dynamically imported on first click so
- * they are excluded from the initial bundle (~529 kB saved).
+ * Both pdfGenerator (pdf-lib, ~480 kB) and jszip (~50 kB) are
+ * dynamically imported on first click — excluded from initial bundle.
  *
  * Usage:
  *   <DownloadPackageButton filingId="uuid" taxYear="2025" llcName="Acme LLC" />
@@ -16,7 +16,6 @@
 import { useState } from 'react';
 import { Download, Loader2, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { generateFilingPackage } from '../lib/pdfGenerator';
 import type { Filing, Transaction } from '../lib/supabase';
 
 interface Props {
@@ -67,11 +66,12 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const filing = filingData as Filing;
       const transactions = (txnsData ?? []) as Transaction[];
 
-      // 3. Generate PDF package
+      // 3. Lazy-load pdf-lib + pdfGenerator only when needed (~480 kB, not in initial bundle)
       setStatus('generating');
+      const { generateFilingPackage } = await import('../lib/pdfGenerator');
       const pkg = await generateFilingPackage(filing, transactions);
 
-      // 4. Bundle into ZIP — lazy-load jszip only when needed
+      // 4. Bundle into ZIP — lazy-load jszip only when needed (~50 kB)
       setStatus('bundling');
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
