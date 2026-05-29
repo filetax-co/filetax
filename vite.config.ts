@@ -80,12 +80,8 @@ export default defineConfig({
             '@radix-ui/react-toggle-group',
             '@radix-ui/react-tooltip',
           ],
-          // PDF / file utilities
-          'pdf': ['pdf-lib', 'jszip'],
           // Charts
           'charts': ['recharts'],
-          // Motion / animation
-          'motion': ['motion'],
           // Form utilities
           'forms': ['react-hook-form', 'react-day-picker', 'input-otp'],
           // Misc UI libs
