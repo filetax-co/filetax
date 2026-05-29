@@ -33,8 +33,6 @@ export default defineConfig({
   },
   assetsInclude: ['**/*.svg', '**/*.csv'],
   server: {
-    // Listen on all interfaces so Codespaces port forwarding can reach the dev server.
-    // Without this, Vite only binds to 127.0.0.1 and the tunnel returns 404.
     host: '0.0.0.0',
     port: 5174,
     strictPort: true,
@@ -42,61 +40,39 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
+        manualChunks(id) {
+          // PDF libs — kept as a separate lazy chunk (loaded only on download click)
+          if (id.includes('pdf-lib') || id.includes('jszip')) return 'pdf';
           // React core
-          'react-vendor': ['react', 'react-dom'],
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) return 'react-vendor';
           // Routing
-          'router': ['react-router'],
+          if (id.includes('node_modules/react-router')) return 'router';
           // Supabase
-          'supabase': ['@supabase/supabase-js'],
-          // MUI (largest chunk — MUI + Emotion together are heavy)
-          'mui': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
-          // All Radix UI primitives
-          'radix': [
-            '@radix-ui/react-accordion',
-            '@radix-ui/react-alert-dialog',
-            '@radix-ui/react-aspect-ratio',
-            '@radix-ui/react-avatar',
-            '@radix-ui/react-checkbox',
-            '@radix-ui/react-collapsible',
-            '@radix-ui/react-context-menu',
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-hover-card',
-            '@radix-ui/react-label',
-            '@radix-ui/react-menubar',
-            '@radix-ui/react-navigation-menu',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-progress',
-            '@radix-ui/react-radio-group',
-            '@radix-ui/react-scroll-area',
-            '@radix-ui/react-select',
-            '@radix-ui/react-separator',
-            '@radix-ui/react-slider',
-            '@radix-ui/react-slot',
-            '@radix-ui/react-switch',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-toggle',
-            '@radix-ui/react-toggle-group',
-            '@radix-ui/react-tooltip',
-          ],
+          if (id.includes('node_modules/@supabase')) return 'supabase';
+          // MUI + Emotion
+          if (id.includes('node_modules/@mui') || id.includes('node_modules/@emotion')) return 'mui';
+          // Radix UI
+          if (id.includes('node_modules/@radix-ui')) return 'radix';
           // Charts
-          'charts': ['recharts'],
+          if (id.includes('node_modules/recharts')) return 'charts';
           // Form utilities
-          'forms': ['react-hook-form', 'react-day-picker', 'input-otp'],
+          if (
+            id.includes('node_modules/react-hook-form') ||
+            id.includes('node_modules/react-day-picker') ||
+            id.includes('node_modules/input-otp')
+          ) return 'forms';
           // Misc UI libs
-          'ui-misc': [
-            'lucide-react',
-            'cmdk',
-            'sonner',
-            'vaul',
-            'embla-carousel-react',
-            'react-resizable-panels',
-            'react-dnd',
-            'react-dnd-html5-backend',
-            'canvas-confetti',
-            'date-fns',
-          ],
+          if (
+            id.includes('node_modules/lucide-react') ||
+            id.includes('node_modules/cmdk') ||
+            id.includes('node_modules/sonner') ||
+            id.includes('node_modules/vaul') ||
+            id.includes('node_modules/embla-carousel') ||
+            id.includes('node_modules/react-resizable-panels') ||
+            id.includes('node_modules/react-dnd') ||
+            id.includes('node_modules/canvas-confetti') ||
+            id.includes('node_modules/date-fns')
+          ) return 'ui-misc';
         },
       },
     },
