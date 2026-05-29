@@ -6,12 +6,14 @@
  * them into a ZIP (with optional Part V statement), and triggers
  * a browser download.
  *
+ * pdf-lib and jszip are dynamically imported on first click so
+ * they are excluded from the initial bundle (~529 kB saved).
+ *
  * Usage:
  *   <DownloadPackageButton filingId="uuid" taxYear="2025" llcName="Acme LLC" />
  */
 
 import { useState } from 'react';
-import JSZip from 'jszip';
 import { Download, Loader2, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateFilingPackage } from '../lib/pdfGenerator';
@@ -69,8 +71,9 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       setStatus('generating');
       const pkg = await generateFilingPackage(filing, transactions);
 
-      // 4. Bundle into ZIP
+      // 4. Bundle into ZIP — lazy-load jszip only when needed
       setStatus('bundling');
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       const year = taxYear ?? filing.tax_year ?? String(new Date().getFullYear() - 1);
       const name = llcName ?? filing.llc_name ?? 'LLC';
