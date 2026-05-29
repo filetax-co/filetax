@@ -38,6 +38,9 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
+    // pdf-lib + jszip together are ~529 kB (lazy — loaded only on download click).
+    // This is intentional and acceptable; raise the limit to suppress the noise.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks(id) {
