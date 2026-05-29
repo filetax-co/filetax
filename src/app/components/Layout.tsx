@@ -11,6 +11,21 @@ function ScrollToTop() {
   return null;
 }
 
+function CanonicalTag() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const canonical = `https://filetax.co${pathname}`;
+    let tag = document.querySelector("link[rel='canonical']") as HTMLLinkElement | null;
+    if (!tag) {
+      tag = document.createElement("link");
+      tag.setAttribute("rel", "canonical");
+      document.head.appendChild(tag);
+    }
+    tag.setAttribute("href", canonical);
+  }, [pathname]);
+  return null;
+}
+
 const MARQUEE_TEXT = "The IRS penalty for a missing Form 5472 starts at $25,000 per form per year. Every unfiled year adds another.";
 
 const COPIES = 6;
@@ -19,6 +34,7 @@ export function Layout() {
   return (
     <div style={{ background: "var(--tf-bg)", color: "var(--tf-text)", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <ScrollToTop />
+      <CanonicalTag />
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
