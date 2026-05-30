@@ -69,11 +69,19 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function setText(doc: PDFDocument, fieldName: string, value: string | null | undefined) {
+function setText(
+  doc: PDFDocument,
+  fieldName: string,
+  value: string | null | undefined,
+  fontSize?: number
+) {
   if (!fieldName) return;
   try {
     const field = doc.getForm().getField(fieldName);
-    if (field instanceof PDFTextField) field.setText(value ?? '');
+    if (field instanceof PDFTextField) {
+      field.setText(value ?? '');
+      if (fontSize != null) field.setFontSize(fontSize);
+    }
   } catch {
     console.warn(`[pdfGenerator] TextField not found: ${fieldName}`);
   }
@@ -361,12 +369,14 @@ export async function fillForm5472(
   );
 
   // ── Header: tax year
+  // Use fontSize 9 to match the IRS template's printed size and avoid
+  // the default appearance placing text too high in the field widget.
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
-  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
-  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year);
-  setText(doc, F5472.TAX_YEAR_END,        end.label);
-  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
+  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label, 9);
+  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year,  9);
+  setText(doc, F5472.TAX_YEAR_END,        end.label,   9);
+  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year,    9);
 
   // ── Part I — Reporting Corporation
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
@@ -374,8 +384,9 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '');
-  setText(doc, F5472.CORP_ACTIVITY_CODE,  filing.naics_code ? String(filing.naics_code) : '');
+  // Business activity fields use a smaller font to match manual fill appearance
+  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '', 8);
+  setText(doc, F5472.CORP_ACTIVITY_CODE,  filing.naics_code ? String(filing.naics_code) : '', 9);
 
   const grossTotal = txn.total_received + txn.total_paid +
     txn.capital_contribution + txn.distribution +
@@ -414,8 +425,9 @@ export async function fillForm5472(
   setText(doc,  F5472.RP_US_TIN,                 filing.owner_us_tin ?? '');
   setText(doc,  F5472.RP_REFERENCE_ID,           filing.owner_reference_id ?? '');
   setText(doc,  F5472.RP_FOREIGN_TIN,            filing.owner_foreign_tax_id ?? '');
-  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '');
-  setText(doc,  F5472.RP_ACTIVITY_CODE,          filing.naics_code ? String(filing.naics_code) : '');
+  // Business activity fields use a smaller font to match manual fill appearance
+  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '', 8);
+  setText(doc,  F5472.RP_ACTIVITY_CODE,          filing.naics_code ? String(filing.naics_code) : '', 9);
 
   setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
   setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, false);
@@ -469,6 +481,11 @@ export async function fillForm5472(
   setCheck(doc, F5472.PART_V_CHECKBOX,  txn.hasPartV);
   setCheck(doc, F5472.PART_VI_CHECKBOX, true);
 
+  // Update field appearances before flattening so text renders at the
+  // correct vertical position (matching manual fill / IRS viewer output).
+  const helvetica = await doc.embedFont(StandardFonts.Helvetica);
+  doc.getForm().updateFieldAppearances(helvetica);
+
   doc.getForm().flatten();
   return doc.save();
 }
@@ -490,17 +507,18 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  const set = (name: string, val: string) => setText(doc, name, val);
+  const set = (name: string, val: string, fs?: number) => setText(doc, name, val, fs);
   const chk = (name: string, val: boolean) => setCheck(doc, name, val);
 
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── Tax year header
-  // BeginningDate: month+day only — no year (form auto-fills / pre-prints year)
-  set('BeginningDate', begin.label);                        // e.g. "January 1" or "March 15"
-  set('EndingDate',    end.label);                          // e.g. "December 31"
-  set('EndingYear',    end.year.slice(-2));                 // last 2 digits: "2025" → "25"
+  // Use fontSize 9 to match manual fill and prevent text from sitting too
+  // high in the field widget's bounding box.
+  set('BeginningDate', begin.label, 9);       // e.g. "January 1" or "March 15"
+  set('EndingDate',    end.label,   9);        // e.g. "December 31"
+  set('EndingYear',    end.year.slice(-2), 9); // last 2 digits: "2025" → "25"
 
   // ── Corp identity
   set('CorporateName', filing.llc_name ?? '');
@@ -526,12 +544,12 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('AddressChange',  filing.address_change ?? false);
 
   // ── Signature block
-  // Signature: owner's full name — pre-filled at generation time
   set('Signature', filing.owner_full_name ?? '');
-  // Date: today's date (the date the form is prepared/generated)
   set('Date',  todayFormatted());
-  // Title: use signer_title if provided; default to "Owner"
   set('Title', filing.signer_title ?? 'Owner');
+
+  const helvetica = await doc.embedFont(StandardFonts.Helvetica);
+  doc.getForm().updateFieldAppearances(helvetica);
 
   doc.getForm().flatten();
   return doc.save();
@@ -675,8 +693,7 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
-    // Signature line
-    drawLine('Prepared by:', boldFont, 9);
+    // Signature line — name and date only; no "Prepared by:" label
     y -= 18;
     page.drawLine({
       start: { x: margin, y },
@@ -786,17 +803,283 @@ export async function generateStatementsPdf(
   return pdfDoc.save();
 }
 
+// ─── Cover Letter ──────────────────────────────────────────────────────────────
+//
+// A professional cover letter addressed to the IRS, identifying the filing
+// package contents and the enclosures. Always the first page in the package.
+
+export async function generateCoverLetter(filing: Filing): Promise<Uint8Array> {
+  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
+  const pdfDoc  = await PDFDocument.create();
+  const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const page   = pdfDoc.addPage([612, 792]);
+  const margin  = 72;
+  let y = 792 - margin;
+
+  function drawLine(
+    text: string,
+    fnt: typeof font,
+    size: number,
+    indent = 0
+  ): void {
+    page.drawText(text, { x: margin + indent, y, size, font: fnt, color: rgb(0, 0, 0) });
+    y -= size * 1.6;
+  }
+
+  function drawBlank(lines = 1, size = 10): void {
+    y -= size * 1.6 * lines;
+  }
+
+  // ── Sender block (top-left)
+  drawLine(filing.llc_name ?? 'LLC Name', boldFont, 10);
+  if (filing.mailing_address) {
+    const street = fmtStreet(filing.mailing_address);
+    const cityLine = fmtCityStateZip(filing.mailing_address);
+    if (street)   drawLine(street, font, 10);
+    if (cityLine) drawLine(cityLine, font, 10);
+  }
+  drawBlank(1);
+  drawLine(todayFormatted(), font, 10);
+  drawBlank(2);
+
+  // ── Recipient block
+  drawLine('Internal Revenue Service', font, 10);
+  for (const line of IRS_MAILING_ADDRESS.slice(1)) {
+    drawLine(line, font, 10);
+  }
+  drawBlank(2);
+
+  // ── Re: line
+  drawLine(
+    `Re:  Form 5472 Filing Package — Tax Year ${taxYear}`,
+    boldFont, 10
+  );
+  drawLine(
+    `     ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`,
+    font, 10
+  );
+  drawBlank(1);
+
+  // ── Salutation
+  drawLine('To Whom It May Concern:', font, 10);
+  drawBlank(1);
+
+  // ── Body
+  const maxWidth = 612 - margin * 2;
+  function drawWrapped(text: string, fnt: typeof font, size: number, indent = 0): void {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (fnt.widthOfTextAtSize(test, size) > maxWidth - indent) {
+        if (current) lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    for (const line of lines) drawLine(line, fnt, size, indent);
+    y -= size * 0.4;
+  }
+
+  drawWrapped(
+    `Please find enclosed the Form 5472 filing package for the above-referenced ` +
+    `foreign-owned U.S. disregarded entity for the tax year ending December 31, ${taxYear}. ` +
+    `This package is submitted pursuant to IRC § 6038A and the accompanying regulations.`,
+    font, 10
+  );
+  drawBlank(1);
+
+  // ── Enclosures
+  drawLine('Enclosed:', boldFont, 10);
+  drawBlank(0.5, 10);
+  drawLine('1.  Pro Forma Form 1120 (cover return)', font, 10, 12);
+  drawLine('2.  Form 5472 — Information Return of a 25% Foreign-Owned U.S. Corporation', font, 10, 12);
+  drawLine('3.  Part VI Statement — Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 10, 12);
+  drawLine('4.  Part V Statement (if applicable) — Non-Monetary Transactions', font, 10, 12);
+  drawBlank(2);
+
+  drawWrapped(
+    'Please do not hesitate to contact the undersigned if additional information is required.',
+    font, 10
+  );
+  drawBlank(3);
+
+  // ── Signature block
+  page.drawLine({
+    start: { x: margin, y },
+    end:   { x: margin + 200, y },
+    thickness: 0.5,
+    color: rgb(0, 0, 0),
+  });
+  y -= 14;
+  drawLine(filing.owner_full_name ?? '', font, 10);
+  drawLine(filing.signer_title ?? 'Owner', font, 10);
+  drawLine(filing.llc_name ?? '', font, 10);
+
+  return pdfDoc.save();
+}
+
+// ─── Filing Instructions page ─────────────────────────────────────────────────
+//
+// Included ONLY when filing.include_irs_fax === false.
+// Provides step-by-step mailing instructions for the paper filing package.
+
+export async function generateFilingInstructions(
+  filing: Filing
+): Promise<Uint8Array> {
+  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
+  const pdfDoc  = await PDFDocument.create();
+  const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const page   = pdfDoc.addPage([612, 792]);
+  const margin  = 72;
+  const maxWidth = 612 - margin * 2;
+  let y = 792 - margin;
+
+  function drawLine(
+    text: string,
+    fnt: typeof font,
+    size: number,
+    indent = 0
+  ): void {
+    page.drawText(text, { x: margin + indent, y, size, font: fnt, color: rgb(0, 0, 0) });
+    y -= size * 1.6;
+  }
+
+  function drawWrapped(text: string, fnt: typeof font, size: number, indent = 0): void {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (fnt.widthOfTextAtSize(test, size) > maxWidth - indent) {
+        if (current) lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    for (const line of lines) drawLine(line, fnt, size, indent);
+    y -= size * 0.4;
+  }
+
+  function drawBlank(lines = 1, size = 10): void {
+    y -= size * 1.6 * lines;
+  }
+
+  function drawDivider(): void {
+    y -= 6;
+    page.drawLine({
+      start: { x: margin, y },
+      end:   { x: 612 - margin, y },
+      thickness: 0.5,
+      color: rgb(0.6, 0.6, 0.6),
+    });
+    y -= 10;
+  }
+
+  // ── Title
+  drawLine('FILING INSTRUCTIONS', boldFont, 12);
+  drawLine(`Form 5472 Package — Tax Year ${taxYear}`, font, 10);
+  drawLine(`${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`, font, 10);
+  drawDivider();
+
+  // ── Step 1
+  drawLine('Step 1 — Assemble the Package', boldFont, 10);
+  drawBlank(0.5);
+  drawWrapped(
+    'Print all documents in this package single-sided on standard 8.5 × 11" white paper. ' +
+    'Arrange the pages in the following order:',
+    font, 10
+  );
+  drawLine('1.  This cover letter', font, 10, 12);
+  drawLine('2.  These filing instructions', font, 10, 12);
+  drawLine('3.  Pro Forma Form 1120 (page 1 only)', font, 10, 12);
+  drawLine('4.  Form 5472 (all pages)', font, 10, 12);
+  drawLine('5.  Part VI Statement (attachment to Form 5472)', font, 10, 12);
+  drawLine('6.  Part V Statement, if applicable', font, 10, 12);
+  drawBlank(1);
+
+  // ── Step 2
+  drawLine('Step 2 — Review Before Signing', boldFont, 10);
+  drawBlank(0.5);
+  drawWrapped(
+    'Verify all fields on Form 5472 and the Pro Forma 1120 are complete and accurate. ' +
+    'Sign and date the Pro Forma 1120 signature block. Do NOT sign Form 5472 separately — ' +
+    'it is attached to and filed with the Pro Forma 1120.',
+    font, 10
+  );
+  drawBlank(1);
+
+  // ── Step 3
+  drawLine('Step 3 — Mail the Package', boldFont, 10);
+  drawBlank(0.5);
+  drawWrapped('Send the complete package by U.S. Mail or private delivery service to:', font, 10);
+  drawBlank(0.5);
+  for (const line of IRS_MAILING_ADDRESS) {
+    drawLine(line, boldFont, 10, 12);
+  }
+  drawBlank(1);
+  drawWrapped(
+    'We strongly recommend using certified mail (USPS) or an IRS-approved private delivery ' +
+    'service (FedEx, UPS, DHL) so you have proof of timely filing.',
+    font, 10
+  );
+  drawBlank(1);
+
+  // ── Due Date
+  drawLine('Due Date', boldFont, 10);
+  drawBlank(0.5);
+  drawWrapped(
+    `The filing deadline is April 15, ${Number(taxYear) + 1} (or October 15, ${Number(taxYear) + 1} ` +
+    'if a timely Form 7004 extension was filed). Late filing carries a $25,000 penalty per form ' +
+    'under IRC § 6038A(d).',
+    font, 10
+  );
+  drawBlank(1);
+
+  drawDivider();
+
+  // ── Penalty notice
+  drawWrapped(
+    'IMPORTANT: Failure to timely file or include required information on Form 5472 may result ' +
+    'in a $25,000 penalty per form per tax year, with continuation penalties of $25,000 for each ' +
+    '30-day period the failure continues after IRS notification.',
+    boldFont, 9
+  );
+
+  return pdfDoc.save();
+}
+
 // ─── Package generator ────────────────────────────────────────────────────────
+//
+// Generates a SINGLE combined PDF in the correct page order:
+//   Page 1:      Cover Letter
+//   Page 2:      Filing Instructions (ONLY if include_irs_fax === false)
+//   Page 3(+):   Pro Forma Form 1120 (1 page)
+//   Next pages:  Form 5472 (3 pages)
+//   Final pages: Statements (Part VI always; Part V if applicable)
 
 export interface FilingPackage {
+  /**
+   * Combined single PDF with all pages in the correct order.
+   * Always contains: cover letter, pro forma 1120, form 5472, statements.
+   * Filing instructions page is included only when include_irs_fax === false.
+   */
+  combinedPdfBytes: Uint8Array;
+  /** Individual PDFs retained for backward compatibility / separate downloads */
   form5472Bytes: Uint8Array;
   proForma1120Bytes: Uint8Array;
-  /**
-   * Combined statements PDF — always generated.
-   * Page 1: Part VI (§ 1.6038A-2(b)(7)(ix) non-arm's length service disclosure)
-   * Page 2: Part V non-monetary transactions (only present when hasPartV is true)
-   */
   statementsPdfBytes: Uint8Array;
+  coverLetterBytes: Uint8Array;
+  filingInstructionsBytes: Uint8Array | null;
   hasPartV: boolean;
   hasPartVI: true;
 }
@@ -805,16 +1088,59 @@ export async function generateFilingPackage(
   filing: Filing,
   transactions: Transaction[]
 ): Promise<FilingPackage> {
-  const [form5472Bytes, proForma1120Bytes, statementsPdfBytes] = await Promise.all([
-    fillForm5472(filing, transactions),
-    fillProForma1120(filing),
-    generateStatementsPdf(filing, transactions),
-  ]);
-  const txn = aggregateTransactions(transactions);
-  return {
+  const includeFax = filing.include_irs_fax === true;
+
+  // Generate all components in parallel
+  const [
     form5472Bytes,
     proForma1120Bytes,
     statementsPdfBytes,
+    coverLetterBytes,
+    filingInstructionsBytes,
+  ] = await Promise.all([
+    fillForm5472(filing, transactions),
+    fillProForma1120(filing),
+    generateStatementsPdf(filing, transactions),
+    generateCoverLetter(filing),
+    includeFax ? Promise.resolve(null) : generateFilingInstructions(filing),
+  ]);
+
+  // ── Assemble combined PDF in the correct page order ──────────────────────────
+  const combined = await PDFDocument.create();
+
+  async function appendPdf(srcBytes: Uint8Array): Promise<void> {
+    const src = await PDFDocument.load(srcBytes);
+    const pages = await combined.copyPages(src, src.getPageIndices());
+    for (const page of pages) combined.addPage(page);
+  }
+
+  // 1. Cover letter (always)
+  await appendPdf(coverLetterBytes);
+
+  // 2. Filing instructions (only when NOT faxing)
+  if (filingInstructionsBytes) {
+    await appendPdf(filingInstructionsBytes);
+  }
+
+  // 3. Pro Forma 1120
+  await appendPdf(proForma1120Bytes);
+
+  // 4. Form 5472
+  await appendPdf(form5472Bytes);
+
+  // 5. Statements (Part VI always; Part V appended inside generateStatementsPdf when applicable)
+  await appendPdf(statementsPdfBytes);
+
+  const combinedPdfBytes = await combined.save();
+
+  const txn = aggregateTransactions(transactions);
+  return {
+    combinedPdfBytes,
+    form5472Bytes,
+    proForma1120Bytes,
+    statementsPdfBytes,
+    coverLetterBytes,
+    filingInstructionsBytes,
     hasPartV: txn.hasPartV,
     hasPartVI: true,
   };
