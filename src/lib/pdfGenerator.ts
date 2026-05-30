@@ -26,7 +26,7 @@
  * CheckBox     FinalReturn
  * CheckBox     NameChange
  * CheckBox     AddressChange
- * TextField    Signature       — leave blank (pro forma; signed by taxpayer)
+ * TextField    Signature       — owner_full_name (auto-filled at generation time)
  * TextField    Date            — today's date in MM/DD/YYYY format
  * TextField    Title           — filing.signer_title ?? "Owner" (default)
  * TextField    BeginningDate   — month+day only, e.g. "January 1" (year auto-filled by form)
@@ -467,7 +467,7 @@ export async function fillForm5472(
 // Verified field names (17 fields total):
 //   CorporateName, AddressLine1, City, State, Country, Zipcode, EIN
 //   Initial Return, FinalReturn, NameChange, AddressChange
-//   Signature  — left blank (taxpayer signs the physical copy)
+//   Signature  — owner_full_name (auto-filled at generation time)
 //   Date       — today's date (MM/DD/YYYY), filled automatically at generation time
 //   Title      — filing.signer_title if set, otherwise defaults to "Owner"
 //   BeginningDate — month+day only (e.g. "January 1"); year auto-filled by form
@@ -515,8 +515,8 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('AddressChange',  filing.address_change ?? false);
 
   // ── Signature block
-  // Signature: intentionally blank — taxpayer signs the physical/printed copy
-  set('Signature', '');
+  // Signature: owner's full name — pre-filled at generation time
+  set('Signature', filing.owner_full_name ?? '');
   // Date: today's date (the date the form is prepared/generated)
   set('Date',  todayFormatted());
   // Title: use signer_title if provided; default to "Owner"
