@@ -4,49 +4,41 @@
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
  * PDFs are served from /pdf/ (public/pdf/) to avoid CORS.
  *
- * Templates (static + fillable AcroForm):
- *   public/pdf/Form-5472.pdf          — Form 5472 (Rev. 12-2023)
- *   public/pdf/Form-1120-Page-1.pdf   — Pro Forma 1120, page 1 only
+ * Templates (static + fillable AcroForm, verified field names):
+ *   public/pdf/Form-5472.pdf          — 78 fields, 3 pages
+ *   public/pdf/Form-1120-Page-1.pdf   — 17 fields, 1 page
  *
- * ── Form 5472 (Rev. 12-2023) field structure ──────────────────────────────
- * See form5472Fields.ts for the complete field name map.
+ * Field names are simple flat AcroForm names (NOT XFA dot-paths).
+ * Verified by live PDF dump — see audit output in project docs.
  *
- * Part IV line numbering (Rev. 12-2023 — CHANGED from earlier revisions):
- *   Lines 9–22  = amounts RECEIVED by reporting corp
- *   Lines 23–36 = amounts PAID by reporting corp
+ * ── Form 5472 field map ───────────────────────────────────────────────────────
+ * See form5472Fields.ts (F5472 constants) for the complete mapping.
  *
- * ── Pro Forma 1120 (2025) field structure ──────────────────────────────
- * Header date fields:       PgHeader[0].f1_1 (begin month/day)
- *                           PgHeader[0].f1_2 (begin year)
- *                           PgHeader[0].f1_3 (end month/day, includes year)
- * Box A checkboxes (all must be UNCHECKED):
- *   A1a = Consolidated return                 PgHeader[0].c1_1a[0]
- *   A1b = Life/nonlife consolidated return    PgHeader[0].c1_1b[0]
- *   A2  = Personal holding company (PHC)      PgHeader[0].c1_2[0]
- *   A3  = Personal service corp               PgHeader[0].c1_3[0]
- *   A4  = Schedule M-3 attached               PgHeader[0].c1_4[0]
- * Identity fields:
- *   Name       PgHeader[0].NameFieldsReadOrder[0].f1_4[0]
- *   EIN (B)    PgHeader[0].NameFieldsReadOrder[0].f1_5[0]
- *   Address    PgHeader[0].NameFieldsReadOrder[0].f1_6[0]
- *   C Date inc PgHeader[0].NameFieldsReadOrder[0].f1_7[0]  — LEAVE BLANK
- *   City       PgHeader[0].NameFieldsReadOrder[0].f1_8[0]
- *   State      PgHeader[0].NameFieldsReadOrder[0].f1_9[0]
- *   Country    PgHeader[0].NameFieldsReadOrder[0].f1_10[0]
- *   ZIP        PgHeader[0].NameFieldsReadOrder[0].f1_11[0]
- *   D Assets   PgHeader[0].NameFieldsReadOrder[0].f1_12[0]
- * Box E checkboxes:
- *   E1 = Initial return    PgHeader[0].NameFieldsReadOrder[0].A_ReadOrder[0].c1_E1[0]
- *   E2 = Final return      PgHeader[0].NameFieldsReadOrder[0].A_ReadOrder[0].c1_E2[0]
- *   E3 = Name change       PgHeader[0].NameFieldsReadOrder[0].A_ReadOrder[0].c1_E3[0]
- *   E4 = Address change    PgHeader[0].NameFieldsReadOrder[0].A_ReadOrder[0].c1_E4[0]
+ * ── Form 1120 Page 1 field map ────────────────────────────────────────────────
+ * TextField    CorporateName
+ * TextField    AddressLine1
+ * TextField    City
+ * TextField    State
+ * TextField    Country
+ * TextField    Zipcode
+ * TextField    EIN
+ * CheckBox     Initial Return
+ * CheckBox     FinalReturn
+ * CheckBox     NameChange
+ * CheckBox     AddressChange
+ * TextField    Signature       — leave blank (pro forma)
+ * TextField    Date            — leave blank (pro forma)
+ * TextField    Title           — leave blank (pro forma)
+ * TextField    BeginningDate   — e.g. "January 1, 2025"
+ * TextField    EndingDate      — e.g. "December 31"
+ * TextField    EndingYear      — e.g. "2025"
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
-// ── Template paths — must match filenames in public/pdf/ ─────────────────────
+// ── Template paths — must match filenames in public/pdf/ ──────────────────────
 const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/Form-5472.pdf`;
 const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/Form-1120-Page-1.pdf`;
 
@@ -57,12 +49,11 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
   const res = await fetch(path);
   if (!res.ok) throw new Error(
     `Could not load PDF template at ${path} (${res.status}). ` +
-    `Ensure public/pdf/Form-5472.pdf and public/pdf/Form-1120-Page-1.pdf exist in the repo.`
+    `Ensure public/pdf/Form-5472.pdf and public/pdf/Form-1120-Page-1.pdf exist.`
   );
   const bytes = await res.arrayBuffer();
   if (bytes.byteLength < 1000) throw new Error(
-    `PDF at ${path} is empty or too small (${bytes.byteLength} bytes). ` +
-    `Re-upload the correct AcroForm template to public/pdf/.`
+    `PDF at ${path} is too small (${bytes.byteLength} bytes). Re-upload the template.`
   );
   pdfCache[path] = bytes;
   return bytes;
@@ -71,22 +62,20 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function setText(doc: PDFDocument, fieldName: string, value: string | null | undefined) {
+  if (!fieldName) return; // skip intentionally unmapped fields
   try {
     const field = doc.getForm().getField(fieldName);
-    if (field instanceof PDFTextField) {
-      field.setText(value ?? '');
-    }
+    if (field instanceof PDFTextField) field.setText(value ?? '');
   } catch {
     console.warn(`[pdfGenerator] TextField not found: ${fieldName}`);
   }
 }
 
 function setCheck(doc: PDFDocument, fieldName: string, checked: boolean) {
+  if (!fieldName) return;
   try {
     const field = doc.getForm().getField(fieldName);
-    if (field instanceof PDFCheckBox) {
-      checked ? field.check() : field.uncheck();
-    }
+    if (field instanceof PDFCheckBox) checked ? field.check() : field.uncheck();
   } catch {
     console.warn(`[pdfGenerator] CheckBox not found: ${fieldName}`);
   }
@@ -108,8 +97,7 @@ function fmtEin(ein: string | null | undefined): string {
 
 /**
  * Format a date string as MM/DD/YYYY.
- * Uses UTC getters to avoid off-by-one when date is stored as "YYYY-MM-DD"
- * (parsed as UTC midnight) and rendered in a local time zone west of UTC.
+ * Uses UTC getters to avoid off-by-one for YYYY-MM-DD stored dates.
  */
 function fmtDate(val: string | null | undefined): string {
   if (!val) return '';
@@ -128,21 +116,6 @@ function fmtStreet(addr: Address | null | undefined): string {
   return [addr.line1, addr.line2].filter(Boolean).join(', ');
 }
 
-/** City only */
-function fmtCity(addr: Address | null | undefined): string {
-  return addr?.city ?? '';
-}
-
-/** State/region only */
-function fmtState(addr: Address | null | undefined): string {
-  return addr?.region ?? '';
-}
-
-/** ZIP/postal code only */
-function fmtZip(addr: Address | null | undefined): string {
-  return addr?.postal_code ?? '';
-}
-
 /** City, State ZIP — for single combined field (Form 5472 style) */
 function fmtCityStateZip(addr: Address | null | undefined): string {
   if (!addr) return '';
@@ -154,6 +127,11 @@ function fmtCityStateZip(addr: Address | null | undefined): string {
   ].filter(Boolean).join(', ');
 }
 
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
 /**
  * Build tax period begin: month-day label and year as separate strings.
  * Uses UTC getters throughout.
@@ -162,10 +140,6 @@ function resolvePeriodBegin(
   filing: Filing,
   taxYear: string
 ): { label: string; year: string } {
-  const MONTH_NAMES = [
-    'January','February','March','April','May','June',
-    'July','August','September','October','November','December',
-  ];
   if (filing.initial_return && filing.date_of_incorporation) {
     const d = new Date(filing.date_of_incorporation);
     if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
@@ -187,10 +161,6 @@ function resolvePeriodEnd(
   filing: Filing,
   taxYear: string
 ): { label: string; year: string } {
-  const MONTH_NAMES = [
-    'January','February','March','April','May','June',
-    'July','August','September','October','November','December',
-  ];
   if (filing.tax_period_end) {
     const [yearStr, monthStr, dayStr] = filing.tax_period_end.split('-');
     const month = parseInt(monthStr, 10);
@@ -213,7 +183,6 @@ export const PART_V_CATEGORIES = [
 ] as const;
 
 interface TxnTotals {
-  // Received
   sales_received: number;
   tangible_prop_received: number;
   rents_received: number;
@@ -228,7 +197,6 @@ interface TxnTotals {
   loan_guarantee_received: number;
   other_received: number;
   total_received: number;
-  // Paid
   sales_paid: number;
   tangible_prop_paid: number;
   rents_paid: number;
@@ -243,12 +211,10 @@ interface TxnTotals {
   loan_guarantee_paid: number;
   other_paid: number;
   total_paid: number;
-  // Part V
   capital_contribution: number;
   distribution: number;
   formation_costs: number;
   property_transfer: number;
-  // Flags
   hasPartIV: boolean;
   hasPartV: boolean;
 }
@@ -279,18 +245,12 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
     const dir = tx.direction;
 
     switch (tx.transaction_type) {
-      // — Sales / tangible property
       case 'sales':
-        dir === 'received'
-          ? (t.sales_received += amt)
-          : (t.sales_paid += amt);
+        dir === 'received' ? (t.sales_received += amt) : (t.sales_paid += amt);
         t.hasPartIV = true; break;
       case 'tangible_property':
-        dir === 'received'
-          ? (t.tangible_prop_received += amt)
-          : (t.tangible_prop_paid += amt);
+        dir === 'received' ? (t.tangible_prop_received += amt) : (t.tangible_prop_paid += amt);
         t.hasPartIV = true; break;
-      // — Rents / royalties
       case 'rent_royalty':
         if (dir === 'received') {
           tx.is_royalty ? (t.royalties_received += amt) : (t.rents_received += amt);
@@ -298,58 +258,31 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
           tx.is_royalty ? (t.royalties_paid += amt) : (t.rents_paid += amt);
         }
         t.hasPartIV = true; break;
-      // — Intangible property
       case 'intangible':
-        dir === 'received'
-          ? (t.intangible_received += amt)
-          : (t.intangible_paid += amt);
+        dir === 'received' ? (t.intangible_received += amt) : (t.intangible_paid += amt);
         t.hasPartIV = true; break;
-      // — Services
       case 'service_payment':
-        dir === 'received'
-          ? (t.services_received += amt)
-          : (t.services_paid += amt);
+        dir === 'received' ? (t.services_received += amt) : (t.services_paid += amt);
         t.hasPartIV = true; break;
-      // — Commissions
       case 'commission':
-        dir === 'received'
-          ? (t.commissions_received += amt)
-          : (t.commissions_paid += amt);
+        dir === 'received' ? (t.commissions_received += amt) : (t.commissions_paid += amt);
         t.hasPartIV = true; break;
-      // — Borrowing / lending (17a/17b = borrowed; 31a/31b = loaned)
       case 'loan_to_llc':
-        // LLC borrowed from owner: goes on line 17
-        t.borrowed_end += amt;
-        t.hasPartIV = true; break;
+        t.borrowed_end += amt; t.hasPartIV = true; break;
       case 'loan_from_llc':
-        // LLC loaned to owner: goes on line 31
-        t.loaned_end += amt;
-        t.hasPartIV = true; break;
-      // — Interest
+        t.loaned_end += amt; t.hasPartIV = true; break;
       case 'interest':
-        dir === 'paid'
-          ? (t.interest_paid += amt)
-          : (t.interest_received += amt);
+        dir === 'paid' ? (t.interest_paid += amt) : (t.interest_received += amt);
         t.hasPartIV = true; break;
-      // — Insurance
       case 'insurance':
-        dir === 'paid'
-          ? (t.insurance_paid += amt)
-          : (t.insurance_received += amt);
+        dir === 'paid' ? (t.insurance_paid += amt) : (t.insurance_received += amt);
         t.hasPartIV = true; break;
-      // — Loan guarantee fees
       case 'loan_guarantee':
-        dir === 'paid'
-          ? (t.loan_guarantee_paid += amt)
-          : (t.loan_guarantee_received += amt);
+        dir === 'paid' ? (t.loan_guarantee_paid += amt) : (t.loan_guarantee_received += amt);
         t.hasPartIV = true; break;
-      // — Other
       case 'other':
-        dir === 'paid'
-          ? (t.other_paid += amt)
-          : (t.other_received += amt);
+        dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         t.hasPartIV = true; break;
-      // — Part V (non-monetary / disregarded entity formation/dissolution)
       case 'capital_contribution':
         t.capital_contribution += amt; t.hasPartV = true; break;
       case 'distribution':
@@ -361,7 +294,6 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
     }
   }
 
-  // Compute totals (lines 22 and 36)
   t.total_received =
     t.sales_received + t.tangible_prop_received +
     t.rents_received + t.royalties_received +
@@ -369,6 +301,7 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
     t.commissions_received + t.borrowed_end +
     t.interest_received + t.insurance_received +
     t.loan_guarantee_received + t.other_received;
+
   t.total_paid =
     t.sales_paid + t.tangible_prop_paid +
     t.rents_paid + t.royalties_paid +
@@ -399,10 +332,10 @@ export async function fillForm5472(
   // ── Header: tax year
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
-  setText(doc, F5472.TAX_YEAR_BEGIN,       begin.label);
-  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR,  begin.year);
-  setText(doc, F5472.TAX_YEAR_END,         end.label);
-  setText(doc, F5472.TAX_YEAR_END_YEAR,    end.year);
+  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label);
+  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year);
+  setText(doc, F5472.TAX_YEAR_END,        end.label);
+  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year);
 
   // ── Part I — Reporting Corporation
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
@@ -413,71 +346,46 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '');
   setText(doc, F5472.CORP_ACTIVITY_CODE,  filing.naics_code ? String(filing.naics_code) : '');
 
-  // 1f, 1g, 1h
   const grossTotal = txn.total_received + txn.total_paid +
     txn.capital_contribution + txn.distribution +
     txn.formation_costs + txn.property_transfer;
   setText(doc, F5472.CORP_GROSS_PAYMENTS, fmt(grossTotal));
   setText(doc, F5472.CORP_NUM_FORMS,      '1');
-  setText(doc, F5472.CORP_GROSS_ALL,      fmt(grossTotal)); // same value when only 1 form
+  setText(doc, F5472.CORP_GROSS_ALL,      fmt(grossTotal));
 
-  // 1i — Consolidated filing: always FALSE for a single-entity DE filing
   setCheck(doc, F5472.CONSOLIDATED_FILING, false);
-  // 1j — Initial return
-  setCheck(doc, F5472.INITIAL_RETURN_YES, isInitial);
-  // 1k — Parts VIII count: 0 unless CSA (not applicable here)
-  setText(doc, F5472.PARTS_VIII_COUNT, '0');
+  setCheck(doc, F5472.INITIAL_RETURN_YES,  isInitial);
+  setText(doc,  F5472.PARTS_VIII_COUNT,   '0');
 
-  // 1l, 1m, 1n, 1o
-  setText(doc, F5472.CORP_COUNTRY_OF_INC,      'United States');
-  setText(doc, F5472.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
-  setText(doc, F5472.CORP_RESIDENT_COUNTRY,    'United States');
+  setText(doc, F5472.CORP_COUNTRY_OF_INC,           'United States');
+  setText(doc, F5472.CORP_DATE_OF_INCORPORATION,    fmtDate(filing.date_of_incorporation));
+  setText(doc, F5472.CORP_RESIDENT_COUNTRY,         'United States');
   setText(doc, F5472.CORP_COUNTRY_BUSINESS,
     filing.mailing_address?.country ?? 'United States');
 
-  // Checkbox 2: foreign person owns ≥ 50% — always true for foreign-owned DE
-  setCheck(doc, F5472.FOREIGN_OWNS_50PCT, true);
-  // Checkbox 3: foreign-owned U.S. DE — always true
+  setCheck(doc, F5472.FOREIGN_OWNS_50PCT,       true);
   setCheck(doc, F5472.CORP_IS_FOREIGN_OWNED_DE, true);
 
-  // Part II — Surrogate corp: always unchecked
-  setCheck(doc, F5472.SURROGATE_CORP_CHECKBOX, false);
-
-  // Part II — Row 4: direct 25% foreign shareholder
-  setText(doc, F5472.SHAREHOLDER_NAME,               filing.owner_full_name ?? '');
-  setText(doc, F5472.SHAREHOLDER_US_TIN,             filing.owner_us_tin ?? '');
-  setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,       filing.owner_reference_id ?? '');
-  setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,        filing.owner_foreign_tax_id ?? '');
-  setText(doc, F5472.SHAREHOLDER_COUNTRY_BUSINESS,   filing.owner_country_citizenship ?? '');
-  setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP,filing.owner_country_citizenship ?? '');
+  // ── Part II — 25% Foreign Shareholder (row 4)
+  setText(doc, F5472.SHAREHOLDER_NAME,                filing.owner_full_name ?? '');
+  setText(doc, F5472.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
+  setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
+  setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
+  setText(doc, F5472.SHAREHOLDER_COUNTRY_BUSINESS,    filing.owner_country_citizenship ?? '');
+  setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // Rows 5, 6, 7 — explicitly blank
-  for (const key of [
-    F5472.SHAREHOLDER2_NAME, F5472.SHAREHOLDER2_US_TIN, F5472.SHAREHOLDER2_REFERENCE_ID,
-    F5472.SHAREHOLDER2_FOREIGN_TIN, F5472.SHAREHOLDER2_COUNTRY_BUSINESS,
-    F5472.SHAREHOLDER2_COUNTRY_CITIZENSHIP, F5472.SHAREHOLDER2_RESIDENT_COUNTRY,
-    F5472.SHAREHOLDER3_NAME, F5472.SHAREHOLDER3_US_TIN, F5472.SHAREHOLDER3_REFERENCE_ID,
-    F5472.SHAREHOLDER3_FOREIGN_TIN, F5472.SHAREHOLDER3_COUNTRY_BUSINESS,
-    F5472.SHAREHOLDER3_COUNTRY_CITIZENSHIP, F5472.SHAREHOLDER3_RESIDENT_COUNTRY,
-    F5472.SHAREHOLDER4_NAME, F5472.SHAREHOLDER4_US_TIN, F5472.SHAREHOLDER4_REFERENCE_ID,
-    F5472.SHAREHOLDER4_FOREIGN_TIN, F5472.SHAREHOLDER4_COUNTRY_BUSINESS,
-    F5472.SHAREHOLDER4_COUNTRY_CITIZENSHIP, F5472.SHAREHOLDER4_RESIDENT_COUNTRY,
-  ]) setText(doc, key, '');
+  // ── Part III — Related Party
+  setCheck(doc, F5472.RP_IS_FOREIGN_PERSON,      true);
+  setCheck(doc, F5472.RP_IS_US_PERSON,           false);
+  setText(doc,  F5472.RP_NAME,                   filing.owner_full_name ?? '');
+  setText(doc,  F5472.RP_US_TIN,                 filing.owner_us_tin ?? '');
+  setText(doc,  F5472.RP_REFERENCE_ID,           filing.owner_reference_id ?? '');
+  setText(doc,  F5472.RP_FOREIGN_TIN,            filing.owner_foreign_tax_id ?? '');
+  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '');
+  setText(doc,  F5472.RP_ACTIVITY_CODE,          filing.naics_code ? String(filing.naics_code) : '');
 
-  // Part III — Related Party
-  // The related party IS the 25% foreign shareholder (same person).
-  setCheck(doc, F5472.RP_IS_FOREIGN_PERSON, true);
-  setCheck(doc, F5472.RP_IS_US_PERSON,      false);
-  setText(doc, F5472.RP_NAME,         filing.owner_full_name ?? '');
-  setText(doc, F5472.RP_US_TIN,       filing.owner_us_tin ?? '');
-  setText(doc, F5472.RP_REFERENCE_ID, filing.owner_reference_id ?? '');
-  setText(doc, F5472.RP_FOREIGN_TIN,  filing.owner_foreign_tax_id ?? '');
-  setText(doc, F5472.RP_ACTIVITY,     filing.owner_business_activity ?? filing.naics_description ?? '');
-  setText(doc, F5472.RP_ACTIVITY_CODE,filing.naics_code ? String(filing.naics_code) : '');
-
-  // 8e — Relationship: the owner IS the 25% foreign shareholder
   setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
   setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, false);
   setCheck(doc, F5472.RP_IS_25PCT_SHAREHOLDER,   true);
@@ -487,9 +395,9 @@ export async function fillForm5472(
   setText(doc, F5472.RP_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // Part IV — Monetary Transactions (lines 9-36 per Rev. 12-2023)
+  // ── Part IV — Monetary Transactions
   if (txn.hasPartIV) {
-    // Amounts RECEIVED (lines 9-22)
+    // Received
     setText(doc, F5472.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F5472.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F5472.LINE_11_PCT_PAYMENTS_RECEIVED,   '');
@@ -506,8 +414,7 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
     setText(doc, F5472.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
     setText(doc, F5472.LINE_22_TOTAL_RECEIVED,          fmt(txn.total_received));
-
-    // Amounts PAID (lines 23-36)
+    // Paid
     setText(doc, F5472.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F5472.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
     setText(doc, F5472.LINE_25_PCT_PAYMENTS_PAID,       '');
@@ -526,124 +433,48 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_36_TOTAL_PAID,              fmt(txn.total_paid));
   }
 
-  // Part V — checkbox only (description goes on attached statement)
+  // ── Part V / VI checkboxes
   setCheck(doc, F5472.PART_V_CHECKBOX,  txn.hasPartV);
-  // Part VI — always false (nonmonetary transactions handled in Part V for DE)
   setCheck(doc, F5472.PART_VI_CHECKBOX, false);
-
-  // Part VII — all No (standard for a simple foreign-owned DE with no imports/CSA/FDII)
-  setCheck(doc, F5472.LINE_37_YES,  false); setCheck(doc, F5472.LINE_37_NO,  true);
-  setCheck(doc, F5472.LINE_38A_YES, false); setCheck(doc, F5472.LINE_38A_NO, true);
-  setCheck(doc, F5472.LINE_38C_YES, false); setCheck(doc, F5472.LINE_38C_NO, true);
-  setCheck(doc, F5472.LINE_39_YES,  false); setCheck(doc, F5472.LINE_39_NO,  true);
-  setCheck(doc, F5472.LINE_40A_YES, false); setCheck(doc, F5472.LINE_40A_NO, true);
-  setCheck(doc, F5472.LINE_41A_YES, false); setCheck(doc, F5472.LINE_41A_NO, true);
-  setCheck(doc, F5472.LINE_42A_YES, false); setCheck(doc, F5472.LINE_42A_NO, true);
-  setCheck(doc, F5472.LINE_42B_YES, false); setCheck(doc, F5472.LINE_42B_NO, true);
-  setCheck(doc, F5472.LINE_43A_YES, false); setCheck(doc, F5472.LINE_43A_NO, true);
-
-  // Part VIII — all No (no CSA)
-  setCheck(doc, F5472.LINE_45_YES, false); setCheck(doc, F5472.LINE_45_NO, true);
-  setCheck(doc, F5472.LINE_46_YES, false); setCheck(doc, F5472.LINE_46_NO, true);
-  setCheck(doc, F5472.LINE_48C_YES,false); setCheck(doc, F5472.LINE_48C_NO, true);
 
   doc.getForm().flatten();
   return doc.save();
 }
 
-// ─── Pro Forma Form 1120 (2025) filler ───────────────────────────────────────────
+// ─── Pro Forma Form 1120 (page 1 only) filler ────────────────────────────────
 //
-// Field paths verified from the 2025 Form 1120 PDF text layer.
-//
-//   HDR = topmostSubform[0].Page1[0].PgHeader[0]
-//   NF  = HDR.NameFieldsReadOrder[0]
-//   AR  = NF.A_ReadOrder[0]
-//
-// Box A (all must be unchecked):
-//   HDR.c1_1a[0] = Consolidated return
-//   HDR.c1_1b[0] = Life/nonlife consolidated return
-//   HDR.c1_2[0]  = Personal holding co (PHC)
-//   HDR.c1_3[0]  = Personal service corp (PSC)
-//   HDR.c1_4[0]  = Schedule M-3 attached
-//
-// Identity + address:
-//   NF.f1_4[0]   = Corp name
-//   NF.f1_5[0]   = EIN (Box B)
-//   NF.f1_6[0]   = Street address
-//   NF.f1_7[0]   = Date incorporated (Box C) — BLANK on Pro Forma
-//   NF.f1_8[0]   = City
-//   NF.f1_9[0]   = State or province
-//   NF.f1_10[0]  = Country
-//   NF.f1_11[0]  = ZIP or foreign postal code
-//   NF.f1_12[0]  = Total assets (Box D)
-//
-// Box E checkboxes:
-//   AR.c1_E1[0]  = (1) Initial return
-//   AR.c1_E2[0]  = (2) Final return
-//   AR.c1_E3[0]  = (3) Name change
-//   AR.c1_E4[0]  = (4) Address change
-
-const H1120 = 'topmostSubform[0].Page1[0].PgHeader[0]';
-const NF    = `${H1120}.NameFieldsReadOrder[0]`;
-const AR    = `${NF}.A_ReadOrder[0]`;
+// Verified field names (17 fields total):
+//   CorporateName, AddressLine1, City, State, Country, Zipcode, EIN
+//   Initial Return, FinalReturn, NameChange, AddressChange
+//   Signature, Date, Title  (all left blank on pro forma)
+//   BeginningDate, EndingDate, EndingYear
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-
-  // Remove pages 2–6 — Pro Forma only uses Page 1
-  for (let i = doc.getPageCount() - 1; i >= 1; i--) {
-    doc.removePage(i);
-  }
-
-  const form = doc.getForm();
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
-  const set = (name: string, val: string) => {
-    try {
-      const f = form.getField(name);
-      if (f instanceof PDFTextField) f.setText(val);
-    } catch {
-      console.warn(`[proForma1120] field not found: ${name}`);
-    }
-  };
-  const chk = (name: string, val: boolean) => {
-    try {
-      const f = form.getField(name);
-      if (f instanceof PDFCheckBox) val ? f.check() : f.uncheck();
-    } catch {
-      console.warn(`[proForma1120] checkbox not found: ${name}`);
-    }
-  };
+  const set = (name: string, val: string) => setText(doc, name, val);
+  const chk = (name: string, val: boolean) => setCheck(doc, name, val);
 
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── Tax year header
-  set(`${H1120}.f1_1[0]`, begin.label);  // "January 1"
-  set(`${H1120}.f1_2[0]`, begin.year);   // "2025"
-  set(`${H1120}.f1_3[0]`, end.label);    // "December 31"
-  // End year is embedded in f1_3 on this template (no separate year field for end)
+  set('BeginningDate', `${begin.label}, ${begin.year}`);  // e.g. "January 1, 2025"
+  set('EndingDate',    end.label);                         // e.g. "December 31"
+  set('EndingYear',    end.year);                          // e.g. "2025"
 
-  // ── Box A — all unchecked (foreign-owned DE is none of these)
-  chk(`${H1120}.c1_1a[0]`, false);  // Consolidated return
-  chk(`${H1120}.c1_1b[0]`, false);  // Life/nonlife consolidated
-  chk(`${H1120}.c1_2[0]`,  false);  // PHC
-  chk(`${H1120}.c1_3[0]`,  false);  // PSC
-  chk(`${H1120}.c1_4[0]`,  false);  // M-3 attached
+  // ── Corp identity
+  set('CorporateName', filing.llc_name ?? '');
+  set('EIN',           fmtEin(filing.ein));
+  set('AddressLine1',  fmtStreet(filing.mailing_address));
+  set('City',          filing.mailing_address?.city ?? '');
+  set('State',         filing.mailing_address?.region ?? '');
+  set('Country',       '');
+  set('Zipcode',       filing.mailing_address?.postal_code ?? '');
 
-  // ── Corp name + address (NameFieldsReadOrder)
-  set(`${NF}.f1_4[0]`,  filing.llc_name ?? '');
-  set(`${NF}.f1_5[0]`,  fmtEin(filing.ein));           // Box B: EIN
-  set(`${NF}.f1_6[0]`,  fmtStreet(filing.mailing_address));
-  set(`${NF}.f1_7[0]`,  '');                            // Box C: Date incorporated — BLANK
-  set(`${NF}.f1_8[0]`,  fmtCity(filing.mailing_address));
-  set(`${NF}.f1_9[0]`,  fmtState(filing.mailing_address));
-  set(`${NF}.f1_10[0]`, '');                            // Country — blank for US domestic
-  set(`${NF}.f1_11[0]`, fmtZip(filing.mailing_address));
-  set(`${NF}.f1_12[0]`, fmt(filing.total_assets));      // Box D: Total assets
-
-  // ── Box E — Initial / Final / Name change / Address change
+  // ── Box E checkboxes
   const isFinal = !!(
     filing.date_of_closure &&
     String(new Date(filing.date_of_closure).getUTCFullYear()) === taxYear
@@ -652,12 +483,17 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
     filing.date_of_incorporation &&
     String(new Date(filing.date_of_incorporation).getUTCFullYear()) === taxYear
   );
-  chk(`${AR}.c1_E1[0]`, isInitial);                    // (1) Initial return
-  chk(`${AR}.c1_E2[0]`, isFinal);                      // (2) Final return
-  chk(`${AR}.c1_E3[0]`, filing.name_change    ?? false); // (3) Name change
-  chk(`${AR}.c1_E4[0]`, filing.address_change ?? false); // (4) Address change
+  chk('Initial Return', isInitial);
+  chk('FinalReturn',    isFinal);
+  chk('NameChange',     filing.name_change    ?? false);
+  chk('AddressChange',  filing.address_change ?? false);
 
-  form.flatten();
+  // ── Signature block — blank on pro forma
+  set('Signature', '');
+  set('Date',      '');
+  set('Title',     '');
+
+  doc.getForm().flatten();
   return doc.save();
 }
 
@@ -714,9 +550,7 @@ export async function generateFilingPackage(
     fillForm5472(filing, transactions),
     fillProForma1120(filing),
   ]);
-
   const txn = aggregateTransactions(transactions);
-
   return {
     form5472Bytes,
     proForma1120Bytes,
