@@ -369,14 +369,15 @@ export async function fillForm5472(
   );
 
   // ── Header: tax year
-  // Use fontSize 9 to match the IRS template's printed size and avoid
-  // the default appearance placing text too high in the field widget.
+  // fontSize 8 — smaller than the default causes pdf-lib to position the
+  // text baseline lower within the field widget, matching the vertical
+  // placement seen when filling manually in Adobe / IRS viewer.
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
-  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label, 9);
-  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year,  9);
-  setText(doc, F5472.TAX_YEAR_END,        end.label,   9);
-  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year,    9);
+  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label, 8);
+  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year,  8);
+  setText(doc, F5472.TAX_YEAR_END,        end.label,   8);
+  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year,    8);
 
   // ── Part I — Reporting Corporation
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
@@ -384,8 +385,8 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  // Business activity fields use a smaller font to match manual fill appearance
-  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '', 8);
+  // Business activity: fontSize 10 to match manual fill appearance
+  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '', 10);
   setText(doc, F5472.CORP_ACTIVITY_CODE,  filing.naics_code ? String(filing.naics_code) : '', 9);
 
   const grossTotal = txn.total_received + txn.total_paid +
@@ -425,8 +426,8 @@ export async function fillForm5472(
   setText(doc,  F5472.RP_US_TIN,                 filing.owner_us_tin ?? '');
   setText(doc,  F5472.RP_REFERENCE_ID,           filing.owner_reference_id ?? '');
   setText(doc,  F5472.RP_FOREIGN_TIN,            filing.owner_foreign_tax_id ?? '');
-  // Business activity fields use a smaller font to match manual fill appearance
-  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '', 8);
+  // Business activity: fontSize 10 to match manual fill appearance
+  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '', 10);
   setText(doc,  F5472.RP_ACTIVITY_CODE,          filing.naics_code ? String(filing.naics_code) : '', 9);
 
   setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
@@ -514,11 +515,11 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── Tax year header
-  // Use fontSize 9 to match manual fill and prevent text from sitting too
-  // high in the field widget's bounding box.
-  set('BeginningDate', begin.label, 9);       // e.g. "January 1" or "March 15"
-  set('EndingDate',    end.label,   9);        // e.g. "December 31"
-  set('EndingYear',    end.year.slice(-2), 9); // last 2 digits: "2025" → "25"
+  // fontSize 8 — positions text lower in the field widget bounding box,
+  // matching the vertical placement seen when filling manually.
+  set('BeginningDate', begin.label,           8); // e.g. "January 1" or "March 15"
+  set('EndingDate',    end.label,             8); // e.g. "December 31"
+  set('EndingYear',    end.year.slice(-2),    8); // last 2 digits: "2025" → "25"
 
   // ── Corp identity
   set('CorporateName', filing.llc_name ?? '');
@@ -693,7 +694,7 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
-    // Signature line — name and date only; no "Prepared by:" label
+    // Signature line — owner name and date only; no "Prepared by:" label
     y -= 18;
     page.drawLine({
       start: { x: margin, y },
@@ -995,7 +996,7 @@ export async function generateFilingInstructions(
   drawLine('Step 1 — Assemble the Package', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
-    'Print all documents in this package single-sided on standard 8.5 × 11" white paper. ' +
+    'Print all documents in this package single-sided on standard 8.5 × 11\" white paper. ' +
     'Arrange the pages in the following order:',
     font, 10
   );
