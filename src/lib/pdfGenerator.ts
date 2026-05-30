@@ -4,8 +4,12 @@
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
  * PDFs are served from /pdf/ (public/pdf/) to avoid CORS.
  *
+ * Templates (static + fillable AcroForm):
+ *   public/pdf/Form-5472.pdf          — Form 5472 (Rev. 12-2023)
+ *   public/pdf/Form-1120-Page-1.pdf   — Pro Forma 1120, page 1 only
+ *
  * ── Form 5472 (Rev. 12-2023) field structure ──────────────────────────────
- * See form5472Fields.ts for the complete XFA path map.
+ * See form5472Fields.ts for the complete field name map.
  *
  * Part IV line numbering (Rev. 12-2023 — CHANGED from earlier revisions):
  *   Lines 9–22  = amounts RECEIVED by reporting corp
@@ -42,8 +46,9 @@ import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
-const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/f5472.pdf`;
-const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/f1120.pdf`;
+// ── Template paths — must match filenames in public/pdf/ ─────────────────────
+const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/Form-5472.pdf`;
+const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/Form-1120-Page-1.pdf`;
 
 const pdfCache: Record<string, ArrayBuffer> = {};
 
@@ -52,12 +57,12 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
   const res = await fetch(path);
   if (!res.ok) throw new Error(
     `Could not load PDF template at ${path} (${res.status}). ` +
-    `Run: curl -o public/pdf/f5472.pdf https://www.irs.gov/pub/irs-pdf/f5472.pdf`
+    `Ensure public/pdf/Form-5472.pdf and public/pdf/Form-1120-Page-1.pdf exist in the repo.`
   );
   const bytes = await res.arrayBuffer();
   if (bytes.byteLength < 1000) throw new Error(
     `PDF at ${path} is empty or too small (${bytes.byteLength} bytes). ` +
-    `Re-download: curl -Lo public/pdf/f5472.pdf https://www.irs.gov/pub/irs-pdf/f5472.pdf`
+    `Re-upload the correct AcroForm template to public/pdf/.`
   );
   pdfCache[path] = bytes;
   return bytes;
