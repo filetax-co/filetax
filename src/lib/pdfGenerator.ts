@@ -38,6 +38,14 @@ import { PDFDocument, PDFCheckBox, PDFTextField, rgb, StandardFonts } from 'pdf-
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
+// ── IRS mailing address ───────────────────────────────────────────────────────
+const IRS_MAILING_ADDRESS = [
+  'Internal Revenue Service',
+  '1973 Rulon White Blvd',
+  'M/S 6112 Attn: PIN Unit',
+  'Ogden, UT 84201',
+];
+
 // ── Template paths — must match filenames in public/pdf/ ──────────────────────
 const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/Form-5472.pdf`;
 const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/Form-1120-Page-1.pdf`;
@@ -529,74 +537,42 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   return doc.save();
 }
 
-// ─── Part V Attachment Statement (text) ──────────────────────────────────────
+// ─── Combined Statements PDF (Part V + Part VI) ───────────────────────────────
+//
+// A single PDF containing:
+//   Page 1: Part VI — Treas. Reg. § 1.6038A-2(b)(7)(ix) non-arm's length
+//           service disclosure (always included for this app's filer type)
+//   Page 2: Part V  — non-monetary transaction itemization
+//           (only added when hasPartV is true)
+//
+// The IRS mailing address (Ogden, UT PIN Unit) is printed in the footer
+// of the first page so filers know exactly where to send the package.
 
-export function generatePartVStatement(
+export async function generateStatementsPdf(
   filing: Filing,
   transactions: Transaction[]
-): string {
+): Promise<Uint8Array> {
   const txn = aggregateTransactions(transactions);
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
-  const lines: string[] = [];
 
-  lines.push('ATTACHMENT TO FORM 5472 — PART V STATEMENT');
-  lines.push(`Tax Year: ${taxYear}`);
-  lines.push(`Reporting Corporation: ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`);
-  lines.push(`Foreign Owner: ${filing.owner_full_name ?? ''}`);
-  lines.push('');
-  lines.push(
-    'The following transactions occurred between the foreign-owned U.S. ' +
-    'disregarded entity and its foreign owner during the tax year:'
-  );
-  lines.push('');
-
-  if (txn.capital_contribution > 0)
-    lines.push(`Capital contributions made by owner to LLC: $${fmt(txn.capital_contribution)}`);
-  if (txn.distribution > 0)
-    lines.push(`Distributions made by LLC to owner: $${fmt(txn.distribution)}`);
-  if (txn.formation_costs > 0)
-    lines.push(`Formation/organization costs paid on behalf of LLC: $${fmt(txn.formation_costs)}`);
-  if (txn.property_transfer > 0)
-    lines.push(`Property transferred to/from LLC: $${fmt(txn.property_transfer)}`);
-
-  lines.push('');
-  lines.push('These transactions are reported pursuant to Reg. § 1.6038A-2(b)(7).');
-
-  return lines.join('\n');
-}
-
-// ─── Part VI Statement PDF ────────────────────────────────────────────────────
-//
-// Discloses that the foreign owner provides uncompensated management services
-// as sole member-manager, with no determinable FMV, per Treas. Reg.
-// § 1.6038A-2(b)(7)(ix). Always generated for this app's standard filer type.
-
-export async function generatePartVIStatementPdf(
-  filing: Filing
-): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([612, 792]); // US Letter
   const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const margin   = 72;          // 1-inch margins
-  const maxWidth = 612 - margin * 2;
-  const { height } = page.getSize();
-  let y = height - margin;
-
-  // ── Text helpers ────────────────────────────────────────────────────────────
+  // ── Shared drawing helpers ──────────────────────────────────────────────────
 
   function wrapText(
     text: string,
     fnt: typeof font,
-    size: number
+    size: number,
+    maxW: number
   ): string[] {
     const words = text.split(' ');
     const lines: string[] = [];
     let current = '';
     for (const word of words) {
       const test = current ? `${current} ${word}` : word;
-      if (fnt.widthOfTextAtSize(test, size) > maxWidth) {
+      if (fnt.widthOfTextAtSize(test, size) > maxW) {
         if (current) lines.push(current);
         current = word;
       } else {
@@ -607,116 +583,205 @@ export async function generatePartVIStatementPdf(
     return lines;
   }
 
-  function drawLine(
-    text: string,
-    fnt: typeof font,
-    size: number,
-    indent = 0
-  ): void {
-    page.drawText(text, {
-      x: margin + indent,
-      y,
-      size,
-      font: fnt,
-      color: rgb(0, 0, 0),
-    });
-    y -= size * 1.6;
-  }
+  // ── PAGE 1: Part VI Statement ───────────────────────────────────────────────
+  {
+    const page = pdfDoc.addPage([612, 792]);
+    const margin   = 72;
+    const maxWidth = 612 - margin * 2;
+    let y = 792 - margin;
 
-  function drawWrapped(
-    text: string,
-    fnt: typeof font,
-    size: number,
-    indent = 0
-  ): void {
-    const lines = wrapText(text, fnt, size);
-    for (const line of lines) {
-      drawLine(line, fnt, size, indent);
+    function drawLine(
+      text: string,
+      fnt: typeof font,
+      size: number,
+      indent = 0
+    ): void {
+      page.drawText(text, { x: margin + indent, y, size, font: fnt, color: rgb(0, 0, 0) });
+      y -= size * 1.6;
     }
-    y -= size * 0.4; // paragraph gap
-  }
 
-  function drawDivider(): void {
-    y -= 6;
+    function drawWrapped(
+      text: string,
+      fnt: typeof font,
+      size: number,
+      indent = 0
+    ): void {
+      const lines = wrapText(text, fnt, size, maxWidth - indent);
+      for (const line of lines) drawLine(line, fnt, size, indent);
+      y -= size * 0.4;
+    }
+
+    function drawDivider(): void {
+      y -= 6;
+      page.drawLine({
+        start: { x: margin, y },
+        end:   { x: 612 - margin, y },
+        thickness: 0.5,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+      y -= 10;
+    }
+
+    // Header
+    drawLine('ATTACHMENT TO FORM 5472 — PART VI STATEMENT', boldFont, 10);
+    drawLine('Disclosure of Non-Arm\'s Length Service Transaction', boldFont, 10);
+    drawLine('Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 9);
+    drawDivider();
+
+    // Filer block
+    drawLine(`Tax Year:                ${taxYear}`, font, 10);
+    drawLine(`Reporting Corporation:   ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`, font, 10);
+    drawLine(`Foreign Related Party:   ${filing.owner_full_name ?? ''}`, font, 10);
+    drawDivider();
+
+    // Body
+    drawWrapped(
+      'This statement is submitted pursuant to Treasury Regulation ' +
+      '§ 1.6038A-2(b)(7)(ix) in connection with Form 5472 for the above-referenced ' +
+      'tax year.',
+      font, 10
+    );
+
+    drawWrapped(
+      'During the tax year, the foreign related party identified above served as the ' +
+      'sole member-manager of the reporting corporation, a foreign-owned U.S. ' +
+      'disregarded entity. In that capacity, the foreign related party provided ' +
+      'general management, administrative, and oversight services to the reporting ' +
+      'corporation.',
+      font, 10
+    );
+
+    drawWrapped(
+      'These services were provided without monetary compensation. No payments were ' +
+      'made or received by either party in connection with such services during the ' +
+      'tax year.',
+      font, 10
+    );
+
+    drawWrapped(
+      'The fair market value of these services is not determinable because they ' +
+      'were rendered solely in the capacity of member-manager and are inseparable ' +
+      'from the ownership interest itself. No arm\'s length price exists for the ' +
+      'services as described.',
+      font, 10
+    );
+
+    drawWrapped(
+      'Accordingly, this transaction is reported as a non-monetary, non-arm\'s ' +
+      'length transaction with no determinable fair market value, consistent with ' +
+      'Treas. Reg. § 1.6038A-2(b)(7)(ix).',
+      font, 10
+    );
+
+    drawDivider();
+
+    // Signature line
+    drawLine('Prepared by:', boldFont, 9);
+    y -= 18;
     page.drawLine({
       start: { x: margin, y },
-      end:   { x: 612 - margin, y },
+      end:   { x: margin + 220, y },
       thickness: 0.5,
-      color: rgb(0.6, 0.6, 0.6),
+      color: rgb(0, 0, 0),
     });
-    y -= 10;
+    y -= 14;
+    drawLine(`${filing.owner_full_name ?? ''}  —  Date: ${todayFormatted()}`, font, 9);
+
+    // IRS mailing address footer
+    const footerY = margin - 18;
+    page.drawLine({
+      start: { x: margin, y: footerY + 14 },
+      end:   { x: 612 - margin, y: footerY + 14 },
+      thickness: 0.5,
+      color: rgb(0.75, 0.75, 0.75),
+    });
+    page.drawText('Mail completed package to:', {
+      x: margin, y: footerY,
+      size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3),
+    });
+    let fy = footerY - 11;
+    for (const line of IRS_MAILING_ADDRESS) {
+      page.drawText(line, { x: margin, y: fy, size: 8, font, color: rgb(0.3, 0.3, 0.3) });
+      fy -= 11;
+    }
   }
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  // ── PAGE 2: Part V Statement (only if there are Part V transactions) ─────────
+  if (txn.hasPartV) {
+    const page = pdfDoc.addPage([612, 792]);
+    const margin   = 72;
+    const maxWidth = 612 - margin * 2;
+    let y = 792 - margin;
 
-  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
+    function drawLine(
+      text: string,
+      fnt: typeof font,
+      size: number,
+      indent = 0
+    ): void {
+      page.drawText(text, { x: margin + indent, y, size, font: fnt, color: rgb(0, 0, 0) });
+      y -= size * 1.6;
+    }
 
-  drawLine('ATTACHMENT TO FORM 5472 — PART VI STATEMENT', boldFont, 10);
-  drawLine('Disclosure of Non-Arm\'s Length Service Transaction', boldFont, 10);
-  drawLine('Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 9);
-  drawDivider();
+    function drawWrapped(
+      text: string,
+      fnt: typeof font,
+      size: number,
+      indent = 0
+    ): void {
+      const lines = wrapText(text, fnt, size, maxWidth - indent);
+      for (const line of lines) drawLine(line, fnt, size, indent);
+      y -= size * 0.4;
+    }
 
-  // ── Filer block ─────────────────────────────────────────────────────────────
+    function drawDivider(): void {
+      y -= 6;
+      page.drawLine({
+        start: { x: margin, y },
+        end:   { x: 612 - margin, y },
+        thickness: 0.5,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+      y -= 10;
+    }
 
-  drawLine(`Tax Year:                ${taxYear}`, font, 10);
-  drawLine(`Reporting Corporation:   ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`, font, 10);
-  drawLine(`Foreign Related Party:   ${filing.owner_full_name ?? ''}`, font, 10);
-  drawDivider();
+    // Header
+    drawLine('ATTACHMENT TO FORM 5472 — PART V STATEMENT', boldFont, 10);
+    drawLine('Non-Monetary and Less-Than-Arm\'s-Length Transactions', boldFont, 10);
+    drawDivider();
 
-  // ── Body ────────────────────────────────────────────────────────────────────
+    // Filer block
+    drawLine(`Tax Year:                ${taxYear}`, font, 10);
+    drawLine(`Reporting Corporation:   ${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`, font, 10);
+    drawLine(`Foreign Owner:           ${filing.owner_full_name ?? ''}`, font, 10);
+    drawDivider();
 
-  drawWrapped(
-    'This statement is submitted pursuant to Treasury Regulation ' +
-    '§ 1.6038A-2(b)(7)(ix) in connection with Form 5472 for the above-referenced ' +
-    'tax year.',
-    font, 10
-  );
+    // Intro
+    drawWrapped(
+      'The following non-monetary or less-than-arm\'s-length transactions occurred ' +
+      'between the foreign-owned U.S. disregarded entity and its foreign owner ' +
+      'during the tax year, reported pursuant to Treas. Reg. § 1.6038A-2(b)(7):',
+      font, 10
+    );
+    y -= 4;
 
-  drawWrapped(
-    'During the tax year, the foreign related party identified above served as the ' +
-    'sole member-manager of the reporting corporation, a foreign-owned U.S. ' +
-    'disregarded entity. In that capacity, the foreign related party provided ' +
-    'general management, administrative, and oversight services to the reporting ' +
-    'corporation.',
-    font, 10
-  );
+    // Transaction lines
+    if (txn.capital_contribution > 0)
+      drawLine(`Capital contributions made by owner to LLC:        $${fmt(txn.capital_contribution)}`, font, 10, 12);
+    if (txn.distribution > 0)
+      drawLine(`Distributions made by LLC to owner:                $${fmt(txn.distribution)}`, font, 10, 12);
+    if (txn.formation_costs > 0)
+      drawLine(`Formation/organization costs paid by owner:        $${fmt(txn.formation_costs)}`, font, 10, 12);
+    if (txn.property_transfer > 0)
+      drawLine(`Property transferred to/from LLC (FMV):           $${fmt(txn.property_transfer)}`, font, 10, 12);
 
-  drawWrapped(
-    'These services were provided without monetary compensation. No payments were ' +
-    'made or received by either party in connection with such services during the ' +
-    'tax year.',
-    font, 10
-  );
-
-  drawWrapped(
-    'The fair market value of these services is not determinable because they ' +
-    'were rendered solely in the capacity of member-manager and are inseparable ' +
-    'from the ownership interest itself. No arm\'s length price exists for the ' +
-    'services as described.',
-    font, 10
-  );
-
-  drawWrapped(
-    'Accordingly, this transaction is reported as a non-monetary, non-arm\'s ' +
-    'length transaction with no determinable fair market value, consistent with ' +
-    'Treas. Reg. § 1.6038A-2(b)(7)(ix).',
-    font, 10
-  );
-
-  drawDivider();
-
-  // ── Signature line ──────────────────────────────────────────────────────────
-
-  drawLine('Prepared by:', boldFont, 9);
-  y -= 18;
-  page.drawLine({
-    start: { x: margin, y },
-    end:   { x: margin + 220, y },
-    thickness: 0.5,
-    color: rgb(0, 0, 0),
-  });
-  y -= 14;
-  drawLine(`${filing.owner_full_name ?? ''}  —  Date: ${todayFormatted()}`, font, 9);
+    drawDivider();
+    drawWrapped(
+      'All amounts are in U.S. dollars. These transactions are reported pursuant ' +
+      'to Treas. Reg. § 1.6038A-2(b)(7).',
+      font, 9
+    );
+  }
 
   return pdfDoc.save();
 }
@@ -726,10 +791,13 @@ export async function generatePartVIStatementPdf(
 export interface FilingPackage {
   form5472Bytes: Uint8Array;
   proForma1120Bytes: Uint8Array;
-  partVStatement: string;
+  /**
+   * Combined statements PDF — always generated.
+   * Page 1: Part VI (§ 1.6038A-2(b)(7)(ix) non-arm's length service disclosure)
+   * Page 2: Part V non-monetary transactions (only present when hasPartV is true)
+   */
+  statementsPdfBytes: Uint8Array;
   hasPartV: boolean;
-  /** Part VI statement PDF — always generated for this app's standard filer type */
-  partVIStatementBytes: Uint8Array;
   hasPartVI: true;
 }
 
@@ -737,18 +805,17 @@ export async function generateFilingPackage(
   filing: Filing,
   transactions: Transaction[]
 ): Promise<FilingPackage> {
-  const [form5472Bytes, proForma1120Bytes, partVIStatementBytes] = await Promise.all([
+  const [form5472Bytes, proForma1120Bytes, statementsPdfBytes] = await Promise.all([
     fillForm5472(filing, transactions),
     fillProForma1120(filing),
-    generatePartVIStatementPdf(filing),
+    generateStatementsPdf(filing, transactions),
   ]);
   const txn = aggregateTransactions(transactions);
   return {
     form5472Bytes,
     proForma1120Bytes,
-    partVStatement: generatePartVStatement(filing, transactions),
+    statementsPdfBytes,
     hasPartV: txn.hasPartV,
-    partVIStatementBytes,
     hasPartVI: true,
   };
 }

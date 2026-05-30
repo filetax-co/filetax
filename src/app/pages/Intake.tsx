@@ -249,11 +249,8 @@ export function Intake() {
 
       folder.file('Form_5472.pdf', pkg.form5472Bytes);
       folder.file('ProForma_1120.pdf', pkg.proForma1120Bytes);
-      if (pkg.hasPartV) {
-        folder.file('PartV_Statement.txt', pkg.partVStatement);
-      }
-      // Part VI statement PDF — always included
-      folder.file('PartVI_Statement.pdf', pkg.partVIStatementBytes);
+      // Combined statements PDF — Part VI always on page 1, Part V on page 2 if applicable
+      folder.file('Statements_PartVI_PartV.pdf', pkg.statementsPdfBytes);
 
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
@@ -431,8 +428,8 @@ export function Intake() {
                 onDownload={handleDownload}
               />
               <DownloadRow
-                title="Part VI Statement"
-                subtitle="Disclosure of uncompensated management services — Treas. Reg. § 1.6038A-2(b)(7)(ix)"
+                title="Statements (Part VI + Part V)"
+                subtitle={`Part VI — § 1.6038A-2(b)(7)(ix) service disclosure${filing.include_rcl ? '' : ''}. Mail to: IRS, 1973 Rulon White Blvd, M/S 6112 Attn: PIN Unit, Ogden UT 84201.`}
                 generating={generating}
                 onDownload={handleDownload}
               />
@@ -446,7 +443,7 @@ export function Intake() {
               )}
               <div style={{ background: 'rgba(2,132,199,0.04)', border: '1px solid rgba(2,132,199,0.25)', borderRadius: '0.5rem', padding: '1rem 1.125rem', marginTop: '1.25rem' }}>
                 <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--tf-text)', marginBottom: '0.25rem' }}>Next steps</p>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>Print the forms, sign where indicated, and mail to the IRS at the address shown on Form 5472. Most filers also keep a digital copy in their records.</p>
+                <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>Print the forms, sign where indicated, and mail the complete package to the IRS PIN Unit at Ogden, UT 84201 (address shown in the Statements PDF footer). Keep a digital copy for your records.</p>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
@@ -572,7 +569,7 @@ export function Intake() {
                             <select
                               value={tx.category}
                               onChange={(e) => updateTx(tx.id, { category: e.target.value as FilingTransactionCategory })}
-                              style={{ ...inputStyle, fontSize: '0.875rem' }}
+                              style={inputStyle}
                             >
                               {TX_CATEGORIES.map((cat) => (
                                 <option key={cat} value={cat}>{TX_CATEGORY_LABEL[cat]}</option>
@@ -583,16 +580,16 @@ export function Intake() {
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--tf-muted)' }}>Amount (USD)</label>
                             <input
                               type="number"
-                              min={0}
-                              value={tx.amount ?? 0}
+                              min="0"
+                              value={tx.amount ?? ''}
                               onChange={(e) => updateTx(tx.id, { amount: parseFloat(e.target.value) || 0 })}
-                              style={{ ...inputStyle, fontSize: '0.875rem' }}
+                              style={inputStyle}
                             />
                           </div>
                         </div>
                         <button
                           onClick={() => removeTx(tx.id)}
-                          style={{ fontSize: '0.8125rem', color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500 }}
+                          style={{ fontSize: '0.75rem', color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
                         >
                           Remove
                         </button>
@@ -602,7 +599,7 @@ export function Intake() {
                 )}
                 <button
                   onClick={addTransaction}
-                  style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0284C7', background: 'none', border: '1px dashed #93C5FD', borderRadius: '0.5rem', padding: '0.625rem 1rem', cursor: 'pointer', width: '100%', minHeight: '44px' }}
+                  style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0284C7', background: 'none', border: '1px dashed #0284C7', borderRadius: '0.5rem', padding: '0.5rem 1rem', cursor: 'pointer', width: '100%', minHeight: '44px' }}
                 >
                   + Add transaction
                 </button>
@@ -612,35 +609,28 @@ export function Intake() {
             {/* ── Step 4: Review & Pay ── */}
             {step === 4 && (
               <>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>Review &amp; pay</h2>
-                <ReviewRow label="LLC name" value={filing.llc_name ?? '—'} />
-                <ReviewRow label="EIN" value={filing.ein ?? '—'} />
-                <ReviewRow label="Tax year" value={filing.tax_year ?? '—'} />
-                <ReviewRow label="Foreign owner" value={filing.owner_full_name ?? '—'} />
-                <ReviewRow label="Country of residence" value={filing.owner_country_residence ?? '—'} />
-                <ReviewRow label="Country of citizenship" value={filing.owner_country_citizenship ?? '—'} />
-                <ReviewRow label="Transactions" value={`${transactions.length} transaction${transactions.length !== 1 ? 's' : ''}`} />
-                <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.9375rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={includeFax} onChange={(e) => setIncludeFax(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                      <span>IRS fax delivery <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(+$30)</span></span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.9375rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                      <span>Reasonable cause letter <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(+$200)</span></span>
-                    </label>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.25rem' }}>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>Review & pay</h2>
+
+                <ReviewRow label="LLC name" value={filing.llc_name} />
+                <ReviewRow label="EIN" value={filing.ein} />
+                <ReviewRow label="Tax year" value={filing.tax_year} />
+                <ReviewRow label="State" value={filing.state_of_formation} />
+                <ReviewRow label="Owner" value={filing.owner_full_name} />
+                <ReviewRow label="Country of residence" value={filing.owner_country_residence} />
+                <ReviewRow label="Country of citizenship" value={filing.owner_country_citizenship} />
+                <ReviewRow label="Transactions" value={transactions.length > 0 ? `${transactions.length} transaction(s)` : 'None'} />
+
+                <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1.5rem', paddingTop: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', marginBottom: '1.5rem' }}>
                     <span>Total</span>
                     <span>{formatCents(priceCents)}</span>
                   </div>
                   <button
                     onClick={payAndDownload}
                     disabled={paying}
-                    style={{ width: '100%', background: '#0284C7', color: 'white', border: 'none', fontWeight: 700, fontSize: '1rem', padding: '0.875rem 1rem', borderRadius: '0.5rem', cursor: paying ? 'not-allowed' : 'pointer', minHeight: '48px', opacity: paying ? 0.7 : 1 }}
+                    style={{ width: '100%', background: paying ? '#93C5FD' : '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.9375rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', cursor: paying ? 'not-allowed' : 'pointer', minHeight: '44px' }}
                   >
-                    {paying ? 'Processing…' : `Pay ${formatCents(priceCents)} and generate forms`}
+                    {paying ? 'Processing...' : `Pay ${formatCents(priceCents)} and get forms`}
                   </button>
                 </div>
               </>
@@ -651,7 +641,7 @@ export function Intake() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1.5rem', gap: '0.75rem' }}>
             <button
               onClick={goBack}
-              style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}
+              style={{ background: 'var(--tf-bg)', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}
             >
               {step === 1 ? 'Cancel' : 'Back'}
             </button>
@@ -659,9 +649,9 @@ export function Intake() {
               <button
                 onClick={saveAndContinue}
                 disabled={saving}
-                style={{ background: '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.5rem', borderRadius: '0.5rem', cursor: saving ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: saving ? 0.7 : 1 }}
+                style={{ background: saving ? '#93C5FD' : '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.5rem', borderRadius: '0.5rem', cursor: saving ? 'not-allowed' : 'pointer', minHeight: '44px' }}
               >
-                {saving ? 'Saving…' : 'Save and continue'}
+                {saving ? 'Saving...' : 'Save and continue'}
               </button>
             )}
           </div>
@@ -671,25 +661,64 @@ export function Intake() {
   );
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+// ── Small sub-components ──────────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '0.5625rem 0.75rem',
+  padding: '0.5rem 0.75rem',
   fontSize: '0.9375rem',
-  color: 'var(--tf-text)',
-  background: 'var(--tf-bg)',
   border: '1px solid var(--tf-border)',
-  borderRadius: '0.5rem',
-  minHeight: '44px',
+  borderRadius: '0.375rem',
+  background: 'var(--tf-bg)',
+  color: 'var(--tf-text)',
+  minHeight: '40px',
   boxSizing: 'border-box',
 };
 
 function FieldRow({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-      <label htmlFor={id} style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '0.01em' }}>{label}</label>
+    <div>
+      <label htmlFor={id} style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--tf-text)' }}>
+        {label}
+      </label>
       {children}
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--tf-border)', fontSize: '0.9375rem' }}>
+      <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontWeight: 600 }}>{value || '—'}</span>
+    </div>
+  );
+}
+
+function DownloadRow({ title, subtitle, generating, onDownload }: {
+  title: string;
+  subtitle: string;
+  generating: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 0', borderBottom: '1px solid var(--tf-border)', gap: '1rem' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text)', marginBottom: '0.125rem' }}>{title}</p>
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>{subtitle}</p>
+      </div>
+      <button
+        onClick={onDownload}
+        disabled={generating}
+        style={{ flexShrink: 0, background: generating ? '#93C5FD' : '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.8125rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: generating ? 'not-allowed' : 'pointer', minHeight: '36px', whiteSpace: 'nowrap' }}
+      >
+        {generating ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'tf-spin 0.8s linear infinite' }} />
+            Generating…
+          </span>
+        ) : 'Download ZIP'}
+      </button>
     </div>
   );
 }
@@ -706,42 +735,9 @@ function AddressFields({ value, onChange }: { value: Address; onChange: (a: Addr
         <input placeholder="State / Region" value={value.region ?? ''} onChange={upd('region')} style={inputStyle} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <input placeholder="Postal code" value={value.postal_code ?? ''} onChange={upd('postal_code')} style={inputStyle} />
-        <CountrySelect
-          id="address-country"
-          label=""
-          value={value.country ?? ''}
-          onChange={(v) => onChange({ ...value, country: v })}
-          style={{ gap: 0 }}
-        />
+        <input placeholder="ZIP / Postal code" value={value.postal_code ?? ''} onChange={upd('postal_code')} style={inputStyle} />
+        <input placeholder="Country" value={value.country ?? ''} onChange={upd('country')} style={inputStyle} />
       </div>
-    </div>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--tf-border)', fontSize: '0.9375rem' }}>
-      <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}>{label}</span>
-      <span style={{ fontWeight: 600 }}>{value}</span>
-    </div>
-  );
-}
-
-function DownloadRow({ title, subtitle, generating, onDownload }: { title: string; subtitle: string; generating: boolean; onDownload: () => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--tf-border)', gap: '1rem' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontWeight: 600, fontSize: '0.9375rem', marginBottom: '0.125rem' }}>{title}</p>
-        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem' }}>{subtitle}</p>
-      </div>
-      <button
-        onClick={onDownload}
-        disabled={generating}
-        style={{ background: generating ? 'var(--tf-border)' : '#0284C7', color: generating ? 'var(--tf-muted)' : 'white', border: 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: generating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', minHeight: '44px', flexShrink: 0 }}
-      >
-        {generating ? 'Generating…' : 'Download ZIP'}
-      </button>
     </div>
   );
 }
