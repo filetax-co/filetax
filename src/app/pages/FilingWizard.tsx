@@ -292,6 +292,16 @@ function Actions({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── direction label helper ────────────────────────────────────────────────────
+
+function directionLabel(category: FilingTransactionCategory, direction: 'to_llc' | 'from_llc'): string {
+  // For loans the direction IS the category, so show cleaner labels
+  if (category === 'loan_to_llc' || category === 'loan_from_llc') {
+    return direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner';
+  }
+  return direction === 'to_llc' ? 'Owner → LLC (paid to LLC)' : 'LLC → Owner (received by owner)';
+}
+
 // ── main component ───────────────────────────────────────────────────────────
 
 export function FilingWizard() {
@@ -350,6 +360,7 @@ export function FilingWizard() {
   const [txAmount, setTxAmount] = useState('');
   const [txDate, setTxDate] = useState('');
   const [txDesc, setTxDesc] = useState('');
+  const [txIsRoyalty, setTxIsRoyalty] = useState(false);
   const [addingTx, setAddingTx] = useState(false);
 
   // ── Step 4: download state ───────────────────────────────────
@@ -466,13 +477,21 @@ export function FilingWizard() {
     }
     setAddingTx(true); setError('');
     const { data, error: err } = await supabase.from('filing_transactions').insert({
-      filing_id: id, category: txCategory, direction: txDirection,
-      amount: Number(txAmount), currency: 'USD',
-      transaction_date: txDate || null, description: txDesc.trim() || null,
+      filing_id: id,
+      category: txCategory,
+      direction: txDirection,
+      amount: Number(txAmount),
+      currency: 'USD',
+      transaction_date: txDate || null,
+      description: txDesc.trim() || null,
+      // Only persist is_royalty when the category actually uses it
+      is_royalty: txCategory === 'rent_royalty' ? txIsRoyalty : null,
     }).select().single();
     if (err) { setError(err.message); setAddingTx(false); return; }
     setTransactions(prev => [...prev, data as FilingTransaction]);
+    // Reset form — keep category/direction, clear amounts and royalty toggle
     setTxAmount(''); setTxDate(''); setTxDesc('');
+    if (txCategory !== 'rent_royalty') setTxIsRoyalty(false);
     setAddingTx(false);
   };
 
@@ -487,16 +506,28 @@ export function FilingWizard() {
     setGenerating(true);
     setDownloadError('');
     try {
-      // Cast filing_transactions to Transaction[] — pdfGenerator uses amount_usd
-      // and transaction_type; FilingTransaction uses amount and category.
-      // We bridge the difference here so pdfGenerator stays type-safe.
+      // Bridge FilingTransaction → Transaction (pdfGenerator's canonical type).
+      //
+      // Key mappings:
+      //   category       → transaction_type  (1:1 string, same values)
+      //   direction:
+      //     'to_llc'   → 'paid'     (owner pays the LLC)
+      //     'from_llc' → 'received' (owner receives from the LLC)
+      //   amount         → amount_usd
+      //   is_royalty     → is_royalty (passed through; only meaningful for rent_royalty)
       const txsForPdf = transactions.map(tx => ({
-        ...tx,
-        amount_usd: tx.amount,
+        id: tx.id,
+        filing_id: tx.filing_id,
+        created_at: tx.created_at,
         transaction_type: tx.category,
-      })) as any;
+        direction: tx.direction === 'to_llc' ? 'paid' : 'received',
+        amount_usd: tx.amount,
+        transaction_date: tx.transaction_date,
+        description: tx.description,
+        is_royalty: tx.is_royalty ?? false,
+      }));
 
-      const pkg = await generateFilingPackage(filing, txsForPdf);
+      const pkg = await generateFilingPackage(filing, txsForPdf as any);
 
       const zip = new JSZip();
       const folderName = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}`;
@@ -736,7 +767,13 @@ export function FilingWizard() {
                     <div style={{ minWidth: 0 }}>
                       <span style={{ fontWeight: 700 }}>${Number(tx.amount).toLocaleString()} {tx.currency}</span>
                       <span style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginLeft: '0.5rem' }}>
-                        {TX_CATEGORIES.find(c => c.value === tx.category)?.label} · {tx.direction === 'to_llc' ? 'to LLC' : 'from LLC'}
+                        {TX_CATEGORIES.find(c => c.value === tx.category)?.label}
+                        {tx.category === 'rent_royalty' && (
+                          <span style={{ marginLeft: '0.3rem', fontStyle: 'italic' }}>
+                            ({tx.is_royalty ? 'Royalty' : 'Rent'})
+                          </span>
+                        )}
+                        {' · '}{tx.direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner'}
                       </span>
                       {tx.description && (
                         <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>{tx.description}</p>
@@ -757,17 +794,55 @@ export function FilingWizard() {
               <p style={{ fontWeight: 700, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--tf-muted)', marginBottom: '1rem' }}>Add transaction</p>
               <Row>
                 <Field label="Category">
-                  <Select value={txCategory} onChange={e => setTxCategory(e.target.value as FilingTransactionCategory)}>
+                  <Select
+                    value={txCategory}
+                    onChange={e => {
+                      const cat = e.target.value as FilingTransactionCategory;
+                      setTxCategory(cat);
+                      // Reset royalty toggle when switching away from rent_royalty
+                      if (cat !== 'rent_royalty') setTxIsRoyalty(false);
+                    }}
+                  >
                     {TX_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </Select>
                 </Field>
                 <Field label="Direction">
                   <Select value={txDirection} onChange={e => setTxDirection(e.target.value as 'to_llc' | 'from_llc')}>
-                    <option value="to_llc">Owner → LLC</option>
-                    <option value="from_llc">LLC → Owner</option>
+                    <option value="to_llc">Owner → LLC (paid)</option>
+                    <option value="from_llc">LLC → Owner (received)</option>
                   </Select>
                 </Field>
               </Row>
+
+              {/* Royalty sub-toggle — only shown for Rent / Royalty / License */}
+              {txCategory === 'rent_royalty' && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.65rem 0.9rem',
+                  background: '#EFF6FF', border: '1px solid #BFDBFE',
+                  borderRadius: '0.5rem', marginBottom: '1.25rem',
+                }}>
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    cursor: 'pointer', userSelect: 'none',
+                    fontSize: '0.9rem', fontWeight: 600, color: '#1E40AF',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={txIsRoyalty}
+                      onChange={e => setTxIsRoyalty(e.target.checked)}
+                      style={{ width: '1rem', height: '1rem', cursor: 'pointer', accentColor: '#2563EB' }}
+                    />
+                    This is a <strong style={{ marginLeft: '0.2rem' }}>royalty</strong> (not rent)
+                  </label>
+                  <span style={{ color: '#3B82F6', fontSize: '0.8125rem', fontWeight: 400 }}>
+                    {txIsRoyalty
+                      ? 'Will fill Form 5472 lines 13b / 27b (Royalties)'
+                      : 'Will fill Form 5472 lines 13a / 27a (Rents)'}
+                  </span>
+                </div>
+              )}
+
               <Row>
                 <Field label="Amount (USD)" required>
                   <Input type="number" min="0" step="0.01" value={txAmount} onChange={e => setTxAmount(e.target.value)} placeholder="0.00" />
@@ -848,7 +923,15 @@ export function FilingWizard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
                 {transactions.map(tx => (
                   <div key={tx.id} style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.7rem 1rem', fontSize: '0.9375rem' }}>
-                    <strong>${Number(tx.amount).toLocaleString()}</strong> — {TX_CATEGORIES.find(c => c.value === tx.category)?.label}, {tx.direction === 'to_llc' ? 'to LLC' : 'from LLC'}
+                    <strong>${Number(tx.amount).toLocaleString()}</strong>
+                    {' — '}
+                    {TX_CATEGORIES.find(c => c.value === tx.category)?.label}
+                    {tx.category === 'rent_royalty' && (
+                      <span style={{ fontStyle: 'italic', marginLeft: '0.3rem' }}>
+                        ({tx.is_royalty ? 'Royalty' : 'Rent'})
+                      </span>
+                    )}
+                    {', '}{tx.direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner'}
                     {tx.description && <span style={{ color: 'var(--tf-muted)', marginLeft: '0.4rem' }}>({tx.description})</span>}
                   </div>
                 ))}

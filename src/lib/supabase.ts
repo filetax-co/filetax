@@ -90,6 +90,11 @@ export type Filing = {
   owner_passport_number?: string | null;
   owner_foreign_tax_id?: string | null;
   owner_address?: Address | null;
+  /**
+   * Used by pdfGenerator for Part III field RP_ACTIVITY.
+   * Defaults to naics_description if not set.
+   */
+  owner_business_activity?: string | null;
 
   /**
    * Part III 8e — which relationship checkbox to tick.
@@ -138,6 +143,12 @@ export type FilingTransaction = {
   currency: string;
   transaction_date?: string | null;
   description?: string | null;
+  /**
+   * Only relevant when category === 'rent_royalty'.
+   * true  → maps to royalties_* fields on Form 5472 (lines 13b / 27b)
+   * false → maps to rents_*    fields on Form 5472 (lines 13a / 27a)
+   */
+  is_royalty?: boolean | null;
 };
 
 /**
@@ -168,4 +179,5 @@ export type Transaction = {
   amount_usd?: number | null;
   transaction_date?: string | null;
   description?: string | null;
+  is_royalty?: boolean | null;
 };
