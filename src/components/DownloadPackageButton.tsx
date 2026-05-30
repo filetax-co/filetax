@@ -1,13 +1,20 @@
 /**
  * DownloadPackageButton
  *
- * Fetches a filing + its transactions from Supabase, generates
- * the Form 5472 and Pro Forma 1120 PDFs via pdf-lib, bundles
- * them into a ZIP (with optional Part V statement), and triggers
- * a browser download.
+ * Fetches a filing + its transactions from Supabase, generates the complete
+ * Form 5472 filing package via pdf-lib, bundles all PDFs into a ZIP, and
+ * triggers a browser download.
  *
- * Both pdfGenerator (pdf-lib, ~480 kB) and jszip (~50 kB) are
- * dynamically imported on first click — excluded from initial bundle.
+ * ZIP contents:
+ *   1. COMPLETE_FILING_PACKAGE_<year>_<slug>.pdf  — single combined PDF (correct page order)
+ *   2. Form_5472_<year>_<slug>.pdf               — standalone Form 5472
+ *   3. ProForma_1120_<year>_<slug>.pdf           — standalone Pro Forma 1120
+ *   4. Statements_<year>_<slug>.pdf              — Part VI always; Part V if applicable
+ *   5. Cover_Letter_<year>_<slug>.pdf            — IRS cover letter
+ *   6. Filing_Instructions_<year>_<slug>.pdf     — mailing instructions (omitted if fax)
+ *
+ * Both pdfGenerator (pdf-lib, ~480 kB) and jszip (~50 kB) are dynamically
+ * imported on first click — excluded from initial bundle.
  *
  * Usage:
  *   <DownloadPackageButton filingId="uuid" taxYear="2025" llcName="Acme LLC" />
@@ -66,12 +73,12 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const filing = filingData as Filing;
       const transactions = (txnsData ?? []) as Transaction[];
 
-      // 3. Lazy-load pdf-lib + pdfGenerator only when needed (~480 kB, not in initial bundle)
+      // 3. Generate all PDFs — lazy-load pdfGenerator (~480 kB) only on demand
       setStatus('generating');
       const { generateFilingPackage } = await import('../lib/pdfGenerator');
       const pkg = await generateFilingPackage(filing, transactions);
 
-      // 4. Bundle into ZIP — lazy-load jszip only when needed (~50 kB)
+      // 4. Bundle into ZIP — lazy-load jszip (~50 kB) only on demand
       setStatus('bundling');
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
@@ -79,38 +86,76 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const name = llcName ?? filing.llc_name ?? 'LLC';
       const slug = name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-      zip.file(`Form_5472_${year}_${slug}.pdf`,       pkg.form5472Bytes);
-      zip.file(`ProForma_1120_${year}_${slug}.pdf`,   pkg.proForma1120Bytes);
+      // ── Primary file: single combined PDF (all pages in the correct order) ──
+      // This is the file to print and mail. Page order:
+      //   Cover Letter → Filing Instructions (if not fax) → Pro Forma 1120 → Form 5472 → Statements
+      zip.file(
+        `COMPLETE_FILING_PACKAGE_${year}_${slug}.pdf`,
+        pkg.combinedPdfBytes
+      );
 
-      if (pkg.hasPartV) {
+      // ── Individual PDFs for reference / separate review ────────────────────
+      zip.file(`Form_5472_${year}_${slug}.pdf`,      pkg.form5472Bytes);
+      zip.file(`ProForma_1120_${year}_${slug}.pdf`,  pkg.proForma1120Bytes);
+      zip.file(`Statements_${year}_${slug}.pdf`,     pkg.statementsPdfBytes);
+      zip.file(`Cover_Letter_${year}_${slug}.pdf`,   pkg.coverLetterBytes);
+
+      if (pkg.filingInstructionsBytes) {
         zip.file(
-          `Form_5472_PartV_Statement_${year}_${slug}.txt`,
-          pkg.partVStatement
+          `Filing_Instructions_${year}_${slug}.pdf`,
+          pkg.filingInstructionsBytes
         );
       }
 
-      // README inside the ZIP
-      zip.file('FILING_INSTRUCTIONS.txt', [
+      // ── README (plain text, human-readable checklist) ─────────────────────
+      const statementNote = pkg.hasPartV
+        ? '     Statements_*.pdf contains: Part VI disclosure + Part V non-monetary transactions'
+        : '     Statements_*.pdf contains: Part VI disclosure (no Part V transactions this year)';
+
+      zip.file('README.txt', [
         `FORM 5472 FILING PACKAGE — TAX YEAR ${year}`,
-        `Generated: ${new Date().toLocaleDateString('en-US')}`,
+        `Entity: ${filing.llc_name ?? name}  |  EIN: ${filing.ein ?? 'See Form 5472'}`,
+        `Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
         '',
-        'CONTENTS:',
-        `  1. Form_5472_${year}_${slug}.pdf     — Completed Form 5472`,
-        `  2. ProForma_1120_${year}_${slug}.pdf — Pro Forma Form 1120 (cover return)`,
-        pkg.hasPartV
-          ? `  3. Form_5472_PartV_Statement_${year}_${slug}.txt — Part V attachment`
-          : '',
+        '─────────────────────────────────────────────────',
+        'FILES IN THIS ZIP',
+        '─────────────────────────────────────────────────',
         '',
-        'FILING INSTRUCTIONS:',
-        '  - Attach Form 5472 to the Pro Forma Form 1120.',
-        '  - Mail to: Department of the Treasury, Internal Revenue Service',
-        '    Ogden, UT 84201-0012',
-        '  - Due date: April 15 (or October 15 with Form 7004 extension).',
-        '  - Penalty for late/incomplete filing: $25,000 per form (IRC § 6038A).',
+        '  COMPLETE_FILING_PACKAGE_*.pdf  ← PRINT AND MAIL THIS FILE',
+        '     All pages assembled in the correct order for the IRS.',
         '',
-        'This package was generated by your tax filing portal.',
-        'Please review all fields with your CPA before filing.',
-      ].filter(l => l !== '').join('\n'));
+        '  Individual PDFs (for review):',
+        '     Cover_Letter_*.pdf',
+        pkg.filingInstructionsBytes ? '     Filing_Instructions_*.pdf' : '',
+        '     ProForma_1120_*.pdf',
+        '     Form_5472_*.pdf',
+        statementNote,
+        '',
+        '─────────────────────────────────────────────────',
+        'MAILING ADDRESS',
+        '─────────────────────────────────────────────────',
+        '',
+        '  Internal Revenue Service',
+        '  1973 Rulon White Blvd',
+        '  M/S 6112 Attn: PIN Unit',
+        '  Ogden, UT 84201',
+        '',
+        '─────────────────────────────────────────────────',
+        'DUE DATE',
+        '─────────────────────────────────────────────────',
+        '',
+        `  April 15, ${Number(year) + 1}`,
+        `  (October 15, ${Number(year) + 1} with timely Form 7004 extension)`,
+        '',
+        '  Late filing penalty: $25,000 per form (IRC § 6038A(d)).',
+        '',
+        '─────────────────────────────────────────────────',
+        'DISCLAIMER',
+        '─────────────────────────────────────────────────',
+        '',
+        '  This package was generated by FileTax. Review all fields',
+        '  with your CPA or tax advisor before filing.',
+      ].filter(l => l !== null).join('\n'));
 
       const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 
@@ -176,9 +221,9 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       {/* Progress hint during loading */}
       {isLoading && (
         <p className="text-xs text-gray-500 pl-1">
-          {status === 'fetching' && 'Reading your filing data from database…'}
-          {status === 'generating' && 'Filling IRS Form 5472 and Pro Forma 1120…'}
-          {status === 'bundling' && 'Packaging PDFs into downloadable ZIP…'}
+          {status === 'fetching'   && 'Reading your filing data from database…'}
+          {status === 'generating' && 'Generating cover letter, Form 5472, Pro Forma 1120, and statements…'}
+          {status === 'bundling'   && 'Assembling combined PDF and packaging ZIP…'}
         </p>
       )}
 
