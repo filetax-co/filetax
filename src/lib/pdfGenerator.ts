@@ -29,7 +29,7 @@
  * TextField    Signature       — leave blank (pro forma)
  * TextField    Date            — leave blank (pro forma)
  * TextField    Title           — leave blank (pro forma)
- * TextField    BeginningDate   — e.g. "January 1, 2025"
+ * TextField    BeginningDate   — month+day only, e.g. "January 1" (year is in EndingYear / auto-filled)
  * TextField    EndingDate      — e.g. "December 31"
  * TextField    EndingYear      — e.g. "2025"
  */
@@ -134,18 +134,27 @@ const MONTH_NAMES = [
 
 /**
  * Build tax period begin: month-day label and year as separate strings.
+ *
+ * Priority order:
+ *  1. If date_of_incorporation falls within taxYear → use that date as the
+ *     period begin (handles initial returns regardless of the initial_return flag).
+ *  2. If tax_period_begin is explicitly set → use that.
+ *  3. Default → January 1 of taxYear.
+ *
  * Uses UTC getters throughout.
  */
 function resolvePeriodBegin(
   filing: Filing,
   taxYear: string
 ): { label: string; year: string } {
-  if (filing.initial_return && filing.date_of_incorporation) {
+  // 1. Incorporation date in the tax year → use it as the beginning date
+  if (filing.date_of_incorporation) {
     const d = new Date(filing.date_of_incorporation);
     if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
       return { label: `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`, year: taxYear };
     }
   }
+  // 2. Explicit tax_period_begin stored on the filing
   if (filing.tax_period_begin) {
     const [yearStr, monthStr, dayStr] = filing.tax_period_begin.split('-');
     const month = parseInt(monthStr, 10);
@@ -154,6 +163,7 @@ function resolvePeriodBegin(
       return { label: `${MONTH_NAMES[month - 1]} ${day}`, year: yearStr };
     }
   }
+  // 3. Default — January 1
   return { label: 'January 1', year: taxYear };
 }
 
@@ -448,6 +458,11 @@ export async function fillForm5472(
 //   Initial Return, FinalReturn, NameChange, AddressChange
 //   Signature, Date, Title  (all left blank on pro forma)
 //   BeginningDate, EndingDate, EndingYear
+//
+// BeginningDate contains month+day ONLY (e.g. "January 1" or "March 15").
+// The year for the beginning period is NOT written into BeginningDate because
+// the 1120 form pre-prints / auto-fills the year from context — writing it
+// would duplicate the year already present on the form.
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
@@ -461,9 +476,10 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── Tax year header
-  set('BeginningDate', `${begin.label}, ${begin.year}`);  // e.g. "January 1, 2025"
-  set('EndingDate',    end.label);                         // e.g. "December 31"
-  set('EndingYear',    end.year);                          // e.g. "2025"
+  // BeginningDate: month+day only — no year (the form auto-fills / pre-prints year)
+  set('BeginningDate', begin.label);   // e.g. "January 1" or "March 15"
+  set('EndingDate',    end.label);     // e.g. "December 31"
+  set('EndingYear',    end.year);      // e.g. "2025"
 
   // ── Corp identity
   set('CorporateName', filing.llc_name ?? '');
