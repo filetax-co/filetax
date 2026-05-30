@@ -28,7 +28,7 @@
  * CheckBox     AddressChange
  * TextField    Signature       — leave blank (pro forma; signed by taxpayer)
  * TextField    Date            — today's date in MM/DD/YYYY format
- * TextField    Title           — filing.signer_title (e.g. "Managing Member")
+ * TextField    Title           — filing.signer_title ?? "Owner" (default)
  * TextField    BeginningDate   — month+day only, e.g. "January 1" (year auto-filled by form)
  * TextField    EndingDate      — e.g. "December 31"
  * TextField    EndingYear      — last 2 digits only, e.g. "25" (form pre-prints "20")
@@ -469,7 +469,7 @@ export async function fillForm5472(
 //   Initial Return, FinalReturn, NameChange, AddressChange
 //   Signature  — left blank (taxpayer signs the physical copy)
 //   Date       — today's date (MM/DD/YYYY), filled automatically at generation time
-//   Title      — filing.signer_title (e.g. "Managing Member", "President")
+//   Title      — filing.signer_title if set, otherwise defaults to "Owner"
 //   BeginningDate — month+day only (e.g. "January 1"); year auto-filled by form
 //   EndingDate    — e.g. "December 31"
 //   EndingYear    — last 2 digits only (e.g. "25"); form pre-prints "20"
@@ -519,8 +519,8 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set('Signature', '');
   // Date: today's date (the date the form is prepared/generated)
   set('Date',  todayFormatted());
-  // Title: collected from the user (e.g. "Managing Member", "President")
-  set('Title', filing.signer_title ?? '');
+  // Title: use signer_title if provided; default to "Owner"
+  set('Title', filing.signer_title ?? 'Owner');
 
   doc.getForm().flatten();
   return doc.save();
