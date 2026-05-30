@@ -107,6 +107,14 @@ export type Filing = {
    */
   rp_is_both?: boolean | null;
 
+  // ── Signature block ──────────────────────────────────────────────────────
+  /**
+   * Title of the person signing the return (e.g. "Managing Member", "President").
+   * Collected from the user during intake; written into the Title field on
+   * Pro Forma 1120 and Form 5472 signature blocks.
+   */
+  signer_title?: string | null;
+
   // ── Filing options ───────────────────────────────────────────────────────
   include_irs_fax: boolean;
   include_rcl: boolean;

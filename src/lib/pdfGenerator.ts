@@ -26,12 +26,12 @@
  * CheckBox     FinalReturn
  * CheckBox     NameChange
  * CheckBox     AddressChange
- * TextField    Signature       — leave blank (pro forma)
- * TextField    Date            — leave blank (pro forma)
- * TextField    Title           — leave blank (pro forma)
- * TextField    BeginningDate   — month+day only, e.g. "January 1" (year is in EndingYear / auto-filled)
+ * TextField    Signature       — leave blank (pro forma; signed by taxpayer)
+ * TextField    Date            — today's date in MM/DD/YYYY format
+ * TextField    Title           — filing.signer_title (e.g. "Managing Member")
+ * TextField    BeginningDate   — month+day only, e.g. "January 1" (year auto-filled by form)
  * TextField    EndingDate      — e.g. "December 31"
- * TextField    EndingYear      — e.g. "2025"
+ * TextField    EndingYear      — last 2 digits only, e.g. "25" (form pre-prints "20")
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField } from 'pdf-lib';
@@ -62,7 +62,7 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function setText(doc: PDFDocument, fieldName: string, value: string | null | undefined) {
-  if (!fieldName) return; // skip intentionally unmapped fields
+  if (!fieldName) return;
   try {
     const field = doc.getForm().getField(fieldName);
     if (field instanceof PDFTextField) field.setText(value ?? '');
@@ -107,6 +107,19 @@ function fmtDate(val: string | null | undefined): string {
     `${String(d.getUTCMonth() + 1).padStart(2, '0')}/` +
     `${String(d.getUTCDate()).padStart(2, '0')}/` +
     `${d.getUTCFullYear()}`
+  );
+}
+
+/**
+ * Today's date formatted as MM/DD/YYYY — used for the signature Date field.
+ * Uses local time (intentional: this is the date the form is generated/signed).
+ */
+function todayFormatted(): string {
+  const d = new Date();
+  return (
+    `${String(d.getMonth() + 1).padStart(2, '0')}/` +
+    `${String(d.getDate()).padStart(2, '0')}/` +
+    `${d.getFullYear()}`
   );
 }
 
@@ -407,7 +420,6 @@ export async function fillForm5472(
 
   // ── Part IV — Monetary Transactions
   if (txn.hasPartIV) {
-    // Received
     setText(doc, F5472.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F5472.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F5472.LINE_11_PCT_PAYMENTS_RECEIVED,   '');
@@ -424,7 +436,6 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
     setText(doc, F5472.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
     setText(doc, F5472.LINE_22_TOTAL_RECEIVED,          fmt(txn.total_received));
-    // Paid
     setText(doc, F5472.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F5472.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
     setText(doc, F5472.LINE_25_PCT_PAYMENTS_PAID,       '');
@@ -456,13 +467,12 @@ export async function fillForm5472(
 // Verified field names (17 fields total):
 //   CorporateName, AddressLine1, City, State, Country, Zipcode, EIN
 //   Initial Return, FinalReturn, NameChange, AddressChange
-//   Signature, Date, Title  (all left blank on pro forma)
-//   BeginningDate, EndingDate, EndingYear
-//
-// BeginningDate contains month+day ONLY (e.g. "January 1" or "March 15").
-// The year for the beginning period is NOT written into BeginningDate because
-// the 1120 form pre-prints / auto-fills the year from context — writing it
-// would duplicate the year already present on the form.
+//   Signature  — left blank (taxpayer signs the physical copy)
+//   Date       — today's date (MM/DD/YYYY), filled automatically at generation time
+//   Title      — filing.signer_title (e.g. "Managing Member", "President")
+//   BeginningDate — month+day only (e.g. "January 1"); year auto-filled by form
+//   EndingDate    — e.g. "December 31"
+//   EndingYear    — last 2 digits only (e.g. "25"); form pre-prints "20"
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
@@ -476,10 +486,10 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const end   = resolvePeriodEnd(filing, taxYear);
 
   // ── Tax year header
-  // BeginningDate: month+day only — no year (the form auto-fills / pre-prints year)
-  set('BeginningDate', begin.label);   // e.g. "January 1" or "March 15"
-  set('EndingDate',    end.label);     // e.g. "December 31"
-  set('EndingYear',    end.year);      // e.g. "2025"
+  // BeginningDate: month+day only — no year (form auto-fills / pre-prints year)
+  set('BeginningDate', begin.label);                        // e.g. "January 1" or "March 15"
+  set('EndingDate',    end.label);                          // e.g. "December 31"
+  set('EndingYear',    end.year.slice(-2));                 // last 2 digits: "2025" → "25"
 
   // ── Corp identity
   set('CorporateName', filing.llc_name ?? '');
@@ -504,10 +514,13 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk('NameChange',     filing.name_change    ?? false);
   chk('AddressChange',  filing.address_change ?? false);
 
-  // ── Signature block — blank on pro forma
+  // ── Signature block
+  // Signature: intentionally blank — taxpayer signs the physical/printed copy
   set('Signature', '');
-  set('Date',      '');
-  set('Title',     '');
+  // Date: today's date (the date the form is prepared/generated)
+  set('Date',  todayFormatted());
+  // Title: collected from the user (e.g. "Managing Member", "President")
+  set('Title', filing.signer_title ?? '');
 
   doc.getForm().flatten();
   return doc.save();
