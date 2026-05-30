@@ -128,7 +128,7 @@ function fmtDate(val: string | null | undefined): string {
 
 /**
  * Today's date formatted as MM/DD/YYYY — used for the signature Date field.
- * Uses local time (intentional: this is the date the form is generated/signed).
+ * Uses local time (intentional: this is the date the form is generated/signed)
  */
 function todayFormatted(): string {
   const d = new Date();
@@ -154,6 +154,28 @@ function fmtCityStateZip(addr: Address | null | undefined): string {
     addr.postal_code,
     addr.country && addr.country !== 'US' && addr.country !== 'USA' ? addr.country : null,
   ].filter(Boolean).join(', ');
+}
+
+/**
+ * Name + address combined for a single AcroForm field.
+ * Produces:  "Full Name\nStreet, City, Region, Postal, Country"
+ * If no address data is available, returns just the name.
+ */
+function fmtNameAddress(
+  name: string | null | undefined,
+  addr: Address | null | undefined
+): string {
+  const namePart = name ?? '';
+  if (!addr) return namePart;
+  const parts = [
+    addr.line1,
+    addr.line2,
+    addr.city,
+    addr.region,
+    addr.postal_code,
+    addr.country ?? null,
+  ].filter(Boolean).join(', ');
+  return parts ? `${namePart}\n${parts}` : namePart;
 }
 
 const MONTH_NAMES = [
@@ -382,9 +404,16 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  // Business activity and code: fontSize 8 to match the rest of the form
-  setText(doc, F5472.CORP_ACTIVITY,       filing.naics_description ?? '', 8);
-  setText(doc, F5472.CORP_ACTIVITY_CODE,  filing.naics_code ? String(filing.naics_code) : '', 8);
+  // Business activity — font size 8 to fit the field; setFontSize called after setText
+  setText(doc, F5472.CORP_ACTIVITY,      filing.naics_description ?? '', 8);
+  setText(doc, F5472.CORP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
+  // Explicitly override after setText to beat any template default appearance
+  try {
+    const actField = doc.getForm().getField(F5472.CORP_ACTIVITY);
+    if (actField instanceof PDFTextField) actField.setFontSize(8);
+    const actCodeField = doc.getForm().getField(F5472.CORP_ACTIVITY_CODE);
+    if (actCodeField instanceof PDFTextField) actCodeField.setFontSize(8);
+  } catch { /* field not found — already warned in setText */ }
 
   const grossTotal = txn.total_received + txn.total_paid +
     txn.capital_contribution + txn.distribution +
@@ -397,9 +426,9 @@ export async function fillForm5472(
   setCheck(doc, F5472.INITIAL_RETURN_YES,  isInitial);
   setText(doc,  F5472.PARTS_VIII_COUNT,   '0');
 
-  setText(doc, F5472.CORP_COUNTRY_OF_INC,           'United States');
-  setText(doc, F5472.CORP_DATE_OF_INCORPORATION,    fmtDate(filing.date_of_incorporation));
-  setText(doc, F5472.CORP_RESIDENT_COUNTRY,         'United States');
+  setText(doc, F5472.CORP_COUNTRY_OF_INC,         'United States');
+  setText(doc, F5472.CORP_DATE_OF_INCORPORATION,  fmtDate(filing.date_of_incorporation));
+  setText(doc, F5472.CORP_RESIDENT_COUNTRY,       'United States');
   setText(doc, F5472.CORP_COUNTRY_BUSINESS,
     filing.mailing_address?.country ?? 'United States');
 
@@ -407,7 +436,11 @@ export async function fillForm5472(
   setCheck(doc, F5472.CORP_IS_FOREIGN_OWNED_DE, true);
 
   // ── Part II — 25% Foreign Shareholder (row 4)
-  setText(doc, F5472.SHAREHOLDER_NAME,                filing.owner_full_name ?? '');
+  // ShareholderNameAddress field: name + full address on separate line
+  setText(doc, F5472.SHAREHOLDER_NAME,
+    fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
+    8
+  );
   setText(doc, F5472.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
   setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
   setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
@@ -417,15 +450,25 @@ export async function fillForm5472(
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
   // ── Part III — Related Party
-  setCheck(doc, F5472.RP_IS_FOREIGN_PERSON,      true);
-  setCheck(doc, F5472.RP_IS_US_PERSON,           false);
-  setText(doc,  F5472.RP_NAME,                   filing.owner_full_name ?? '');
-  setText(doc,  F5472.RP_US_TIN,                 filing.owner_us_tin ?? '');
-  setText(doc,  F5472.RP_REFERENCE_ID,           filing.owner_reference_id ?? '');
-  setText(doc,  F5472.RP_FOREIGN_TIN,            filing.owner_foreign_tax_id ?? '');
-  // Related party business activity and code: fontSize 8 to match the rest of the form
-  setText(doc,  F5472.RP_ACTIVITY,               filing.owner_business_activity ?? filing.naics_description ?? '', 8);
-  setText(doc,  F5472.RP_ACTIVITY_CODE,          filing.naics_code ? String(filing.naics_code) : '', 8);
+  setCheck(doc, F5472.RP_IS_FOREIGN_PERSON, true);
+  setCheck(doc, F5472.RP_IS_US_PERSON,      false);
+  // RPNameAddress field: name + full address on separate line
+  setText(doc, F5472.RP_NAME,
+    fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
+    8
+  );
+  setText(doc, F5472.RP_US_TIN,         filing.owner_us_tin ?? '');
+  setText(doc, F5472.RP_REFERENCE_ID,   filing.owner_reference_id ?? '');
+  setText(doc, F5472.RP_FOREIGN_TIN,    filing.owner_foreign_tax_id ?? '');
+  // Business activity — font size 8, force override after setText
+  setText(doc, F5472.RP_ACTIVITY,      filing.owner_business_activity ?? filing.naics_description ?? '', 8);
+  setText(doc, F5472.RP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
+  try {
+    const rpActField = doc.getForm().getField(F5472.RP_ACTIVITY);
+    if (rpActField instanceof PDFTextField) rpActField.setFontSize(8);
+    const rpActCodeField = doc.getForm().getField(F5472.RP_ACTIVITY_CODE);
+    if (rpActCodeField instanceof PDFTextField) rpActCodeField.setFontSize(8);
+  } catch { /* field not found */ }
 
   setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
   setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, false);
@@ -496,9 +539,9 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
-  set('BeginningDate', begin.label,           8);
-  set('EndingDate',    end.label,             8);
-  set('EndingYear',    end.year.slice(-2),    8);
+  set('BeginningDate', begin.label,        8);
+  set('EndingDate',    end.label,          8);
+  set('EndingYear',    end.year.slice(-2), 8);
 
   set('CorporateName', filing.llc_name ?? '');
   set('EIN',           fmtEin(filing.ein));
@@ -656,6 +699,7 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
+    // Signature line — no "Prepared by" label, just the name and date
     y -= 18;
     page.drawLine({
       start: { x: margin, y },
@@ -937,130 +981,107 @@ export async function generateFilingInstructions(
   drawLine('Step 1 — Assemble the Package', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
-    'Print all documents in this package single-sided on standard 8.5 × 11\" white paper. ' +
-    'Arrange the pages in the following order:',
+    'Print all documents in this package. Arrange in the following order:',
     font, 10
   );
   drawLine('1.  This cover letter', font, 10, 12);
-  drawLine('2.  These filing instructions', font, 10, 12);
-  drawLine('3.  Pro Forma Form 1120 (page 1 only)', font, 10, 12);
-  drawLine('4.  Form 5472 (all pages)', font, 10, 12);
-  drawLine('5.  Part VI Statement (attachment to Form 5472)', font, 10, 12);
-  drawLine('6.  Part V Statement, if applicable', font, 10, 12);
+  drawLine('2.  Pro Forma Form 1120', font, 10, 12);
+  drawLine('3.  Form 5472', font, 10, 12);
+  drawLine('4.  Part VI Statement', font, 10, 12);
+  drawLine('5.  Part V Statement (if included)', font, 10, 12);
   drawBlank(1);
 
-  drawLine('Step 2 — Review Before Signing', boldFont, 10);
+  drawLine('Step 2 — Sign the Documents', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
-    'Verify all fields on Form 5472 and the Pro Forma 1120 are complete and accurate. ' +
-    'Sign and date the Pro Forma 1120 signature block. Do NOT sign Form 5472 separately — ' +
-    'it is attached to and filed with the Pro Forma 1120.',
+    'The owner/officer must sign and date the Pro Forma Form 1120 in the ' +
+    'Signature section. No signature is required on Form 5472 itself.',
     font, 10
   );
   drawBlank(1);
 
   drawLine('Step 3 — Mail the Package', boldFont, 10);
   drawBlank(0.5);
-  drawWrapped('Send the complete package by U.S. Mail or private delivery service to:', font, 10);
+  drawWrapped(
+    'Send the complete signed package via certified mail or private delivery ' +
+    'service (UPS, FedEx, DHL) to:',
+    font, 10
+  );
   drawBlank(0.5);
   for (const line of IRS_MAILING_ADDRESS) {
     drawLine(line, boldFont, 10, 12);
   }
   drawBlank(1);
-  drawWrapped(
-    'We strongly recommend using certified mail (USPS) or an IRS-approved private delivery ' +
-    'service (FedEx, UPS, DHL) so you have proof of timely filing.',
-    font, 10
-  );
-  drawBlank(1);
 
-  drawLine('Due Date', boldFont, 10);
+  drawLine('Step 4 — Retain a Copy', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
-    `The filing deadline is April 15, ${Number(taxYear) + 1} (or October 15, ${Number(taxYear) + 1} ` +
-    'if a timely Form 7004 extension was filed). Late filing carries a $25,000 penalty per form ' +
-    'under IRC § 6038A(d).',
+    'Keep a complete copy of the filed package (including the certified mail receipt ' +
+    'or delivery confirmation) for at least 6 years.',
     font, 10
   );
   drawBlank(1);
 
-  drawDivider();
-
+  drawLine('Important Deadlines', boldFont, 10);
+  drawBlank(0.5);
   drawWrapped(
-    'IMPORTANT: Failure to timely file or include required information on Form 5472 may result ' +
-    'in a $25,000 penalty per form per tax year, with continuation penalties of $25,000 for each ' +
-    '30-day period the failure continues after IRS notification.',
-    boldFont, 9
+    `Form 5472 (attached to Pro Forma Form 1120) is due by April 15, ${Number(taxYear) + 1} ` +
+    `for calendar-year filers. A 6-month extension may be requested by filing Form 7004 ` +
+    `on or before the due date. Failure to timely file may result in a $25,000 penalty ` +
+    `per form per tax year.`,
+    font, 10
   );
 
   return pdfDoc.save();
 }
 
-// ─── Package generator ────────────────────────────────────────────────────────
+// ─── Assemble full filing package ────────────────────────────────────────────
+//
+// Page order:
+//   1. Cover Letter
+//   2. Filing Instructions  ← only if delivery method is NOT fax
+//   3. Pro Forma Form 1120
+//   4. Form 5472
+//   5. Statements (Part VI always; Part V if applicable)
+//
+// Pass deliveryMethod = 'fax' to suppress the instructions page.
+// ─────────────────────────────────────────────────────────────────────────────
 
-export interface FilingPackage {
-  /**
-   * Combined single PDF with all pages in the correct order.
-   * Always contains: cover letter, pro forma 1120, form 5472, statements.
-   * Filing instructions page is included only when include_irs_fax === false.
-   */
-  combinedPdfBytes: Uint8Array;
-  /** Individual PDFs retained for backward compatibility / separate downloads */
-  form5472Bytes: Uint8Array;
-  proForma1120Bytes: Uint8Array;
-  statementsPdfBytes: Uint8Array;
-  coverLetterBytes: Uint8Array;
-  filingInstructionsBytes: Uint8Array | null;
-  hasPartV: boolean;
-  hasPartVI: true;
-}
-
-export async function generateFilingPackage(
+export async function assembleFilingPackage(
   filing: Filing,
-  transactions: Transaction[]
-): Promise<FilingPackage> {
-  const includeFax = filing.include_irs_fax === true;
+  transactions: Transaction[],
+  deliveryMethod: 'mail' | 'fax' | string = 'mail'
+): Promise<Uint8Array> {
+  const isFax = deliveryMethod === 'fax';
 
   const [
+    coverBytes,
+    instructionsBytes,
+    form1120Bytes,
     form5472Bytes,
-    proForma1120Bytes,
-    statementsPdfBytes,
-    coverLetterBytes,
-    filingInstructionsBytes,
+    statementsBytes,
   ] = await Promise.all([
-    fillForm5472(filing, transactions),
-    fillProForma1120(filing),
-    generateStatementsPdf(filing, transactions),
     generateCoverLetter(filing),
-    includeFax ? Promise.resolve(null) : generateFilingInstructions(filing),
+    isFax ? Promise.resolve(null) : generateFilingInstructions(filing),
+    fillProForma1120(filing),
+    fillForm5472(filing, transactions),
+    generateStatementsPdf(filing, transactions),
   ]);
 
-  // ── Assemble combined PDF in the correct page order ──────────────────────────
-  const combined = await PDFDocument.create();
+  const merged = await PDFDocument.create();
 
-  async function appendPdf(srcBytes: Uint8Array): Promise<void> {
-    const src = await PDFDocument.load(srcBytes);
-    const pages = await combined.copyPages(src, src.getPageIndices());
-    for (const page of pages) combined.addPage(page);
+  async function appendBytes(src: Uint8Array | null): Promise<void> {
+    if (!src) return;
+    const srcDoc = await PDFDocument.load(src);
+    const pages  = await merged.copyPages(srcDoc, srcDoc.getPageIndices());
+    for (const page of pages) merged.addPage(page);
   }
 
-  await appendPdf(coverLetterBytes);
-  if (filingInstructionsBytes) await appendPdf(filingInstructionsBytes);
-  await appendPdf(proForma1120Bytes);
-  await appendPdf(form5472Bytes);
-  await appendPdf(statementsPdfBytes);
+  await appendBytes(coverBytes);
+  if (!isFax) await appendBytes(instructionsBytes);
+  await appendBytes(form1120Bytes);
+  await appendBytes(form5472Bytes);
+  await appendBytes(statementsBytes);
 
-  const combinedPdfBytes = await combined.save();
-
-  const txn = aggregateTransactions(transactions);
-  return {
-    combinedPdfBytes,
-    form5472Bytes,
-    proForma1120Bytes,
-    statementsPdfBytes,
-    coverLetterBytes,
-    filingInstructionsBytes,
-    hasPartV: txn.hasPartV,
-    hasPartVI: true,
-  };
+  return merged.save();
 }
