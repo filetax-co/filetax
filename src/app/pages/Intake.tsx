@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router';
-import JSZip from 'jszip';
 import {
   supabase,
   type Filing,
@@ -8,7 +7,7 @@ import {
   type FilingTransactionCategory,
   type Address,
 } from '../../lib/supabase';
-import { generateFilingPackage } from '../../lib/pdfGenerator';
+import { assembleFilingPackage } from '../../lib/pdfGenerator';
 import { CountrySelect } from '../components/CountrySelect';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
@@ -241,22 +240,14 @@ export function Intake() {
         transaction_type: tx.category,
       })) as any;
 
-      const pkg = await generateFilingPackage(filing, txsForPdf);
+      const deliveryMethod = filing.include_irs_fax ? 'fax' : 'mail';
+      const packageBytes = await assembleFilingPackage(filing, txsForPdf, deliveryMethod);
 
-      const zip = new JSZip();
-      const folderName = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}`;
-      const folder = zip.folder(folderName)!;
-
-      folder.file('Form_5472.pdf', pkg.form5472Bytes);
-      folder.file('ProForma_1120.pdf', pkg.proForma1120Bytes);
-      // Combined statements PDF — Part VI always on page 1, Part V on page 2 if applicable
-      folder.file('Statements_PartVI_PartV.pdf', pkg.statementsPdfBytes);
-
-      const blob = await zip.generateAsync({ type: 'blob' });
+      const blob = new Blob([packageBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${folderName}.zip`;
+      a.download = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -416,34 +407,19 @@ export function Intake() {
               )}
 
               <DownloadRow
-                title={`Form 5472 (Tax year ${filing.tax_year ?? 'n/a'})`}
-                subtitle="Ready to mail or fax"
+                title={`Complete Filing Package (Tax year ${filing.tax_year ?? 'n/a'})`}
+                subtitle={`Single PDF: Cover letter${filing.include_irs_fax ? '' : ', Filing instructions'}, Pro Forma 1120, Form 5472, Statements`}
                 generating={generating}
                 onDownload={handleDownload}
               />
-              <DownloadRow
-                title="Pro Forma Form 1120"
-                subtitle="Submit alongside Form 5472"
-                generating={generating}
-                onDownload={handleDownload}
-              />
-              <DownloadRow
-                title="Statements (Part VI + Part V)"
-                subtitle={`Part VI — § 1.6038A-2(b)(7)(ix) service disclosure${filing.include_rcl ? '' : ''}. Mail to: IRS, 1973 Rulon White Blvd, M/S 6112 Attn: PIN Unit, Ogden UT 84201.`}
-                generating={generating}
-                onDownload={handleDownload}
-              />
-              {filing.include_rcl && (
-                <DownloadRow
-                  title="Reasonable Cause Letter"
-                  subtitle="CPA-prepared. For penalty abatement."
-                  generating={generating}
-                  onDownload={handleDownload}
-                />
-              )}
+
               <div style={{ background: 'rgba(2,132,199,0.04)', border: '1px solid rgba(2,132,199,0.25)', borderRadius: '0.5rem', padding: '1rem 1.125rem', marginTop: '1.25rem' }}>
                 <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--tf-text)', marginBottom: '0.25rem' }}>Next steps</p>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>Print the forms, sign where indicated, and mail the complete package to the IRS PIN Unit at Ogden, UT 84201 (address shown in the Statements PDF footer). Keep a digital copy for your records.</p>
+                <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>
+                  {filing.include_irs_fax
+                    ? 'Fax the complete package to the IRS PIN Unit. The fax number and instructions are included in the cover letter.'
+                    : 'Print the forms, sign where indicated, and mail the complete package to the IRS PIN Unit at Ogden, UT 84201 (address shown in the cover letter). Keep a digital copy for your records.'}
+                </p>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
@@ -686,6 +662,24 @@ function FieldRow({ label, id, children }: { label: string; id: string; children
   );
 }
 
+function AddressFields({ value, onChange }: { value: Address; onChange: (a: Address) => void }) {
+  const set = (k: keyof Address, v: string) => onChange({ ...value, [k]: v || undefined });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <input placeholder="Street line 1" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} style={inputStyle} />
+      <input placeholder="Street line 2 (optional)" value={value.line2 ?? ''} onChange={(e) => set('line2', e.target.value)} style={inputStyle} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} style={inputStyle} />
+        <input placeholder="State / Region" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} style={inputStyle} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <input placeholder="ZIP / Postal code" value={value.postal_code ?? ''} onChange={(e) => set('postal_code', e.target.value)} style={inputStyle} />
+        <input placeholder="Country" value={value.country ?? ''} onChange={(e) => set('country', e.target.value)} style={inputStyle} />
+      </div>
+    </div>
+  );
+}
+
 function ReviewRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--tf-border)', fontSize: '0.9375rem' }}>
@@ -710,34 +704,22 @@ function DownloadRow({ title, subtitle, generating, onDownload }: {
       <button
         onClick={onDownload}
         disabled={generating}
-        style={{ flexShrink: 0, background: generating ? '#93C5FD' : '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.8125rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: generating ? 'not-allowed' : 'pointer', minHeight: '36px', whiteSpace: 'nowrap' }}
+        style={{
+          background: generating ? '#93C5FD' : '#0284C7',
+          color: 'white',
+          border: 'none',
+          fontWeight: 600,
+          fontSize: '0.875rem',
+          padding: '0.5rem 1rem',
+          borderRadius: '0.375rem',
+          cursor: generating ? 'not-allowed' : 'pointer',
+          minHeight: '36px',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
       >
-        {generating ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'tf-spin 0.8s linear infinite' }} />
-            Generating…
-          </span>
-        ) : 'Download ZIP'}
+        {generating ? 'Generating…' : 'Download PDF'}
       </button>
-    </div>
-  );
-}
-
-function AddressFields({ value, onChange }: { value: Address; onChange: (a: Address) => void }) {
-  const upd = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    onChange({ ...value, [k]: e.target.value });
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <input placeholder="Street line 1" value={value.line1 ?? ''} onChange={upd('line1')} style={inputStyle} />
-      <input placeholder="Street line 2 (optional)" value={value.line2 ?? ''} onChange={upd('line2')} style={inputStyle} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <input placeholder="City" value={value.city ?? ''} onChange={upd('city')} style={inputStyle} />
-        <input placeholder="State / Region" value={value.region ?? ''} onChange={upd('region')} style={inputStyle} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <input placeholder="ZIP / Postal code" value={value.postal_code ?? ''} onChange={upd('postal_code')} style={inputStyle} />
-        <input placeholder="Country" value={value.country ?? ''} onChange={upd('country')} style={inputStyle} />
-      </div>
     </div>
   );
 }
