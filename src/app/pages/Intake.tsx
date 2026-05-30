@@ -9,6 +9,7 @@ import {
   type Address,
 } from '../../lib/supabase';
 import { generateFilingPackage } from '../../lib/pdfGenerator';
+import { CountrySelect } from '../components/CountrySelect';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
@@ -251,6 +252,8 @@ export function Intake() {
       if (pkg.hasPartV) {
         folder.file('PartV_Statement.txt', pkg.partVStatement);
       }
+      // Part VI statement PDF — always included
+      folder.file('PartVI_Statement.pdf', pkg.partVIStatementBytes);
 
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
@@ -427,6 +430,12 @@ export function Intake() {
                 generating={generating}
                 onDownload={handleDownload}
               />
+              <DownloadRow
+                title="Part VI Statement"
+                subtitle="Disclosure of uncompensated management services — Treas. Reg. § 1.6038A-2(b)(7)(ix)"
+                generating={generating}
+                onDownload={handleDownload}
+              />
               {filing.include_rcl && (
                 <DownloadRow
                   title="Reasonable Cause Letter"
@@ -450,141 +459,209 @@ export function Intake() {
     );
   }
 
+  // ── Step renderer ────────────────────────────────────────────────────────────
+
+  const stepLabels = ['LLC info', 'Owner', 'Transactions', 'Review & pay'];
+
   return (
     <>
+      {/* Progress header */}
       <section style={{ background: 'var(--tf-bg)', padding: '3rem 1rem 1.5rem' }}>
         <div style={{ maxWidth: '760px', margin: '0 auto' }}>
           <Link to="/dashboard" style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none', display: 'inline-block', marginBottom: '1rem' }}>Back to Dashboard</Link>
           <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2rem)', marginBottom: '0.25rem', lineHeight: 1.2 }}>{SERVICE_LABEL[filing.service_type]}</h1>
-          <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>Step {step} of 4. Your progress is saved automatically when you continue.</p>
+          <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>Step {step} of 4</p>
           <div style={{ display: 'flex', gap: '0.375rem', marginBottom: '0.5rem' }}>
-            {[1, 2, 3, 4].map((n) => (<div key={n} style={{ flex: 1, height: '4px', borderRadius: '9999px', background: n <= step ? '#0284C7' : 'var(--tf-border)' }} />))}
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={{ flex: 1, height: '4px', borderRadius: '9999px', background: n <= step ? '#0284C7' : 'var(--tf-border)' }} />
+            ))}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--tf-muted)', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            <span>LLC info</span><span>Owner</span><span>Transactions</span><span>Review</span>
+            {stepLabels.map((label, i) => (
+              <span key={label} style={{ color: i + 1 === step ? '#0284C7' : 'var(--tf-muted)' }}>{label}</span>
+            ))}
           </div>
         </div>
       </section>
 
+      {/* Step body */}
       <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 3rem' }}>
         <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+          {error && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem', color: '#991B1B', fontSize: '0.875rem' }}>
+              {error}
+            </div>
+          )}
+
           <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '2rem' }}>
-            {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
 
+            {/* ── Step 1: LLC Info ── */}
             {step === 1 && (
-              <div>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>LLC information</h2>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>These details come from your LLC formation documents.</p>
-                <Field label="LLC legal name"><input value={llcName} onChange={(e) => setLlcName(e.target.value)} style={inputStyle} placeholder="e.g. Acme Holdings LLC" /></Field>
-                <Field label="EIN"><input value={ein} onChange={(e) => setEin(e.target.value)} style={inputStyle} placeholder="XX-XXXXXXX" /></Field>
-                <Field label="State of formation"><input value={stateOfFormation} onChange={(e) => setStateOfFormation(e.target.value)} style={inputStyle} placeholder="e.g. Delaware" /></Field>
-                <Field label="Tax year being filed"><input value={taxYear} onChange={(e) => setTaxYear(e.target.value)} style={inputStyle} placeholder="e.g. 2024" /></Field>
-                <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--tf-text)', marginTop: '1.5rem', marginBottom: '0.75rem' }}>Mailing address (U.S.)</p>
-                <AddressFields value={mailing} onChange={setMailing} />
-              </div>
+              <>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>LLC information</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <FieldRow label="Legal LLC name" id="llc-name">
+                    <input id="llc-name" type="text" value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Ventures LLC" style={inputStyle} />
+                  </FieldRow>
+                  <FieldRow label="EIN" id="ein">
+                    <input id="ein" type="text" value={ein} onChange={(e) => setEin(e.target.value)} placeholder="XX-XXXXXXX" style={inputStyle} />
+                  </FieldRow>
+                  <FieldRow label="State of formation" id="state">
+                    <input id="state" type="text" value={stateOfFormation} onChange={(e) => setStateOfFormation(e.target.value)} placeholder="e.g. Wyoming" style={inputStyle} />
+                  </FieldRow>
+                  <FieldRow label="Tax year" id="tax-year">
+                    <input id="tax-year" type="text" value={taxYear} onChange={(e) => setTaxYear(e.target.value)} placeholder="e.g. 2024" style={inputStyle} />
+                  </FieldRow>
+                  <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+                    <legend style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.75rem' }}>Mailing address</legend>
+                    <AddressFields value={mailing} onChange={setMailing} />
+                  </fieldset>
+                </div>
+              </>
             )}
 
+            {/* ── Step 2: Owner Info ── */}
             {step === 2 && (
-              <div>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Owner information</h2>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>As the foreign reporting party, the IRS requires the following.</p>
-                <Field label="Full legal name"><input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} style={inputStyle} /></Field>
-                <Field label="Country of residence"><input value={ownerCountryRes} onChange={(e) => setOwnerCountryRes(e.target.value)} style={inputStyle} placeholder="e.g. India" /></Field>
-                <Field label="Country of citizenship"><input value={ownerCountryCit} onChange={(e) => setOwnerCountryCit(e.target.value)} style={inputStyle} /></Field>
-                <Field label="Passport number"><input value={ownerPassport} onChange={(e) => setOwnerPassport(e.target.value)} style={inputStyle} /></Field>
-                <Field label="Foreign tax ID (optional)"><input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} style={inputStyle} placeholder="e.g. PAN, NIN" /></Field>
-                <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--tf-text)', marginTop: '1.5rem', marginBottom: '0.75rem' }}>Foreign address</p>
-                <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
-              </div>
+              <>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>Foreign owner information</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <FieldRow label="Full legal name" id="owner-name">
+                    <input id="owner-name" type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="As shown on passport" style={inputStyle} />
+                  </FieldRow>
+                  <CountrySelect
+                    id="owner-country-res"
+                    label="Country of residence"
+                    value={ownerCountryRes}
+                    onChange={setOwnerCountryRes}
+                  />
+                  <CountrySelect
+                    id="owner-country-cit"
+                    label="Country of citizenship"
+                    value={ownerCountryCit}
+                    onChange={setOwnerCountryCit}
+                  />
+                  <FieldRow label="Passport number" id="owner-passport">
+                    <input id="owner-passport" type="text" value={ownerPassport} onChange={(e) => setOwnerPassport(e.target.value)} placeholder="Optional" style={inputStyle} />
+                  </FieldRow>
+                  <FieldRow label="Foreign tax ID" id="owner-ftid">
+                    <input id="owner-ftid" type="text" value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Optional" style={inputStyle} />
+                  </FieldRow>
+                  <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+                    <legend style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.75rem' }}>Owner address</legend>
+                    <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
+                  </fieldset>
+                </div>
+              </>
             )}
 
+            {/* ── Step 3: Transactions ── */}
             {step === 3 && (
-              <div>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Reportable transactions</h2>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.25rem' }}>Add each transaction between you (or a related party) and the LLC during the tax year. If there were none, you can leave this empty.</p>
-                {transactions.length === 0 ? (
-                  <div style={{ background: 'var(--tf-bg)', border: '1px dashed var(--tf-border)', borderRadius: '0.5rem', padding: '1.25rem', textAlign: 'center', marginBottom: '1rem' }}>
-                    <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>No transactions yet.</p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', marginBottom: '1rem' }}>
-                    {transactions.map((t, idx) => (
-                      <TxRow key={t.id} index={idx} tx={t} onUpdate={(patch) => updateTx(t.id, patch)} onRemove={() => removeTx(t.id)} />
+              <>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.5rem' }}>Transactions</h2>
+                <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                  Add every transaction between the LLC and its foreign owner during the tax year.
+                  Leave this section empty if there were no reportable transactions.
+                </p>
+                {transactions.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                    {transactions.map((tx) => (
+                      <div key={tx.id} style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.875rem 1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--tf-muted)' }}>Type</label>
+                            <select
+                              value={tx.category}
+                              onChange={(e) => updateTx(tx.id, { category: e.target.value as FilingTransactionCategory })}
+                              style={{ ...inputStyle, fontSize: '0.875rem' }}
+                            >
+                              {TX_CATEGORIES.map((cat) => (
+                                <option key={cat} value={cat}>{TX_CATEGORY_LABEL[cat]}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--tf-muted)' }}>Amount (USD)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={tx.amount ?? 0}
+                              onChange={(e) => updateTx(tx.id, { amount: parseFloat(e.target.value) || 0 })}
+                              style={{ ...inputStyle, fontSize: '0.875rem' }}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeTx(tx.id)}
+                          style={{ fontSize: '0.8125rem', color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
-                <button onClick={addTransaction} style={{ background: 'transparent', color: '#0284C7', border: '1px solid #0284C7', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '40px' }}>+ Add transaction</button>
-                <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--tf-border)' }}>
-                  <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--tf-text)', marginBottom: '0.75rem' }}>Add-ons</p>
-                  <label style={checkboxRowStyle(includeFax)}>
-                    <input type="checkbox" checked={includeFax} onChange={(e) => setIncludeFax(e.target.checked)} style={{ accentColor: '#0284C7', width: '16px', height: '16px', flexShrink: 0, marginTop: '3px' }} />
-                    <div>
-                      <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--tf-text)' }}>IRS Fax submission (+$30)</p>
-                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.5 }}>Faster IRS processing with a digital confirmation receipt.</p>
-                    </div>
-                  </label>
-                  <label style={{ ...checkboxRowStyle(includeRcl), marginTop: '0.5rem' }}>
-                    <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ accentColor: '#0284C7', width: '16px', height: '16px', flexShrink: 0, marginTop: '3px' }} />
-                    <div>
-                      <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--tf-text)' }}>Reasonable Cause Letter (+$200)</p>
-                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.5 }}>CPA-prepared letter for late filings to support penalty abatement.</p>
-                    </div>
-                  </label>
-                </div>
-              </div>
+                <button
+                  onClick={addTransaction}
+                  style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0284C7', background: 'none', border: '1px dashed #93C5FD', borderRadius: '0.5rem', padding: '0.625rem 1rem', cursor: 'pointer', width: '100%', minHeight: '44px' }}
+                >
+                  + Add transaction
+                </button>
+              </>
             )}
 
+            {/* ── Step 4: Review & Pay ── */}
             {step === 4 && (
-              <div>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Review your filing</h2>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>Confirm everything is correct, then pay to download your forms.</p>
-                <ReviewSection title="LLC information" onEdit={() => setStep(1)}>
-                  <ReviewRow label="LLC name" value={llcName} />
-                  <ReviewRow label="EIN" value={ein} />
-                  <ReviewRow label="State of formation" value={stateOfFormation} />
-                  <ReviewRow label="Tax year" value={taxYear} />
-                  <ReviewRow label="Mailing address" value={formatAddress(mailing)} />
-                </ReviewSection>
-                <ReviewSection title="Owner information" onEdit={() => setStep(2)}>
-                  <ReviewRow label="Full legal name" value={ownerName} />
-                  <ReviewRow label="Country of residence" value={ownerCountryRes} />
-                  <ReviewRow label="Country of citizenship" value={ownerCountryCit} />
-                  <ReviewRow label="Passport number" value={ownerPassport} />
-                  <ReviewRow label="Foreign tax ID" value={ownerForeignTaxId} />
-                  <ReviewRow label="Foreign address" value={formatAddress(ownerAddress)} />
-                </ReviewSection>
-                <ReviewSection title={`Transactions (${transactions.length})`} onEdit={() => setStep(3)}>
-                  {transactions.length === 0 ? (
-                    <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>No transactions reported.</p>
-                  ) : (
-                    transactions.map((t) => (
-                      <ReviewRow key={t.id} label={`${TX_CATEGORY_LABEL[t.category]} (${t.direction === 'to_llc' ? 'to LLC' : 'from LLC'})`} value={`${t.currency} ${t.amount.toLocaleString()} ${t.transaction_date ? '/ ' + t.transaction_date : ''} ${t.description ? '/ ' + t.description : ''}`} />
-                    ))
-                  )}
-                </ReviewSection>
-                <ReviewSection title="Add-ons" onEdit={() => setStep(3)}>
-                  <ReviewRow label="IRS Fax submission" value={includeFax ? 'Yes (+$30)' : 'No'} />
-                  <ReviewRow label="Reasonable Cause Letter" value={includeRcl ? 'Yes (+$200)' : 'No'} />
-                </ReviewSection>
-                <div style={{ borderTop: '2px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text)' }}>Total</span>
-                  <span style={{ fontWeight: 700, fontSize: '1.25rem', color: '#0F172A' }}>{formatCents(priceCents)}</span>
+              <>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>Review &amp; pay</h2>
+                <ReviewRow label="LLC name" value={filing.llc_name ?? '—'} />
+                <ReviewRow label="EIN" value={filing.ein ?? '—'} />
+                <ReviewRow label="Tax year" value={filing.tax_year ?? '—'} />
+                <ReviewRow label="Foreign owner" value={filing.owner_full_name ?? '—'} />
+                <ReviewRow label="Country of residence" value={filing.owner_country_residence ?? '—'} />
+                <ReviewRow label="Country of citizenship" value={filing.owner_country_citizenship ?? '—'} />
+                <ReviewRow label="Transactions" value={`${transactions.length} transaction${transactions.length !== 1 ? 's' : ''}`} />
+                <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.9375rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={includeFax} onChange={(e) => setIncludeFax(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                      <span>IRS fax delivery <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(+$30)</span></span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.9375rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                      <span>Reasonable cause letter <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(+$200)</span></span>
+                    </label>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.25rem' }}>
+                    <span>Total</span>
+                    <span>{formatCents(priceCents)}</span>
+                  </div>
+                  <button
+                    onClick={payAndDownload}
+                    disabled={paying}
+                    style={{ width: '100%', background: '#0284C7', color: 'white', border: 'none', fontWeight: 700, fontSize: '1rem', padding: '0.875rem 1rem', borderRadius: '0.5rem', cursor: paying ? 'not-allowed' : 'pointer', minHeight: '48px', opacity: paying ? 0.7 : 1 }}
+                  >
+                    {paying ? 'Processing…' : `Pay ${formatCents(priceCents)} and generate forms`}
+                  </button>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-            <button onClick={goBack} style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
+          {/* Navigation */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1.5rem', gap: '0.75rem' }}>
+            <button
+              onClick={goBack}
+              style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}
+            >
               {step === 1 ? 'Cancel' : 'Back'}
             </button>
-            {step < 4 ? (
-              <button onClick={saveAndContinue} disabled={saving} style={primaryFooterBtn(saving)}>
-                {saving ? 'Saving...' : 'Save and continue'}
-              </button>
-            ) : (
-              <button onClick={payAndDownload} disabled={paying} style={primaryFooterBtn(paying)}>
-                {paying ? 'Processing...' : `Pay and download (${formatCents(priceCents)})`}
+            {step < 4 && (
+              <button
+                onClick={saveAndContinue}
+                disabled={saving}
+                style={{ background: '#0284C7', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.5rem', borderRadius: '0.5rem', cursor: saving ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: saving ? 0.7 : 1 }}
+              >
+                {saving ? 'Saving…' : 'Save and continue'}
               </button>
             )}
           </div>
@@ -594,127 +671,77 @@ export function Intake() {
   );
 }
 
-function DownloadRow({ title, subtitle, generating, onDownload }: { title: string; subtitle: string; generating: boolean; onDownload: () => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', marginBottom: '0.625rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: 0 }}>
-        <div style={{ width: 36, height: 44, background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.25rem', flexShrink: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 4 }}>
-          <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#B31D1D' }}>PDF</span>
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--tf-text)', margin: 0 }}>{title}</p>
-          <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, margin: 0 }}>{subtitle}</p>
-        </div>
-      </div>
-      <button
-        onClick={onDownload}
-        disabled={generating}
-        style={{ background: generating ? '#6B7280' : '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: generating ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: generating ? 0.7 : 1 }}
-      >
-        {generating ? 'Generating...' : 'Download'}
-      </button>
-    </div>
-  );
-}
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.5625rem 0.75rem',
+  fontSize: '0.9375rem',
+  color: 'var(--tf-text)',
+  background: 'var(--tf-bg)',
+  border: '1px solid var(--tf-border)',
+  borderRadius: '0.5rem',
+  minHeight: '44px',
+  boxSizing: 'border-box',
+};
+
+function FieldRow({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: '1.125rem' }}>
-      <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>{label}</label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+      <label htmlFor={id} style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '0.01em' }}>{label}</label>
       {children}
     </div>
   );
 }
 
 function AddressFields({ value, onChange }: { value: Address; onChange: (a: Address) => void }) {
-  function set<K extends keyof Address>(key: K, v: string) { onChange({ ...value, [key]: v }); }
+  const upd = (k: keyof Address) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    onChange({ ...value, [k]: e.target.value });
   return (
-    <>
-      <Field label="Address line 1"><input value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} style={inputStyle} /></Field>
-      <Field label="Address line 2 (optional)"><input value={value.line2 ?? ''} onChange={(e) => set('line2', e.target.value)} style={inputStyle} /></Field>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <input placeholder="Street line 1" value={value.line1 ?? ''} onChange={upd('line1')} style={inputStyle} />
+      <input placeholder="Street line 2 (optional)" value={value.line2 ?? ''} onChange={upd('line2')} style={inputStyle} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <Field label="City"><input value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} style={inputStyle} /></Field>
-        <Field label="State or region"><input value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} style={inputStyle} /></Field>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <Field label="Postal code"><input value={value.postal_code ?? ''} onChange={(e) => set('postal_code', e.target.value)} style={inputStyle} /></Field>
-        <Field label="Country"><input value={value.country ?? ''} onChange={(e) => set('country', e.target.value)} style={inputStyle} /></Field>
-      </div>
-    </>
-  );
-}
-
-function TxRow({ index, tx, onUpdate, onRemove }: { index: number; tx: FilingTransaction; onUpdate: (patch: Partial<FilingTransaction>) => void; onRemove: () => void }) {
-  return (
-    <div style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '1rem 1.125rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <p style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Transaction {index + 1}</p>
-        <button onClick={onRemove} style={{ background: 'none', border: 'none', color: '#B31D1D', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}>Remove</button>
+        <input placeholder="City" value={value.city ?? ''} onChange={upd('city')} style={inputStyle} />
+        <input placeholder="State / Region" value={value.region ?? ''} onChange={upd('region')} style={inputStyle} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <Field label="Category">
-          <select value={tx.category} onChange={(e) => onUpdate({ category: e.target.value as FilingTransactionCategory })} style={inputStyle}>
-            {TX_CATEGORIES.map((c) => <option key={c} value={c}>{TX_CATEGORY_LABEL[c]}</option>)}
-          </select>
-        </Field>
-        <Field label="Direction">
-          <select value={tx.direction} onChange={(e) => onUpdate({ direction: e.target.value as 'to_llc' | 'from_llc' })} style={inputStyle}>
-            <option value="to_llc">To the LLC</option>
-            <option value="from_llc">From the LLC</option>
-          </select>
-        </Field>
-        <Field label="Amount"><input type="number" step="0.01" value={tx.amount} onChange={(e) => onUpdate({ amount: parseFloat(e.target.value) || 0 })} style={inputStyle} /></Field>
-        <Field label="Currency"><input value={tx.currency} onChange={(e) => onUpdate({ currency: e.target.value })} style={inputStyle} /></Field>
-        <Field label="Date"><input type="date" value={tx.transaction_date ?? ''} onChange={(e) => onUpdate({ transaction_date: e.target.value || null })} style={inputStyle} /></Field>
-        <Field label="Description (optional)"><input value={tx.description ?? ''} onChange={(e) => onUpdate({ description: e.target.value || null })} style={inputStyle} /></Field>
+        <input placeholder="Postal code" value={value.postal_code ?? ''} onChange={upd('postal_code')} style={inputStyle} />
+        <CountrySelect
+          id="address-country"
+          label=""
+          value={value.country ?? ''}
+          onChange={(v) => onChange({ ...value, country: v })}
+          style={{ gap: 0 }}
+        />
       </div>
-    </div>
-  );
-}
-
-function ReviewSection({ title, children, onEdit }: { title: string; children: React.ReactNode; onEdit?: () => void }) {
-  return (
-    <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: '1.25rem', paddingBottom: '1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>{title}</h3>
-        {onEdit && <button onClick={onEdit} style={{ background: 'none', border: 'none', color: '#0284C7', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>Edit</button>}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{children}</div>
     </div>
   );
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '1rem', fontSize: '0.875rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--tf-border)', fontSize: '0.9375rem' }}>
       <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}>{label}</span>
-      <span style={{ color: 'var(--tf-text)', fontWeight: 500 }}>{value || <span style={{ color: 'var(--tf-muted)' }}>n/a</span>}</span>
+      <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
 }
 
-function formatAddress(a: Address): string {
-  return [a.line1, a.line2, a.city, a.region, a.postal_code, a.country].filter(Boolean).join(', ');
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.625rem 0.875rem',
-  borderRadius: '0.5rem',
-  border: '1px solid var(--tf-border)',
-  background: 'var(--tf-bg)',
-  color: 'var(--tf-text)',
-  fontSize: '0.9375rem',
-  outline: 'none',
-  boxSizing: 'border-box',
-  minHeight: '44px',
-  fontFamily: 'inherit',
-};
-
-function checkboxRowStyle(checked: boolean): React.CSSProperties {
-  return { display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: `1px solid ${checked ? '#0284C7' : 'var(--tf-border)'}`, background: checked ? 'rgba(2,132,199,0.06)' : 'var(--tf-bg)', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' };
-}
-
-function primaryFooterBtn(busy: boolean): React.CSSProperties {
-  return { background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.5rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy ? 0.7 : 1 };
+function DownloadRow({ title, subtitle, generating, onDownload }: { title: string; subtitle: string; generating: boolean; onDownload: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--tf-border)', gap: '1rem' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontWeight: 600, fontSize: '0.9375rem', marginBottom: '0.125rem' }}>{title}</p>
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem' }}>{subtitle}</p>
+      </div>
+      <button
+        onClick={onDownload}
+        disabled={generating}
+        style={{ background: generating ? 'var(--tf-border)' : '#0284C7', color: generating ? 'var(--tf-muted)' : 'white', border: 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: generating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', minHeight: '44px', flexShrink: 0 }}
+      >
+        {generating ? 'Generating…' : 'Download ZIP'}
+      </button>
+    </div>
+  );
 }
