@@ -73,10 +73,46 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const filing = filingData as Filing;
       const transactions = (txnsData ?? []) as Transaction[];
 
+      // Determine delivery method — filing.delivery_method stores 'mail' | 'fax'
+      // Instructions page is suppressed when filing via fax
+      const deliveryMethod: string = filing.delivery_method ?? 'mail';
+      const isFax = deliveryMethod === 'fax';
+
       // 3. Generate all PDFs — lazy-load pdfGenerator (~480 kB) only on demand
       setStatus('generating');
-      const { generateFilingPackage } = await import('../lib/pdfGenerator');
-      const pkg = await generateFilingPackage(filing, transactions);
+      const {
+        assembleFilingPackage,
+        fillForm5472,
+        fillProForma1120,
+        generateStatementsPdf,
+        generateCoverLetter,
+        generateFilingInstructions,
+      } = await import('../lib/pdfGenerator');
+
+      // Combined PDF — correct page order, fax-aware
+      const combinedPdfBytes = await assembleFilingPackage(filing, transactions, deliveryMethod);
+
+      // Individual PDFs for the ZIP
+      const [form5472Bytes, proForma1120Bytes, statementsPdfBytes, coverLetterBytes] =
+        await Promise.all([
+          fillForm5472(filing, transactions),
+          fillProForma1120(filing),
+          generateStatementsPdf(filing, transactions),
+          generateCoverLetter(filing),
+        ]);
+
+      // Instructions only if not fax
+      const filingInstructionsBytes = isFax
+        ? null
+        : await generateFilingInstructions(filing);
+
+      // Detect whether Part V was generated (has non-zero Part V transactions)
+      // We reuse the same logic: check if statementsBytes is >1 page by size heuristic,
+      // or simply check the filing's transactions directly.
+      const hasPartV = transactions.some(tx =>
+        ['capital_contribution', 'distribution', 'formation_costs', 'property_transfer']
+          .includes(tx.transaction_type)
+      );
 
       // 4. Bundle into ZIP — lazy-load jszip (~50 kB) only on demand
       setStatus('bundling');
@@ -87,28 +123,28 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const slug = name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
       // ── Primary file: single combined PDF (all pages in the correct order) ──
-      // This is the file to print and mail. Page order:
+      // This is the file to print and mail/fax. Page order:
       //   Cover Letter → Filing Instructions (if not fax) → Pro Forma 1120 → Form 5472 → Statements
       zip.file(
         `COMPLETE_FILING_PACKAGE_${year}_${slug}.pdf`,
-        pkg.combinedPdfBytes
+        combinedPdfBytes
       );
 
-      // ── Individual PDFs for reference / separate review ────────────────────
-      zip.file(`Form_5472_${year}_${slug}.pdf`,      pkg.form5472Bytes);
-      zip.file(`ProForma_1120_${year}_${slug}.pdf`,  pkg.proForma1120Bytes);
-      zip.file(`Statements_${year}_${slug}.pdf`,     pkg.statementsPdfBytes);
-      zip.file(`Cover_Letter_${year}_${slug}.pdf`,   pkg.coverLetterBytes);
+      // ── Individual PDFs for reference / separate review ───────────────────────
+      zip.file(`Form_5472_${year}_${slug}.pdf`,      form5472Bytes);
+      zip.file(`ProForma_1120_${year}_${slug}.pdf`,  proForma1120Bytes);
+      zip.file(`Statements_${year}_${slug}.pdf`,     statementsPdfBytes);
+      zip.file(`Cover_Letter_${year}_${slug}.pdf`,   coverLetterBytes);
 
-      if (pkg.filingInstructionsBytes) {
+      if (filingInstructionsBytes) {
         zip.file(
           `Filing_Instructions_${year}_${slug}.pdf`,
-          pkg.filingInstructionsBytes
+          filingInstructionsBytes
         );
       }
 
       // ── README (plain text, human-readable checklist) ─────────────────────
-      const statementNote = pkg.hasPartV
+      const statementNote = hasPartV
         ? '     Statements_*.pdf contains: Part VI disclosure + Part V non-monetary transactions'
         : '     Statements_*.pdf contains: Part VI disclosure (no Part V transactions this year)';
 
@@ -116,29 +152,29 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
         `FORM 5472 FILING PACKAGE — TAX YEAR ${year}`,
         `Entity: ${filing.llc_name ?? name}  |  EIN: ${filing.ein ?? 'See Form 5472'}`,
         `Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
+        `Delivery Method: ${isFax ? 'Fax' : 'Mail'}`,
         '',
         '─────────────────────────────────────────────────',
         'FILES IN THIS ZIP',
         '─────────────────────────────────────────────────',
         '',
-        '  COMPLETE_FILING_PACKAGE_*.pdf  ← PRINT AND MAIL THIS FILE',
+        `  COMPLETE_FILING_PACKAGE_*.pdf  ← ${isFax ? 'FAX THIS FILE' : 'PRINT AND MAIL THIS FILE'}`,
         '     All pages assembled in the correct order for the IRS.',
         '',
         '  Individual PDFs (for review):',
         '     Cover_Letter_*.pdf',
-        pkg.filingInstructionsBytes ? '     Filing_Instructions_*.pdf' : '',
+        ...(!isFax ? ['     Filing_Instructions_*.pdf'] : []),
         '     ProForma_1120_*.pdf',
         '     Form_5472_*.pdf',
         statementNote,
         '',
         '─────────────────────────────────────────────────',
-        'MAILING ADDRESS',
+        isFax ? 'FAX NUMBER' : 'MAILING ADDRESS',
         '─────────────────────────────────────────────────',
         '',
-        '  Internal Revenue Service',
-        '  1973 Rulon White Blvd',
-        '  M/S 6112 Attn: PIN Unit',
-        '  Ogden, UT 84201',
+        isFax
+          ? '  IRS Fax: (855) 887-7737'
+          : '  Internal Revenue Service\n  1973 Rulon White Blvd\n  M/S 6112 Attn: PIN Unit\n  Ogden, UT 84201',
         '',
         '─────────────────────────────────────────────────',
         'DUE DATE',
@@ -153,9 +189,9 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
         'DISCLAIMER',
         '─────────────────────────────────────────────────',
         '',
-        '  This package was generated by FileTax. Review all fields',
+        '  This package was generated by TaxClaim. Review all fields',
         '  with your CPA or tax advisor before filing.',
-      ].filter(l => l !== null).join('\n'));
+      ].join('\n'));
 
       const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 
