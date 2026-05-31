@@ -1,8 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import JSZip from 'jszip';
 import { supabase, Filing, FilingTransaction, FilingTransactionCategory, Address } from '../../lib/supabase';
-import { generateFilingPackage } from '../../lib/pdfGenerator';
+import { assembleFilingPackage } from '../../lib/pdfGenerator';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
@@ -295,7 +294,6 @@ function Actions({ children }: { children: React.ReactNode }) {
 // ── direction label helper ────────────────────────────────────────────────────
 
 function directionLabel(category: FilingTransactionCategory, direction: 'to_llc' | 'from_llc'): string {
-  // For loans the direction IS the category, so show cleaner labels
   if (category === 'loan_to_llc' || category === 'loan_from_llc') {
     return direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner';
   }
@@ -484,12 +482,10 @@ export function FilingWizard() {
       currency: 'USD',
       transaction_date: txDate || null,
       description: txDesc.trim() || null,
-      // Only persist is_royalty when the category actually uses it
       is_royalty: txCategory === 'rent_royalty' ? txIsRoyalty : null,
     }).select().single();
     if (err) { setError(err.message); setAddingTx(false); return; }
     setTransactions(prev => [...prev, data as FilingTransaction]);
-    // Reset form — keep category/direction, clear amounts and royalty toggle
     setTxAmount(''); setTxDate(''); setTxDesc('');
     if (txCategory !== 'rent_royalty') setTxIsRoyalty(false);
     setAddingTx(false);
@@ -500,7 +496,7 @@ export function FilingWizard() {
     setTransactions(prev => prev.filter(t => t.id !== txId));
   };
 
-  // ── Download ZIP ─────────────────────────────────────────────
+  // ── Download single assembled PDF ────────────────────────────
   const handleDownload = async () => {
     if (!filing) return;
     setGenerating(true);
@@ -527,24 +523,18 @@ export function FilingWizard() {
         is_royalty: tx.is_royalty ?? false,
       }));
 
-      const pkg = await generateFilingPackage(filing, txsForPdf as any);
+      // assembleFilingPackage returns a single merged PDF:
+      //   Cover Letter → Filing Instructions → Pro Forma 1120 → Form 5472 → Statements
+      const pdfBytes = await assembleFilingPackage(filing, txsForPdf as any, 'mail');
 
-      const zip = new JSZip();
-      const folderName = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}`;
-      const folder = zip.folder(folderName)!;
-
-      folder.file('Form_5472.pdf',        pkg.form5472Bytes);
-      folder.file('ProForma_1120.pdf',    pkg.proForma1120Bytes);
-      if (pkg.hasPartV) {
-        folder.file('PartV_Statement.txt', pkg.partVStatement);
-      }
-
-      const blob = await zip.generateAsync({ type: 'blob' });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${folderName}.zip`;
+      a.download = `Form5472_${filing.llc_name?.replace(/\s+/g, '_') ?? 'Filing'}_${filing.tax_year ?? ''}.pdf`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
       // Mark filing as completed
@@ -799,7 +789,6 @@ export function FilingWizard() {
                     onChange={e => {
                       const cat = e.target.value as FilingTransactionCategory;
                       setTxCategory(cat);
-                      // Reset royalty toggle when switching away from rent_royalty
                       if (cat !== 'rent_royalty') setTxIsRoyalty(false);
                     }}
                   >
@@ -814,7 +803,6 @@ export function FilingWizard() {
                 </Field>
               </Row>
 
-              {/* Royalty sub-toggle — only shown for Rent / Royalty / License */}
               {txCategory === 'rent_royalty' && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -873,7 +861,7 @@ export function FilingWizard() {
 
         {/* ── Step 4: Review & Download ── */}
         {currentStep === 4 && filing && (
-          <Card title="Review & Download" subtitle="Check everything, then download your completed forms.">
+          <Card title="Review & Download" subtitle="Check everything, then download your completed filing package.">
 
             <SectionLabel>LLC</SectionLabel>
             <div style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9375rem', marginBottom: '0.5rem' }}>
@@ -958,14 +946,13 @@ export function FilingWizard() {
                 fontSize: '0.8125rem', fontWeight: 700, color: '#065F46',
                 marginTop: '1rem',
               }}>
-                ✓ Forms downloaded — filing marked complete
+                ✓ Package downloaded — filing marked complete
               </div>
             )}
 
             <Actions>
               <button style={btnGhost()} onClick={() => saveStep(4, {}, 3)} disabled={saving || generating}>← Edit Transactions</button>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                {/* Download ZIP button */}
                 <button
                   style={btnPrimary({ background: '#059669', cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.65 : 1 })}
                   onClick={handleDownload}
@@ -985,7 +972,7 @@ export function FilingWizard() {
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      Download ZIP
+                      Download Filing Package
                     </>
                   )}
                 </button>
