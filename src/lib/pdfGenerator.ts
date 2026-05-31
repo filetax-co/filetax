@@ -158,7 +158,7 @@ function fmtCityStateZip(addr: Address | null | undefined): string {
 
 /**
  * Name + address combined for a single AcroForm field.
- * Produces:  "Full Name\nStreet, City, Region, Postal, Country"
+ * Produces:  "Full Name - Street, City, Region, Postal, Country"
  * If no address data is available, returns just the name.
  */
 function fmtNameAddress(
@@ -175,7 +175,7 @@ function fmtNameAddress(
     addr.postal_code,
     addr.country ?? null,
   ].filter(Boolean).join(', ');
-  return parts ? `${namePart}\n${parts}` : namePart;
+  return parts ? `${namePart} - ${parts}` : namePart;
 }
 
 const MONTH_NAMES = [
@@ -187,10 +187,10 @@ const MONTH_NAMES = [
  * Build tax period begin: month-day label and year as separate strings.
  *
  * Priority order:
- *  1. If date_of_incorporation falls within taxYear → use that date as the
+ *  1. If date_of_incorporation falls within taxYear -> use that date as the
  *     period begin (handles initial returns regardless of the initial_return flag).
- *  2. If tax_period_begin is explicitly set → use that.
- *  3. Default → January 1 of taxYear.
+ *  2. If tax_period_begin is explicitly set -> use that.
+ *  3. Default -> January 1 of taxYear.
  *
  * Uses UTC getters throughout.
  */
@@ -198,7 +198,7 @@ function resolvePeriodBegin(
   filing: Filing,
   taxYear: string
 ): { label: string; year: string } {
-  // 1. Incorporation date in the tax year → use it as the beginning date
+  // 1. Incorporation date in the tax year -> use it as the beginning date
   if (filing.date_of_incorporation) {
     const d = new Date(filing.date_of_incorporation);
     if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
@@ -214,7 +214,7 @@ function resolvePeriodBegin(
       return { label: `${MONTH_NAMES[month - 1]} ${day}`, year: yearStr };
     }
   }
-  // 3. Default — January 1
+  // 3. Default - January 1
   return { label: 'January 1', year: taxYear };
 }
 
@@ -398,13 +398,13 @@ export async function fillForm5472(
   setText(doc, F5472.TAX_YEAR_END,        end.label,   8);
   setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year,    8);
 
-  // ── Part I — Reporting Corporation
+  // ── Part I - Reporting Corporation
   setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
   setText(doc, F5472.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  // Business activity — font size 8 to fit the field; setFontSize called after setText
+  // Business activity - font size 8 to fit the field; setFontSize called after setText
   setText(doc, F5472.CORP_ACTIVITY,      filing.naics_description ?? '', 8);
   setText(doc, F5472.CORP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
   // Explicitly override after setText to beat any template default appearance
@@ -413,7 +413,7 @@ export async function fillForm5472(
     if (actField instanceof PDFTextField) actField.setFontSize(8);
     const actCodeField = doc.getForm().getField(F5472.CORP_ACTIVITY_CODE);
     if (actCodeField instanceof PDFTextField) actCodeField.setFontSize(8);
-  } catch { /* field not found — already warned in setText */ }
+  } catch { /* field not found - already warned in setText */ }
 
   const grossTotal = txn.total_received + txn.total_paid +
     txn.capital_contribution + txn.distribution +
@@ -428,15 +428,15 @@ export async function fillForm5472(
 
   setText(doc, F5472.CORP_COUNTRY_OF_INC,         'United States');
   setText(doc, F5472.CORP_DATE_OF_INCORPORATION,  fmtDate(filing.date_of_incorporation));
-  setText(doc, F5472.CORP_RESIDENT_COUNTRY,       'United States');
+  setText(doc, F5472.CORP_RESIDENT_COUNTRY,       filing.owner_country_residence ?? 'United States');
   setText(doc, F5472.CORP_COUNTRY_BUSINESS,
     filing.mailing_address?.country ?? 'United States');
 
   setCheck(doc, F5472.FOREIGN_OWNS_50PCT,       true);
   setCheck(doc, F5472.CORP_IS_FOREIGN_OWNED_DE, true);
 
-  // ── Part II — 25% Foreign Shareholder (row 4)
-  // ShareholderNameAddress field: name + full address on separate line
+  // ── Part II - 25% Foreign Shareholder (row 4)
+  // ShareholderNameAddress field: name + full address separated by " - "
   setText(doc, F5472.SHAREHOLDER_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
@@ -449,10 +449,10 @@ export async function fillForm5472(
   setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // ── Part III — Related Party
+  // ── Part III - Related Party
   setCheck(doc, F5472.RP_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP_IS_US_PERSON,      false);
-  // RPNameAddress field: name + full address on separate line
+  // RPNameAddress field: name + full address separated by " - "
   setText(doc, F5472.RP_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
@@ -460,7 +460,7 @@ export async function fillForm5472(
   setText(doc, F5472.RP_US_TIN,         filing.owner_us_tin ?? '');
   setText(doc, F5472.RP_REFERENCE_ID,   filing.owner_reference_id ?? '');
   setText(doc, F5472.RP_FOREIGN_TIN,    filing.owner_foreign_tax_id ?? '');
-  // Business activity — font size 8, force override after setText
+  // Business activity - font size 8, force override after setText
   setText(doc, F5472.RP_ACTIVITY,      filing.owner_business_activity ?? filing.naics_description ?? '', 8);
   setText(doc, F5472.RP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
   try {
@@ -479,7 +479,7 @@ export async function fillForm5472(
   setText(doc, F5472.RP_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // ── Part IV — Monetary Transactions
+  // ── Part IV - Monetary Transactions
   if (txn.hasPartIV) {
     setText(doc, F5472.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F5472.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
@@ -649,7 +649,7 @@ export async function generateStatementsPdf(
       y -= 10;
     }
 
-    drawLine('ATTACHMENT TO FORM 5472 — PART VI STATEMENT', boldFont, 10);
+    drawLine('ATTACHMENT TO FORM 5472 - PART VI STATEMENT', boldFont, 10);
     drawLine('Disclosure of Non-Arm\'s Length Service Transaction', boldFont, 10);
     drawLine('Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 9);
     drawDivider();
@@ -699,7 +699,7 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
-    // Signature line — no "Prepared by" label, just the name and date
+    // Signature line - name and date
     y -= 18;
     page.drawLine({
       start: { x: margin, y },
@@ -708,7 +708,7 @@ export async function generateStatementsPdf(
       color: rgb(0, 0, 0),
     });
     y -= 14;
-    drawLine(`${filing.owner_full_name ?? ''}  —  Date: ${todayFormatted()}`, font, 9);
+    drawLine(`${filing.owner_full_name ?? ''}  -  Date: ${todayFormatted()}`, font, 9);
 
     const footerY = margin - 18;
     page.drawLine({
@@ -767,7 +767,7 @@ export async function generateStatementsPdf(
       y -= 10;
     }
 
-    drawLine('ATTACHMENT TO FORM 5472 — PART V STATEMENT', boldFont, 10);
+    drawLine('ATTACHMENT TO FORM 5472 - PART V STATEMENT', boldFont, 10);
     drawLine('Non-Monetary and Less-Than-Arm\'s-Length Transactions', boldFont, 10);
     drawDivider();
 
@@ -848,7 +848,7 @@ export async function generateCoverLetter(filing: Filing): Promise<Uint8Array> {
   drawBlank(2);
 
   drawLine(
-    `Re:  Form 5472 Filing Package — Tax Year ${taxYear}`,
+    `Re:  Form 5472 Filing Package - Tax Year ${taxYear}`,
     boldFont, 10
   );
   drawLine(
@@ -890,9 +890,9 @@ export async function generateCoverLetter(filing: Filing): Promise<Uint8Array> {
   drawLine('Enclosed:', boldFont, 10);
   drawBlank(0.5, 10);
   drawLine('1.  Pro Forma Form 1120 (cover return)', font, 10, 12);
-  drawLine('2.  Form 5472 — Information Return of a 25% Foreign-Owned U.S. Corporation', font, 10, 12);
-  drawLine('3.  Part VI Statement — Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 10, 12);
-  drawLine('4.  Part V Statement (if applicable) — Non-Monetary Transactions', font, 10, 12);
+  drawLine('2.  Form 5472 - Information Return of a 25% Foreign-Owned U.S. Corporation', font, 10, 12);
+  drawLine('3.  Part VI Statement - Treas. Reg. § 1.6038A-2(b)(7)(ix)', font, 10, 12);
+  drawLine('4.  Part V Statement (if applicable) - Non-Monetary Transactions', font, 10, 12);
   drawBlank(2);
 
   drawWrapped(
@@ -974,11 +974,11 @@ export async function generateFilingInstructions(
   }
 
   drawLine('FILING INSTRUCTIONS', boldFont, 12);
-  drawLine(`Form 5472 Package — Tax Year ${taxYear}`, font, 10);
+  drawLine(`Form 5472 Package - Tax Year ${taxYear}`, font, 10);
   drawLine(`${filing.llc_name ?? ''} (EIN: ${fmtEin(filing.ein)})`, font, 10);
   drawDivider();
 
-  drawLine('Step 1 — Assemble the Package', boldFont, 10);
+  drawLine('Step 1 - Assemble the Package', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
     'Print all documents in this package. Arrange in the following order:',
@@ -991,7 +991,7 @@ export async function generateFilingInstructions(
   drawLine('5.  Part V Statement (if included)', font, 10, 12);
   drawBlank(1);
 
-  drawLine('Step 2 — Sign the Documents', boldFont, 10);
+  drawLine('Step 2 - Sign the Documents', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
     'The owner/officer must sign and date the Pro Forma Form 1120 in the ' +
@@ -1000,7 +1000,7 @@ export async function generateFilingInstructions(
   );
   drawBlank(1);
 
-  drawLine('Step 3 — Mail the Package', boldFont, 10);
+  drawLine('Step 3 - Mail the Package', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
     'Send the complete signed package via certified mail or private delivery ' +
@@ -1013,7 +1013,7 @@ export async function generateFilingInstructions(
   }
   drawBlank(1);
 
-  drawLine('Step 4 — Retain a Copy', boldFont, 10);
+  drawLine('Step 4 - Retain a Copy', boldFont, 10);
   drawBlank(0.5);
   drawWrapped(
     'Keep a complete copy of the filed package (including the certified mail receipt ' +
@@ -1039,7 +1039,7 @@ export async function generateFilingInstructions(
 //
 // Page order:
 //   1. Cover Letter
-//   2. Filing Instructions  ← only if delivery method is NOT fax
+//   2. Filing Instructions  <- only if delivery method is NOT fax
 //   3. Pro Forma Form 1120
 //   4. Form 5472
 //   5. Statements (Part VI always; Part V if applicable)
