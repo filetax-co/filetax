@@ -11,10 +11,10 @@
  * Field names are simple flat AcroForm names (NOT XFA dot-paths).
  * Verified by live PDF dump — see audit output in project docs.
  *
- * ── Form 5472 field map ───────────────────────────────────────────────────────
+ * ── Form 5472 field map ────────────────────────────────────────────────────────────────────────────
  * See form5472Fields.ts (F5472 constants) for the complete mapping.
  *
- * ── Form 1120 Page 1 field map ────────────────────────────────────────────────
+ * ── Form 1120 Page 1 field map ────────────────────────────────────────────────────────────────
  * TextField    CorporateName
  * TextField    AddressLine1
  * TextField    City
@@ -38,7 +38,7 @@ import { PDFDocument, PDFCheckBox, PDFTextField, rgb, StandardFonts } from 'pdf-
 import { F5472 } from './form5472Fields';
 import type { Filing, Transaction, Address } from './supabase';
 
-// ── IRS mailing address ───────────────────────────────────────────────────────
+// ── IRS mailing address ────────────────────────────────────────────────────────────────────────────
 const IRS_MAILING_ADDRESS = [
   'Internal Revenue Service',
   '1973 Rulon White Blvd',
@@ -46,7 +46,7 @@ const IRS_MAILING_ADDRESS = [
   'Ogden, UT 84201',
 ];
 
-// ── Template paths — must match filenames in public/pdf/ ──────────────────────
+// ── Template paths — must match filenames in public/pdf/ ──────────────────────────────────────
 const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/Form-5472.pdf`;
 const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/Form-1120-Page-1.pdf`;
 
@@ -67,7 +67,7 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
   return bytes;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
 function setText(
   doc: PDFDocument,
@@ -202,7 +202,11 @@ function resolvePeriodBegin(
   if (filing.date_of_incorporation) {
     const d = new Date(filing.date_of_incorporation);
     if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
-      return { label: `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`, year: taxYear };
+      return {
+        // Fix: zero-pad day so "January 5" becomes "January 05" consistently
+        label: `${MONTH_NAMES[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, '0')}`,
+        year: taxYear,
+      };
     }
   }
   // 2. Explicit tax_period_begin stored on the filing
@@ -211,7 +215,7 @@ function resolvePeriodBegin(
     const month = parseInt(monthStr, 10);
     const day   = parseInt(dayStr, 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      return { label: `${MONTH_NAMES[month - 1]} ${day}`, year: yearStr };
+      return { label: `${MONTH_NAMES[month - 1]} ${String(day).padStart(2, '0')}`, year: yearStr };
     }
   }
   // 3. Default - January 1
@@ -233,7 +237,7 @@ function resolvePeriodEnd(
   return { label: 'December 31', year: taxYear };
 }
 
-// ─── Transaction aggregator ───────────────────────────────────────────────────
+// ─── Transaction aggregator ───────────────────────────────────────────────────────────────────
 
 export const PART_V_CATEGORIES = [
   'capital_contribution',
@@ -352,6 +356,11 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
         t.formation_costs += amt; t.hasPartV = true; break;
       case 'property_transfer':
         t.property_transfer += amt; t.hasPartV = true; break;
+      // Fix: nonmonetary_other is exported in PART_V_CATEGORIES so the UI can
+      // present it as a valid choice. Mark hasPartV so the Part V statement page
+      // is generated; amount goes to 0 (non-monetary means no dollar figure).
+      case 'nonmonetary_other':
+        t.hasPartV = true; break;
     }
   }
 
@@ -374,7 +383,7 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
   return t;
 }
 
-// ─── Form 5472 filler ─────────────────────────────────────────────────────────
+// ─── Form 5472 filler ──────────────────────────────────────────────────────────────────────────────
 
 export async function fillForm5472(
   filing: Filing,
@@ -404,10 +413,8 @@ export async function fillForm5472(
   setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
   setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  // Business activity - font size 8 to fit the field; setFontSize called after setText
   setText(doc, F5472.CORP_ACTIVITY,      filing.naics_description ?? '', 8);
   setText(doc, F5472.CORP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
-  // Explicitly override after setText to beat any template default appearance
   try {
     const actField = doc.getForm().getField(F5472.CORP_ACTIVITY);
     if (actField instanceof PDFTextField) actField.setFontSize(8);
@@ -436,7 +443,6 @@ export async function fillForm5472(
   setCheck(doc, F5472.CORP_IS_FOREIGN_OWNED_DE, true);
 
   // ── Part II - 25% Foreign Shareholder (row 4)
-  // ShareholderNameAddress field: name + full address separated by " - "
   setText(doc, F5472.SHAREHOLDER_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
@@ -452,7 +458,6 @@ export async function fillForm5472(
   // ── Part III - Related Party
   setCheck(doc, F5472.RP_IS_FOREIGN_PERSON, true);
   setCheck(doc, F5472.RP_IS_US_PERSON,      false);
-  // RPNameAddress field: name + full address separated by " - "
   setText(doc, F5472.RP_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
@@ -460,7 +465,6 @@ export async function fillForm5472(
   setText(doc, F5472.RP_US_TIN,         filing.owner_us_tin ?? '');
   setText(doc, F5472.RP_REFERENCE_ID,   filing.owner_reference_id ?? '');
   setText(doc, F5472.RP_FOREIGN_TIN,    filing.owner_foreign_tax_id ?? '');
-  // Business activity - font size 8, force override after setText
   setText(doc, F5472.RP_ACTIVITY,      filing.owner_business_activity ?? filing.naics_description ?? '', 8);
   setText(doc, F5472.RP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
   try {
@@ -470,9 +474,15 @@ export async function fillForm5472(
     if (rpActCodeField instanceof PDFTextField) rpActCodeField.setFontSize(8);
   } catch { /* field not found */ }
 
+  // Fix: Part III 8e checkboxes now driven by rp_is_related_only / rp_is_both.
+  // Default (false/undefined) = owner IS the 25% shareholder (SMLLC standard case).
+  // rp_is_related_only = true  -> tick box 2 only (related to shareholder, not the shareholder itself).
+  // rp_is_both         = true  -> tick boxes 2 AND 3 simultaneously.
+  const rpIsRelatedOnly = filing.rp_is_related_only === true;
+  const rpIsBoth        = filing.rp_is_both === true;
   setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
-  setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, false);
-  setCheck(doc, F5472.RP_IS_25PCT_SHAREHOLDER,   true);
+  setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, rpIsRelatedOnly || rpIsBoth);
+  setCheck(doc, F5472.RP_IS_25PCT_SHAREHOLDER,   !rpIsRelatedOnly || rpIsBoth);
 
   setText(doc, F5472.RP_COUNTRY_BUSINESS,
     filing.owner_country_citizenship ?? filing.owner_country_residence ?? '');
@@ -490,7 +500,8 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_14_INTANGIBLE_RECEIVED,     fmt(txn.intangible_received));
     setText(doc, F5472.LINE_15_SERVICES_RECEIVED,       fmt(txn.services_received));
     setText(doc, F5472.LINE_16_COMMISSIONS_RECEIVED,    fmt(txn.commissions_received));
-    setText(doc, F5472.LINE_17A_BORROWED_BEGIN,         fmt(txn.borrowed_begin));
+    // Lines 17a / 31a (beginning balances) are not collected in the wizard —
+    // leave blank rather than writing an explicit zero so the field stays empty.
     setText(doc, F5472.LINE_17B_BORROWED_END,           fmt(txn.borrowed_end));
     setText(doc, F5472.LINE_18_INTEREST_RECEIVED,       fmt(txn.interest_received));
     setText(doc, F5472.LINE_19_INSURANCE_RECEIVED,      fmt(txn.insurance_received));
@@ -506,7 +517,7 @@ export async function fillForm5472(
     setText(doc, F5472.LINE_28_INTANGIBLE_PAID,         fmt(txn.intangible_paid));
     setText(doc, F5472.LINE_29_SERVICES_PAID,           fmt(txn.services_paid));
     setText(doc, F5472.LINE_30_COMMISSIONS_PAID,        fmt(txn.commissions_paid));
-    setText(doc, F5472.LINE_31A_LOANED_BEGIN,           fmt(txn.loaned_begin));
+    // Line 31a intentionally omitted (beginning balance not collected)
     setText(doc, F5472.LINE_31B_LOANED_END,             fmt(txn.loaned_end));
     setText(doc, F5472.LINE_32_INTEREST_PAID,           fmt(txn.interest_paid));
     setText(doc, F5472.LINE_33_INSURANCE_PAID,          fmt(txn.insurance_paid));
@@ -526,7 +537,7 @@ export async function fillForm5472(
   return doc.save();
 }
 
-// ─── Pro Forma Form 1120 (page 1 only) filler ────────────────────────────────
+// ─── Pro Forma Form 1120 (page 1 only) filler ────────────────────────────────────────────
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const bytes = await fetchPdfBytes(FORM_1120_PATH);
@@ -575,7 +586,7 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   return doc.save();
 }
 
-// ─── Combined Statements PDF (Part VI + Part V) ───────────────────────────────
+// ─── Combined Statements PDF (Part VI + Part V) ──────────────────────────────────────────────
 
 export async function generateStatementsPdf(
   filing: Filing,
@@ -610,9 +621,9 @@ export async function generateStatementsPdf(
     return lines;
   }
 
-  // ── PAGE 1: Part VI Statement ───────────────────────────────────────────────
-  {
-    const page = pdfDoc.addPage([612, 792]);
+  // Fix: extracted page drawer factory so Page 1 and Page 2 share the same
+  // implementation without duplicating three inner functions per page.
+  function makePageDrawer(page: ReturnType<typeof pdfDoc.addPage>) {
     const margin   = 72;
     const maxWidth = 612 - margin * 2;
     let y = 792 - margin;
@@ -648,6 +659,14 @@ export async function generateStatementsPdf(
       });
       y -= 10;
     }
+
+    return { page, margin, drawLine, drawWrapped, drawDivider, getY: () => y, setY: (v: number) => { y = v; } };
+  }
+
+  // ── PAGE 1: Part VI Statement ────────────────────────────────────────────────────────────────
+  {
+    const p1 = makePageDrawer(pdfDoc.addPage([612, 792]));
+    const { drawLine, drawWrapped, drawDivider, page, margin, getY, setY } = p1;
 
     drawLine('ATTACHMENT TO FORM 5472 - PART VI STATEMENT', boldFont, 10);
     drawLine('Disclosure of Non-Arm\'s Length Service Transaction', boldFont, 10);
@@ -699,18 +718,20 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
-    // Signature line - name and date
+    // Signature line
+    let y = getY();
     y -= 18;
+    setY(y);
     page.drawLine({
       start: { x: margin, y },
       end:   { x: margin + 220, y },
       thickness: 0.5,
       color: rgb(0, 0, 0),
     });
-    y -= 14;
+    setY(y - 14);
     drawLine(`${filing.owner_full_name ?? ''}  -  Date: ${todayFormatted()}`, font, 9);
 
-    const footerY = margin - 18;
+    const footerY = 72 - 18;
     page.drawLine({
       start: { x: margin, y: footerY + 14 },
       end:   { x: 612 - margin, y: footerY + 14 },
@@ -728,44 +749,10 @@ export async function generateStatementsPdf(
     }
   }
 
-  // ── PAGE 2: Part V Statement ─────────────────────────────────────────────────
+  // ── PAGE 2: Part V Statement ────────────────────────────────────────────────────────────────
   if (txn.hasPartV) {
-    const page = pdfDoc.addPage([612, 792]);
-    const margin   = 72;
-    const maxWidth = 612 - margin * 2;
-    let y = 792 - margin;
-
-    function drawLine(
-      text: string,
-      fnt: typeof font,
-      size: number,
-      indent = 0
-    ): void {
-      page.drawText(text, { x: margin + indent, y, size, font: fnt, color: rgb(0, 0, 0) });
-      y -= size * 1.6;
-    }
-
-    function drawWrapped(
-      text: string,
-      fnt: typeof font,
-      size: number,
-      indent = 0
-    ): void {
-      const lines = wrapText(text, fnt, size, maxWidth - indent);
-      for (const line of lines) drawLine(line, fnt, size, indent);
-      y -= size * 0.4;
-    }
-
-    function drawDivider(): void {
-      y -= 6;
-      page.drawLine({
-        start: { x: margin, y },
-        end:   { x: 612 - margin, y },
-        thickness: 0.5,
-        color: rgb(0.6, 0.6, 0.6),
-      });
-      y -= 10;
-    }
+    const p2 = makePageDrawer(pdfDoc.addPage([612, 792]));
+    const { drawLine, drawWrapped, drawDivider } = p2;
 
     drawLine('ATTACHMENT TO FORM 5472 - PART V STATEMENT', boldFont, 10);
     drawLine('Non-Monetary and Less-Than-Arm\'s-Length Transactions', boldFont, 10);
@@ -782,7 +769,7 @@ export async function generateStatementsPdf(
       'during the tax year, reported pursuant to Treas. Reg. § 1.6038A-2(b)(7):',
       font, 10
     );
-    y -= 4;
+    p2.setY(p2.getY() - 4);
 
     if (txn.capital_contribution > 0)
       drawLine(`Capital contributions made by owner to LLC:        $${fmt(txn.capital_contribution)}`, font, 10, 12);
@@ -804,7 +791,7 @@ export async function generateStatementsPdf(
   return pdfDoc.save();
 }
 
-// ─── Cover Letter ──────────────────────────────────────────────────────────────
+// ─── Cover Letter ──────────────────────────────────────────────────────────────────────────────────
 
 export async function generateCoverLetter(filing: Filing): Promise<Uint8Array> {
   const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
@@ -915,7 +902,7 @@ export async function generateCoverLetter(filing: Filing): Promise<Uint8Array> {
   return pdfDoc.save();
 }
 
-// ─── Filing Instructions page ─────────────────────────────────────────────────
+// ─── Filing Instructions page ─────────────────────────────────────────────────────────────────────
 
 export async function generateFilingInstructions(
   filing: Filing
@@ -1035,7 +1022,7 @@ export async function generateFilingInstructions(
   return pdfDoc.save();
 }
 
-// ─── Assemble full filing package ────────────────────────────────────────────
+// ─── Assemble full filing package ───────────────────────────────────────────────────────────────────
 //
 // Page order:
 //   1. Cover Letter
@@ -1045,7 +1032,7 @@ export async function generateFilingInstructions(
 //   5. Statements (Part VI always; Part V if applicable)
 //
 // Pass deliveryMethod = 'fax' to suppress the instructions page.
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────────
 
 export async function assembleFilingPackage(
   filing: Filing,
