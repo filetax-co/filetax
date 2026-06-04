@@ -141,6 +141,11 @@ export type FilingTransactionCategory =
   | 'rent_royalty'
   | 'other';
 
+/**
+ * @deprecated Use Transaction (maps to reportable_transactions table) instead.
+ * This type is retained for backwards compatibility only and must not be used
+ * in new code or wired into any UI component.
+ */
 export type FilingTransaction = {
   id: string;
   filing_id: string;
@@ -182,7 +187,11 @@ export type Transaction = {
     | 'capital_contribution'
     | 'distribution'
     | 'formation_costs'
-    | 'property_transfer';
+    | 'property_transfer'
+    // Fix: tangible_property and loan_guarantee were handled in aggregateTransactions
+    // but missing from this union — rows would silently fall through the switch.
+    | 'tangible_property'
+    | 'loan_guarantee';
   direction: 'paid' | 'received';
   amount_usd?: number | null;
   transaction_date?: string | null;
