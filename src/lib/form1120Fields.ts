@@ -77,6 +77,8 @@ function emptyMap(): F1120Map {
 }
 
 // Fallback "Form-1120-Page-1.pdf" — the canonical Pro Forma page-1 template.
+// Also used for tax year 2025 (Form-1120-2025.pdf), which is the same shape
+// plus DateIncorporated / TotalAssets fields.
 const F1120_FALLBACK: F1120Map = {
   ...emptyMap(),
   CORP_NAME:          'CorporateName',
@@ -86,6 +88,8 @@ const F1120_FALLBACK: F1120Map = {
   CORP_COUNTRY:       'Country',
   CORP_ZIP:           'Zipcode',
   EIN:                'EIN',
+  TOTAL_ASSETS:       'TotalAssets',
+  DATE_INCORPORATED:  'DateIncorporated',
   INITIAL_RETURN:     'Initial Return',
   FINAL_RETURN:       'FinalReturn',
   NAME_CHANGE:        'NameChange',

@@ -82,7 +82,7 @@ const F5472_LATEST = {
 
   RP_NAME:                    'RPNameAddress',
   RP_US_TIN:                  'RPUSTIN',
-  RP_REFERENCE_ID:            'Text Field0',   // spare field; 2022/2023 use 'RPRefID'
+  RP_REFERENCE_ID:            'RPRefID',       // 2022+ revision; was 'Text Field0' in pre-2022
   RP_FOREIGN_TIN:             'RPFTIN',
   RP_ACTIVITY:                'RPBusinessActivity',
   RP_ACTIVITY_CODE:           'RPBusinessActivityCode',
@@ -152,11 +152,9 @@ export type F5472Map = Record<F5472FieldKey, string>;
 // Per-revision overrides. Only specify keys whose AcroForm name differs from
 // F5472_LATEST. An empty string means "field is absent in this revision —
 // setText() will no-op."
-const OVERRIDES_2022_2023: Partial<F5472Map> = {
-  // 2022 + 2023 PDFs renamed the spare-field-mapped-to-RP-reference to a
-  // dedicated 'RPRefID' field.
-  RP_REFERENCE_ID: 'RPRefID',
-};
+// 2022 + 2023 use the same field names as the latest (2024+/2025) revision.
+// Keep the constant for future divergences but leave it empty for now.
+const OVERRIDES_2022_2023: Partial<F5472Map> = {};
 
 const OVERRIDES_2019_2021: Partial<F5472Map> = {
   // Same RPRefID rename as 2022.
