@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { EARLIEST_SUPPORTED_TAX_YEAR } from '../../lib/pdfGenerator';
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,14 @@ const US_STATES = [
 ];
 
 const CURRENT_TAX_YEAR = String(new Date().getFullYear() - 1);
-const TAX_YEARS = Array.from({ length: 5 }, (_, i) => String(Number(CURRENT_TAX_YEAR) - i));
+// Newest first. Range covers EARLIEST_SUPPORTED_TAX_YEAR (driven by the PDF
+// resolver in pdfGenerator) through last completed calendar year.
+const TAX_YEARS = (() => {
+  const newest = Number(CURRENT_TAX_YEAR);
+  const out: string[] = [];
+  for (let y = newest; y >= EARLIEST_SUPPORTED_TAX_YEAR; y--) out.push(String(y));
+  return out;
+})();
 
 const MONTHS = [
   { value: '01', label: 'January' },  { value: '02', label: 'February' },
@@ -304,13 +312,14 @@ export interface Step1Props {
 export function Step1ReportingCorp({ data, onChange, onNext, saving, error }: Step1Props) {
 
   /**
-   * "Initial Return" is auto-derived — true when the LLC was incorporated
-   * in the calendar year immediately preceding the selected tax year.
-   * Example: incorp 2024 + tax year 2025 → initial return = true.
-   * This is never manually toggled; we display it as a read-only badge.
+   * "Initial Return" is auto-derived: true when the LLC was incorporated
+   * in the same calendar year as the selected tax year (the very first
+   * filing for the entity). Example: incorp 2024 + tax year 2024 -> initial
+   * return = true. This is never manually toggled; we display it as a
+   * read-only badge. Kept in sync with pdfGenerator.fillForm5472.
    */
   const isInitialReturn = useMemo(
-    () => Boolean(data.incorpYear && data.taxYear && data.incorpYear === String(Number(data.taxYear) - 1)),
+    () => Boolean(data.incorpYear && data.taxYear && data.incorpYear === data.taxYear),
     [data.incorpYear, data.taxYear],
   );
 

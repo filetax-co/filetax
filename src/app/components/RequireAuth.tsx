@@ -2,8 +2,11 @@ import { useEffect } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 
-// Set VITE_SKIP_AUTH=false in .env.local to test real auth in dev
-const DEV_SKIP_AUTH = import.meta.env.DEV && import.meta.env.VITE_SKIP_AUTH !== 'false';
+// SECURITY: real auth runs by default in dev too. Set VITE_SKIP_AUTH=true in
+// .env.local ONLY for local-only experimentation. Never set this in any shared
+// or preview environment (Codespaces, staging, demo) — it leaves every gated
+// route wide open.
+const DEV_SKIP_AUTH = import.meta.env.DEV && import.meta.env.VITE_SKIP_AUTH === 'true';
 
 export function RequireAuth() {
   const { user, loading } = useAuth();

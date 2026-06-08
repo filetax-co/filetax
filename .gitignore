@@ -16,3 +16,6 @@ build/
 # Misc
 .DS_Store
 *.log
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo

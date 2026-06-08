@@ -3,16 +3,24 @@ import { useNavigate, useParams, useSearchParams, Link } from 'react-router';
 import {
   supabase,
   type Filing,
-  type FilingTransaction,
-  type FilingTransactionCategory,
+  type Transaction,
   type Address,
 } from '../../lib/supabase';
+
+type TxCategory =
+  | 'capital_contribution'
+  | 'distribution'
+  | 'loan_to_llc'
+  | 'loan_from_llc'
+  | 'service_payment'
+  | 'rent_royalty'
+  | 'other';
 import { assembleFilingPackage } from '../../lib/pdfGenerator';
 import { CountrySelect } from '../components/CountrySelect';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
-const TX_CATEGORY_LABEL: Record<FilingTransactionCategory, string> = {
+const TX_CATEGORY_LABEL: Record<TxCategory, string> = {
   capital_contribution: 'Capital contribution',
   distribution: 'Distribution to owner',
   loan_to_llc: 'Loan to the LLC',
@@ -22,7 +30,15 @@ const TX_CATEGORY_LABEL: Record<FilingTransactionCategory, string> = {
   other: 'Other',
 };
 
-const TX_CATEGORIES = Object.keys(TX_CATEGORY_LABEL) as FilingTransactionCategory[];
+const TX_CATEGORIES = Object.keys(TX_CATEGORY_LABEL) as TxCategory[];
+
+// On Form 5472, "received" lines (9-22) reflect amounts the LLC received,
+// "paid" lines (23-36) reflect amounts the LLC paid out.
+// Owner -> LLC means the LLC RECEIVED it. LLC -> Owner means the LLC PAID.
+function defaultDirectionFor(cat: TxCategory): 'paid' | 'received' {
+  if (cat === 'distribution' || cat === 'loan_from_llc') return 'paid';
+  return 'received';
+}
 
 const SERVICE_LABEL = {
   current_year: 'Form 5472 + Pro Forma 1120',
@@ -53,7 +69,7 @@ export function Intake() {
   const navigate = useNavigate();
 
   const [filing, setFiling] = useState<Filing | null>(null);
-  const [transactions, setTransactions] = useState<FilingTransaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -102,17 +118,21 @@ export function Intake() {
       const paymentStatus = searchParams.get('status');
       const paymentId = searchParams.get('payment_id');
 
+      // SECURITY: never trust ?status=succeeded from the URL — it is
+      // attacker-controllable. Always hand the payment_id to a server-only
+      // edge function that verifies the charge with the PSP webhook secret
+      // before marking the filing paid.
       if (paymentStatus === 'succeeded' && paymentId && f.status !== 'paid' && f.status !== 'completed') {
         setVerifying(true);
-        const cents = calcPriceCents(f);
-        const now = new Date().toISOString();
-        const { error: updateErr } = await supabase
-          .from('filings')
-          .update({ status: 'paid', paid_at: now, payment_id: paymentId, payment_amount_cents: cents, forms_generated_at: now })
-          .eq('id', f.id);
+        const { data: verifyData, error: verifyErr } = await supabase.functions.invoke(
+          'verify-payment',
+          { body: { filing_id: f.id, payment_id: paymentId } },
+        );
         setVerifying(false);
-        if (!updateErr) {
-          f = { ...f, status: 'paid', paid_at: now, payment_id: paymentId, payment_amount_cents: cents, forms_generated_at: now };
+        if (!verifyErr && verifyData?.status === 'paid') {
+          const { data: refreshed } = await supabase
+            .from('filings').select('*').eq('id', f.id).single();
+          if (refreshed) f = refreshed as Filing;
         }
         searchParams.delete('status');
         searchParams.delete('payment_id');
@@ -144,8 +164,8 @@ export function Intake() {
       setIncludeFax(f.include_irs_fax);
       setIncludeRcl(f.include_rcl);
 
-      const tx = await supabase.from('filing_transactions').select('*').eq('filing_id', f.id).order('created_at', { ascending: true });
-      if (!cancelled && tx.data) setTransactions(tx.data as FilingTransaction[]);
+      const tx = await supabase.from('reportable_transactions').select('*').eq('filing_id', f.id).order('created_at', { ascending: true });
+      if (!cancelled && tx.data) setTransactions(tx.data as Transaction[]);
 
       setLoading(false);
     }
@@ -183,41 +203,57 @@ export function Intake() {
 
   async function addTransaction() {
     if (!filing) return;
+    const cat: TxCategory = 'capital_contribution';
     const { data, error } = await supabase
-      .from('filing_transactions')
-      .insert({ filing_id: filing.id, category: 'capital_contribution', direction: 'to_llc', amount: 0, currency: 'USD' })
+      .from('reportable_transactions')
+      .insert({
+        filing_id: filing.id,
+        transaction_type: cat,
+        direction: defaultDirectionFor(cat),
+        amount_usd: 0,
+      })
       .select('*').single();
     if (error || !data) { setError(error?.message ?? 'Could not add transaction.'); return; }
-    setTransactions((arr) => [...arr, data as FilingTransaction]);
+    setTransactions((arr) => [...arr, data as Transaction]);
   }
 
-  async function updateTx(id: string, patch: Partial<FilingTransaction>) {
-    setTransactions((arr) => arr.map((t) => t.id === id ? { ...t, ...patch } : t));
-    const { error } = await supabase.from('filing_transactions').update(patch).eq('id', id);
-    if (error) setError(error.message);
+  async function updateTx(id: string, patch: Partial<Transaction>) {
+    const { data, error } = await supabase
+      .from('reportable_transactions')
+      .update(patch)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) { setError(error.message); return; }
+    if (data) {
+      setTransactions((arr) => arr.map((t) => t.id === id ? (data as Transaction) : t));
+    }
   }
 
   async function removeTx(id: string) {
+    const { error } = await supabase.from('reportable_transactions').delete().eq('id', id);
+    if (error) { setError(error.message); return; }
     setTransactions((arr) => arr.filter((t) => t.id !== id));
-    const { error } = await supabase.from('filing_transactions').delete().eq('id', id);
-    if (error) setError(error.message);
   }
 
   async function payAndDownload() {
     if (!filing || paying) return;
     setPaying(true);
     setError('');
-    const cents = calcPriceCents(filing);
-    const now = new Date().toISOString();
-    const mockPaymentId = 'mock_' + Math.random().toString(36).slice(2, 10);
-    const { error } = await supabase
-      .from('filings')
-      .update({ status: 'paid', paid_at: now, payment_amount_cents: cents, payment_id: mockPaymentId, forms_generated_at: now })
-      .eq('id', filing.id);
+    // SECURITY: do not write status='paid' from the client. Ask the
+    // create-checkout-session edge function for a hosted-checkout URL and
+    // redirect there. The PSP webhook (verify-payment) is the only path
+    // that may mark the filing paid.
+    const { data, error } = await supabase.functions.invoke(
+      'create-checkout-session',
+      { body: { filing_id: filing.id, amount_cents: calcPriceCents(filing) } },
+    );
     setPaying(false);
-    if (error) { setError(error.message); return; }
-    setFiling((f) => f ? { ...f, status: 'paid', paid_at: now, payment_id: mockPaymentId, payment_amount_cents: cents, forms_generated_at: now } as Filing : f);
-    window.scrollTo({ top: 0 });
+    if (error || !data?.checkout_url) {
+      setError(error?.message ?? 'Could not start checkout. Please try again.');
+      return;
+    }
+    window.location.assign(data.checkout_url as string);
   }
 
   async function retryPayment() {
@@ -234,14 +270,8 @@ export function Intake() {
     setGenerating(true);
     setDownloadError('');
     try {
-      const txsForPdf = transactions.map((tx) => ({
-        ...tx,
-        amount_usd: tx.amount,
-        transaction_type: tx.category,
-      })) as any;
-
       const deliveryMethod = filing.include_irs_fax ? 'fax' : 'mail';
-      const packageBytes = await assembleFilingPackage(filing, txsForPdf, deliveryMethod);
+      const packageBytes = await assembleFilingPackage(filing, transactions, deliveryMethod);
 
       const blob = new Blob([packageBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -543,8 +573,14 @@ export function Intake() {
                           <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--tf-muted)' }}>Type</label>
                             <select
-                              value={tx.category}
-                              onChange={(e) => updateTx(tx.id, { category: e.target.value as FilingTransactionCategory })}
+                              value={tx.transaction_type}
+                              onChange={(e) => {
+                                const next = e.target.value as TxCategory;
+                                updateTx(tx.id, {
+                                  transaction_type: next,
+                                  direction: defaultDirectionFor(next),
+                                });
+                              }}
                               style={inputStyle}
                             >
                               {TX_CATEGORIES.map((cat) => (
@@ -557,8 +593,8 @@ export function Intake() {
                             <input
                               type="number"
                               min="0"
-                              value={tx.amount ?? ''}
-                              onChange={(e) => updateTx(tx.id, { amount: parseFloat(e.target.value) || 0 })}
+                              value={tx.amount_usd ?? ''}
+                              onChange={(e) => updateTx(tx.id, { amount_usd: parseFloat(e.target.value) || 0 })}
                               style={inputStyle}
                             />
                           </div>

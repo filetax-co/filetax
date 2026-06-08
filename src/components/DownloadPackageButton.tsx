@@ -65,7 +65,7 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
 
       // 2. Fetch transactions for this filing
       const { data: txnsData, error: txnsErr } = await supabase
-        .from('transactions')
+        .from('reportable_transactions')
         .select('*')
         .eq('filing_id', filingId);
       if (txnsErr) throw new Error(txnsErr.message);
@@ -73,10 +73,11 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
       const filing = filingData as Filing;
       const transactions = (txnsData ?? []) as Transaction[];
 
-      // Determine delivery method - filing.delivery_method stores 'mail' | 'fax'
-      // Instructions page is suppressed when filing via fax
-      const deliveryMethod: string = filing.delivery_method ?? 'mail';
-      const isFax = deliveryMethod === 'fax';
+      // Delivery method is derived from filing.include_irs_fax (the actual
+      // column). There is no filing.delivery_method on the schema. Fax mode
+      // suppresses the printed mailing instructions page.
+      const isFax = filing.include_irs_fax === true;
+      const deliveryMethod: 'fax' | 'mail' = isFax ? 'fax' : 'mail';
 
       // 3. Generate all PDFs - lazy-load pdfGenerator (~480 kB) only on demand
       setStatus('generating');

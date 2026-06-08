@@ -1,20 +1,38 @@
 /**
- * IRS Form 5472 — AcroForm field name map
+ * IRS Form 5472 — AcroForm field name map (per-revision)
  *
- * Field names verified by live dump of Form-5472.pdf (our custom static+fillable template).
+ * Field names verified by live PDF dump (scripts/audit-pdf-fields.mjs).
  * These are simple flat AcroForm names — NOT XFA dot-paths.
  *
- * Total fields in PDF: 78
+ * TEMPLATE COVERAGE
+ *   Tax year 2024+      -> public/pdf/Form-5472.pdf            (78 fields)
+ *   Tax year 2023       -> public/pdf/Form-5472-2023.pdf       (78 fields)
+ *   Tax year 2022       -> public/pdf/Form-5472-2022.pdf       (78 fields)
+ *   Tax years 2019-2021 -> public/pdf/Form-5472-2019-2021.pdf  (74 fields)
  *
- * NOTE on fields not in this PDF:
+ * NOTES
+ *   - The 78-field templates differ from the latest only in the RP_REFERENCE_ID
+ *     field name ('Text Field0' vs 'RPRefID').
+ *   - The 74-field 2019-2021 template predates Part VIII (cost-sharing). Fields
+ *     PARTS_VIII_COUNT, CORP_DATE_OF_INCORPORATION ('Incorp Date'),
+ *     LINE_20_LOAN_GUARANTEE_RECEIVED, and LINE_34_LOAN_GUARANTEE_PAID
+ *     ('GuaranteePaid') are intentionally empty strings — setText() no-ops
+ *     when the field name is ''.
  *   - Rows 5/6/7 (additional shareholders) are NOT present as separate fields;
- *     the template has one combined ShareholderNameAddress field for row 4.
- *   - Part VII Yes/No checkboxes are NOT present; the template covers Parts I-VI only.
- *   - Part V and Part VI are single checkboxes each.
- *   - "Text Field0" is an unmapped/spare field — we leave it blank.
+ *     every template has one combined ShareholderNameAddress field for row 4.
+ *   - Part VII Yes/No checkboxes are NOT present in any template.
+ *
+ * ADDING A NEW YEAR
+ *   1. Drop the new AcroForm PDF into public/pdf/.
+ *   2. Run `node scripts/audit-pdf-fields.mjs` and read the diff for the new PDF.
+ *   3. If field names match the latest map, just register the new file in
+ *      resolveTemplate() inside pdfGenerator.ts.
+ *   4. If any names changed, add a new entry in F5472_BY_YEAR below.
  */
 
-export const F5472 = {
+// Canonical (latest revision) field map. Newer revisions inherit from this
+// and override only the keys that changed.
+const F5472_LATEST = {
 
   // ── Header — Tax Year dates
   TAX_YEAR_BEGIN:       'BegDate',          // e.g. "January 1"
@@ -48,7 +66,6 @@ export const F5472 = {
   CORP_IS_FOREIGN_OWNED_DE:     'Foreign-owned US DE', // checkbox 3
 
   // ── Part II — 25% Foreign Shareholders
-  // Template has one row (row 4); rows 5-7 not present as separate fields
   SURROGATE_CORP_CHECKBOX:      '',   // not present in this template — skip
 
   SHAREHOLDER_NAME:               'ShareholderNameAddress',
@@ -65,7 +82,7 @@ export const F5472 = {
 
   RP_NAME:                    'RPNameAddress',
   RP_US_TIN:                  'RPUSTIN',
-  RP_REFERENCE_ID:            'Text Field0',   // spare field mapped to reference ID
+  RP_REFERENCE_ID:            'Text Field0',   // spare field; 2022/2023 use 'RPRefID'
   RP_FOREIGN_TIN:             'RPFTIN',
   RP_ACTIVITY:                'RPBusinessActivity',
   RP_ACTIVITY_CODE:           'RPBusinessActivityCode',
@@ -129,4 +146,44 @@ export const F5472 = {
 
 } as const;
 
-export type F5472FieldKey = keyof typeof F5472;
+export type F5472FieldKey = keyof typeof F5472_LATEST;
+export type F5472Map = Record<F5472FieldKey, string>;
+
+// Per-revision overrides. Only specify keys whose AcroForm name differs from
+// F5472_LATEST. An empty string means "field is absent in this revision —
+// setText() will no-op."
+const OVERRIDES_2022_2023: Partial<F5472Map> = {
+  // 2022 + 2023 PDFs renamed the spare-field-mapped-to-RP-reference to a
+  // dedicated 'RPRefID' field.
+  RP_REFERENCE_ID: 'RPRefID',
+};
+
+const OVERRIDES_2019_2021: Partial<F5472Map> = {
+  // Same RPRefID rename as 2022.
+  RP_REFERENCE_ID: 'RPRefID',
+  // Fields absent in the 2019-2021 PDF (Part VIII was added in the 2022 rev).
+  PARTS_VIII_COUNT:              '',
+  CORP_DATE_OF_INCORPORATION:    '',  // 'Incorp Date' absent
+  LINE_20_LOAN_GUARANTEE_RECEIVED: '',
+  LINE_34_LOAN_GUARANTEE_PAID:   '',  // 'GuaranteePaid' absent
+};
+
+function applyOverrides(base: F5472Map, overrides: Partial<F5472Map>): F5472Map {
+  return { ...base, ...overrides };
+}
+
+/**
+ * Resolve the field map for a given tax year. Defaults to the latest map for
+ * years past the newest known PDF.
+ */
+export function getF5472Map(taxYear: number): F5472Map {
+  if (taxYear <= 2021) return applyOverrides(F5472_LATEST, OVERRIDES_2019_2021);
+  if (taxYear <= 2023) return applyOverrides(F5472_LATEST, OVERRIDES_2022_2023);
+  return F5472_LATEST;
+}
+
+/**
+ * Backwards-compatible export. Equivalent to getF5472Map(latestYear). Prefer
+ * getF5472Map(year) in new code so the per-revision overrides take effect.
+ */
+export const F5472 = F5472_LATEST;

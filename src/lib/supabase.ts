@@ -188,10 +188,12 @@ export type Transaction = {
     | 'distribution'
     | 'formation_costs'
     | 'property_transfer'
-    // Fix: tangible_property and loan_guarantee were handled in aggregateTransactions
-    // but missing from this union — rows would silently fall through the switch.
+    // Handled in aggregateTransactions; kept in sync with the DB CHECK
+    // constraint on reportable_transactions.transaction_type so inserts of
+    // any value the code can produce are accepted by Postgres.
     | 'tangible_property'
-    | 'loan_guarantee';
+    | 'loan_guarantee'
+    | 'nonmonetary_other';
   direction: 'paid' | 'received';
   amount_usd?: number | null;
   transaction_date?: string | null;

@@ -34,8 +34,15 @@ alter table public.intake_submissions enable row level security;
 create policy "Users can read own submissions" on public.intake_submissions
   for select using (auth.uid() = user_id);
 
+-- SECURITY: anonymous visitors may submit intake (user_id must be null);
+-- authenticated users may only insert rows with their own user_id. Without
+-- this clamp, any logged-in user could attach an intake to another user's
+-- account by spoofing user_id or linked_filing_id.
 create policy "Anyone can insert intake" on public.intake_submissions
-  for insert with check (true);
+  for insert with check (
+    (auth.uid() is null and user_id is null and linked_filing_id is null)
+    or (auth.uid() is not null and auth.uid() = user_id)
+  );
 
 create policy "Users can update own submissions" on public.intake_submissions
   for update using (auth.uid() = user_id);
@@ -148,6 +155,48 @@ create trigger filings_set_updated_at
   before update on public.filings
   for each row execute procedure public.set_updated_at();
 
+-- SECURITY: prevent authenticated clients from self-marking a filing as paid.
+-- Only service-role (edge functions like verify-payment) may write the payment
+-- columns or flip status to 'paid' / 'completed'. RLS lacks column-level WITH
+-- CHECK, so we enforce this with a trigger.
+create or replace function public.filings_block_payment_writes()
+returns trigger language plpgsql security definer as $$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+
+  -- Block the client from setting status='paid' under any circumstance.
+  -- Allow paid -> completed (the user clicking Download), but only when the
+  -- filing is already in a paid state.
+  if new.status is distinct from old.status then
+    if new.status = 'paid' then
+      raise exception 'filings.status cannot be set to paid from the client'
+        using errcode = '42501';
+    end if;
+    if new.status = 'completed' and old.status not in ('paid','completed') then
+      raise exception 'filings.status cannot be set to completed until status=paid'
+        using errcode = '42501';
+    end if;
+  end if;
+
+  if new.paid_at              is distinct from old.paid_at
+  or new.payment_id           is distinct from old.payment_id
+  or new.payment_amount_cents is distinct from old.payment_amount_cents
+  or new.forms_generated_at   is distinct from old.forms_generated_at then
+    raise exception 'payment columns are server-managed and cannot be written from the client'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists filings_block_payment_writes on public.filings;
+create trigger filings_block_payment_writes
+  before update on public.filings
+  for each row execute procedure public.filings_block_payment_writes();
+
 
 -- ============================================================================
 -- TABLE: reportable_transactions
@@ -163,12 +212,18 @@ create table if not exists public.reportable_transactions (
                      'loan_to_llc','loan_from_llc','interest',
                      'insurance','dividend','commission','intangible',
                      'other','capital_contribution','distribution',
-                     'formation_costs','property_transfer'
+                     'formation_costs','property_transfer',
+                     -- Used by pdfGenerator.aggregateTransactions:
+                     'tangible_property','loan_guarantee','nonmonetary_other'
                    )),
   direction        text        not null check (direction in ('paid','received')),
   amount_usd       numeric,
   transaction_date date,
-  description      text
+  description      text,
+  -- Only meaningful when transaction_type = 'rent_royalty'. true means the
+  -- amount maps to royalties_* lines (13b / 27b); false (or null) means rents
+  -- (13a / 27a).
+  is_royalty       boolean
 );
 
 alter table public.reportable_transactions enable row level security;
@@ -224,6 +279,23 @@ create policy "Users read own filings" on storage.objects
     bucket_id = 'filings' and
     auth.uid()::text = (storage.foldername(name))[1]
   );
+
+
+-- ============================================================================
+-- STORAGE: filled-forms bucket (private, user-scoped)
+-- Used by the generate-forms edge function. Path layout: <user_id>/<filing_id>/...
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('filled-forms', 'filled-forms', false)
+on conflict do nothing;
+
+create policy "Users read own filled forms" on storage.objects
+  for select using (
+    bucket_id = 'filled-forms' and
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+-- Note: writes go through the edge function which uses the service-role key,
+-- so we deliberately do NOT add an INSERT policy for authenticated users.
 
 
 -- ============================================================================
@@ -380,6 +452,35 @@ create table if not exists public.reportable_transactions (
   transaction_date date,
   description      text
 );
+
+-- Idempotent: ensure transaction_type CHECK matches the code-side union.
+-- Drop-and-recreate is safe because existing rows can only contain values
+-- that previously passed the constraint.
+do $$ begin
+  alter table public.reportable_transactions
+    drop constraint if exists reportable_transactions_transaction_type_check;
+  alter table public.reportable_transactions
+    add constraint reportable_transactions_transaction_type_check
+    check (transaction_type in (
+      'sales','service_payment','rent_royalty',
+      'loan_to_llc','loan_from_llc','interest',
+      'insurance','dividend','commission','intangible',
+      'other','capital_contribution','distribution',
+      'formation_costs','property_transfer',
+      'tangible_property','loan_guarantee','nonmonetary_other'
+    ));
+end; $$;
+
+-- Optional: backfill is_royalty column on older databases.
+do $$ begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='reportable_transactions'
+      and column_name='is_royalty'
+  ) then
+    alter table public.reportable_transactions add column is_royalty boolean;
+  end if;
+end; $$;
 
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='reportable_transactions' and policyname='Users can read own transactions') then

@@ -1,7 +1,18 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { supabase, Filing, FilingTransaction, FilingTransactionCategory, Address } from '../../lib/supabase';
-import { assembleFilingPackage } from '../../lib/pdfGenerator';
+import { supabase, Filing, Transaction, Address } from '../../lib/supabase';
+
+// Categories supported by this wizard (subset of Transaction['transaction_type']).
+// Mirrors the legacy FilingTransactionCategory list.
+type WizardTxCategory =
+  | 'capital_contribution'
+  | 'distribution'
+  | 'loan_to_llc'
+  | 'loan_from_llc'
+  | 'service_payment'
+  | 'rent_royalty'
+  | 'other';
+import { assembleFilingPackage, EARLIEST_SUPPORTED_TAX_YEAR } from '../../lib/pdfGenerator';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 
@@ -16,7 +27,7 @@ const US_STATES = [
   'Wisconsin','Wyoming',
 ];
 
-const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
+const TX_CATEGORIES: { value: WizardTxCategory; label: string }[] = [
   { value: 'capital_contribution', label: 'Capital Contribution' },
   { value: 'distribution',         label: 'Distribution' },
   { value: 'loan_to_llc',          label: 'Loan to LLC' },
@@ -27,7 +38,14 @@ const TX_CATEGORIES: { value: FilingTransactionCategory; label: string }[] = [
 ];
 
 const CURRENT_TAX_YEAR = String(new Date().getFullYear() - 1);
-const TAX_YEARS = Array.from({ length: 5 }, (_, i) => String(Number(CURRENT_TAX_YEAR) - i));
+// Newest first. Range covers EARLIEST_SUPPORTED_TAX_YEAR (driven by the PDF
+// resolver in pdfGenerator) through last completed calendar year.
+const TAX_YEARS = (() => {
+  const newest = Number(CURRENT_TAX_YEAR);
+  const out: string[] = [];
+  for (let y = newest; y >= EARLIEST_SUPPORTED_TAX_YEAR; y--) out.push(String(y));
+  return out;
+})();
 
 const MONTHS = [
   { value: '01', label: 'January' },
@@ -231,8 +249,8 @@ function StepBar({ current }: { current: number }) {
         const done = s.n < current;
         const active = s.n === current;
         return (
-          <>
-            <div key={s.n} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 0 }}>
+          <Fragment key={s.n}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 0 }}>
               <div style={{
                 width: '2rem', height: '2rem', borderRadius: '9999px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -253,13 +271,13 @@ function StepBar({ current }: { current: number }) {
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div key={`line-${i}`} style={{
+              <div style={{
                 height: '2px', flex: 1,
                 background: s.n < current ? '#0284C7' : 'var(--tf-border)',
                 alignSelf: 'flex-start', marginTop: '1rem',
               }} />
             )}
-          </>
+          </Fragment>
         );
       })}
     </div>
@@ -293,11 +311,13 @@ function Actions({ children }: { children: React.ReactNode }) {
 
 // ── direction label helper ────────────────────────────────────────────────────
 
-function directionLabel(category: FilingTransactionCategory, direction: 'to_llc' | 'from_llc'): string {
+// Form 5472 / DB semantics: 'received' = LLC received it (Owner -> LLC).
+// 'paid' = LLC paid it out (LLC -> Owner).
+function directionLabel(category: WizardTxCategory, direction: 'paid' | 'received'): string {
   if (category === 'loan_to_llc' || category === 'loan_from_llc') {
-    return direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner';
+    return direction === 'received' ? 'Owner → LLC' : 'LLC → Owner';
   }
-  return direction === 'to_llc' ? 'Owner → LLC (paid to LLC)' : 'LLC → Owner (received by owner)';
+  return direction === 'received' ? 'Owner → LLC (paid to LLC)' : 'LLC → Owner (received by owner)';
 }
 
 // ── main component ───────────────────────────────────────────────────────────
@@ -313,7 +333,7 @@ export function FilingWizard() {
   const { user, loading: authLoading } = useAuth();
 
   const [filing, setFiling] = useState<Filing | null>(null);
-  const [transactions, setTransactions] = useState<FilingTransaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingFiling, setLoadingFiling] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -334,8 +354,12 @@ export function FilingWizard() {
   const [dateOfClosure, setDateOfClosure] = useState('');
 
   // ── Derived: Initial Return flag ────────────────────────────
+  // Form 5472 "Initial Return" applies to the FIRST tax year the entity is
+  // required to file. For a new LLC, that is the year of formation, i.e.
+  // incorporation year === tax year. (pdfGenerator.fillForm5472 derives the
+  // same rule from filing.date_of_incorporation; keep both in sync.)
   const isInitialReturn = useMemo(
-    () => Boolean(incorpYear && taxYear && incorpYear === String(Number(taxYear) - 1)),
+    () => Boolean(incorpYear && taxYear && incorpYear === taxYear),
     [incorpYear, taxYear],
   );
 
@@ -353,8 +377,8 @@ export function FilingWizard() {
   const [ownerAddress, setOwnerAddress] = useState<Address>({});
 
   // ── Step 3 state ────────────────────────────────────────────
-  const [txCategory, setTxCategory] = useState<FilingTransactionCategory>('capital_contribution');
-  const [txDirection, setTxDirection] = useState<'to_llc' | 'from_llc'>('to_llc');
+  const [txCategory, setTxCategory] = useState<WizardTxCategory>('capital_contribution');
+  const [txDirection, setTxDirection] = useState<'paid' | 'received'>('received');
   const [txAmount, setTxAmount] = useState('');
   const [txDate, setTxDate] = useState('');
   const [txDesc, setTxDesc] = useState('');
@@ -379,13 +403,13 @@ export function FilingWizard() {
 
     Promise.all([
       supabase.from('filings').select('*').eq('id', id).eq('user_id', user.id).single(),
-      supabase.from('filing_transactions').select('*').eq('filing_id', id).order('created_at'),
+      supabase.from('reportable_transactions').select('*').eq('filing_id', id).order('created_at'),
     ]).then(([{ data: f }, { data: txs }]) => {
       if (cancelled) return;
       if (!f) { navigate('/dashboard'); return; }
       const fi = f as Filing;
       setFiling(fi);
-      setTransactions((txs as FilingTransaction[]) ?? []);
+      setTransactions((txs as Transaction[]) ?? []);
       // Step 1
       setLlcName(fi.llc_name ?? '');
       setEin(fi.ein ?? '');
@@ -474,25 +498,24 @@ export function FilingWizard() {
       setError('Enter a valid transaction amount.'); return;
     }
     setAddingTx(true); setError('');
-    const { data, error: err } = await supabase.from('filing_transactions').insert({
+    const { data, error: err } = await supabase.from('reportable_transactions').insert({
       filing_id: id,
-      category: txCategory,
+      transaction_type: txCategory,
       direction: txDirection,
-      amount: Number(txAmount),
-      currency: 'USD',
+      amount_usd: Number(txAmount),
       transaction_date: txDate || null,
       description: txDesc.trim() || null,
       is_royalty: txCategory === 'rent_royalty' ? txIsRoyalty : null,
     }).select().single();
     if (err) { setError(err.message); setAddingTx(false); return; }
-    setTransactions(prev => [...prev, data as FilingTransaction]);
+    setTransactions(prev => [...prev, data as Transaction]);
     setTxAmount(''); setTxDate(''); setTxDesc('');
     if (txCategory !== 'rent_royalty') setTxIsRoyalty(false);
     setAddingTx(false);
   };
 
   const handleDeleteTransaction = async (txId: string) => {
-    await supabase.from('filing_transactions').delete().eq('id', txId);
+    await supabase.from('reportable_transactions').delete().eq('id', txId);
     setTransactions(prev => prev.filter(t => t.id !== txId));
   };
 
@@ -502,30 +525,13 @@ export function FilingWizard() {
     setGenerating(true);
     setDownloadError('');
     try {
-      // Bridge FilingTransaction → Transaction (pdfGenerator's canonical type).
-      //
-      // Key mappings:
-      //   category       → transaction_type  (1:1 string, same values)
-      //   direction:
-      //     'to_llc'   → 'paid'     (owner pays the LLC)
-      //     'from_llc' → 'received' (owner receives from the LLC)
-      //   amount         → amount_usd
-      //   is_royalty     → is_royalty (passed through; only meaningful for rent_royalty)
-      const txsForPdf = transactions.map(tx => ({
-        id: tx.id,
-        filing_id: tx.filing_id,
-        created_at: tx.created_at,
-        transaction_type: tx.category,
-        direction: tx.direction === 'to_llc' ? 'paid' : 'received',
-        amount_usd: tx.amount,
-        transaction_date: tx.transaction_date,
-        description: tx.description,
-        is_royalty: tx.is_royalty ?? false,
-      }));
-
-      // assembleFilingPackage returns a single merged PDF:
-      //   Cover Letter → Filing Instructions → Pro Forma 1120 → Form 5472 → Statements
-      const pdfBytes = await assembleFilingPackage(filing, txsForPdf as any, 'mail');
+      // Transactions are already in the canonical reportable_transactions shape
+      // (transaction_type, direction = 'paid' | 'received', amount_usd) so no
+      // remap is needed. Direction semantics: 'received' = LLC received it
+      // (Owner -> LLC), 'paid' = LLC paid it out (LLC -> Owner). This matches
+      // the Form 5472 line groupings (lines 9-22 received, 23-36 paid).
+      const deliveryMethod = filing.include_irs_fax ? 'fax' : 'mail';
+      const pdfBytes = await assembleFilingPackage(filing, transactions, deliveryMethod);
 
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -755,15 +761,15 @@ export function FilingWizard() {
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <span style={{ fontWeight: 700 }}>${Number(tx.amount).toLocaleString()} {tx.currency}</span>
+                      <span style={{ fontWeight: 700 }}>${Number(tx.amount_usd ?? 0).toLocaleString()} USD</span>
                       <span style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginLeft: '0.5rem' }}>
-                        {TX_CATEGORIES.find(c => c.value === tx.category)?.label}
-                        {tx.category === 'rent_royalty' && (
+                        {TX_CATEGORIES.find(c => c.value === tx.transaction_type)?.label ?? tx.transaction_type}
+                        {tx.transaction_type === 'rent_royalty' && (
                           <span style={{ marginLeft: '0.3rem', fontStyle: 'italic' }}>
                             ({tx.is_royalty ? 'Royalty' : 'Rent'})
                           </span>
                         )}
-                        {' · '}{tx.direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner'}
+                        {' · '}{tx.direction === 'received' ? 'Owner → LLC' : 'LLC → Owner'}
                       </span>
                       {tx.description && (
                         <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>{tx.description}</p>
@@ -787,7 +793,7 @@ export function FilingWizard() {
                   <Select
                     value={txCategory}
                     onChange={e => {
-                      const cat = e.target.value as FilingTransactionCategory;
+                      const cat = e.target.value as WizardTxCategory;
                       setTxCategory(cat);
                       if (cat !== 'rent_royalty') setTxIsRoyalty(false);
                     }}
@@ -796,9 +802,9 @@ export function FilingWizard() {
                   </Select>
                 </Field>
                 <Field label="Direction">
-                  <Select value={txDirection} onChange={e => setTxDirection(e.target.value as 'to_llc' | 'from_llc')}>
-                    <option value="to_llc">Owner → LLC (paid)</option>
-                    <option value="from_llc">LLC → Owner (received)</option>
+                  <Select value={txDirection} onChange={e => setTxDirection(e.target.value as 'paid' | 'received')}>
+                    <option value="received">Owner → LLC (LLC received)</option>
+                    <option value="paid">LLC → Owner (LLC paid)</option>
                   </Select>
                 </Field>
               </Row>
@@ -911,15 +917,15 @@ export function FilingWizard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
                 {transactions.map(tx => (
                   <div key={tx.id} style={{ background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.7rem 1rem', fontSize: '0.9375rem' }}>
-                    <strong>${Number(tx.amount).toLocaleString()}</strong>
-                    {' — '}
-                    {TX_CATEGORIES.find(c => c.value === tx.category)?.label}
-                    {tx.category === 'rent_royalty' && (
+                    <strong>${Number(tx.amount_usd ?? 0).toLocaleString()}</strong>
+                    {' - '}
+                    {TX_CATEGORIES.find(c => c.value === tx.transaction_type)?.label ?? tx.transaction_type}
+                    {tx.transaction_type === 'rent_royalty' && (
                       <span style={{ fontStyle: 'italic', marginLeft: '0.3rem' }}>
                         ({tx.is_royalty ? 'Royalty' : 'Rent'})
                       </span>
                     )}
-                    {', '}{tx.direction === 'to_llc' ? 'Owner → LLC' : 'LLC → Owner'}
+                    {', '}{tx.direction === 'received' ? 'Owner → LLC' : 'LLC → Owner'}
                     {tx.description && <span style={{ color: 'var(--tf-muted)', marginLeft: '0.4rem' }}>({tx.description})</span>}
                   </div>
                 ))}

@@ -1,15 +1,31 @@
 /**
  * PDF Generation Layer — Form 5472 + Pro Forma 1120
  *
- * Uses pdf-lib to fill the official IRS AcroForm PDFs.
- * PDFs are served from /pdf/ (public/pdf/) to avoid CORS.
+ * Uses pdf-lib to fill the official IRS AcroForm PDFs. PDFs are served from
+ * /pdf/ (public/pdf/) to avoid CORS.
  *
- * Templates (static + fillable AcroForm, verified field names):
- *   public/pdf/Form-5472.pdf          — 78 fields, 3 pages
- *   public/pdf/Form-1120-Page-1.pdf   — 17 fields, 1 page
+ * Templates are now PER TAX YEAR. The template path AND the AcroForm field
+ * names are resolved per year:
  *
- * Field names are simple flat AcroForm names (NOT XFA dot-paths).
- * Verified by live PDF dump — see audit output in project docs.
+ *   Tax year  | Form 5472 PDF                  | Pro Forma 1120 PDF
+ *   ----------|--------------------------------|-----------------------
+ *   2024+     | public/pdf/Form-5472.pdf       | public/pdf/Form-1120-2024.pdf
+ *   2023      | public/pdf/Form-5472-2023.pdf  | public/pdf/Form-1120-2023.pdf
+ *   2022      | public/pdf/Form-5472-2022.pdf  | public/pdf/Form-1120-2022.pdf
+ *   2019-2021 | public/pdf/Form-5472-2019-2021.pdf | public/pdf/Form-1120-YYYY.pdf
+ *   fallback  | public/pdf/Form-5472.pdf       | public/pdf/Form-1120-Page-1.pdf
+ *
+ * Field-name maps live in src/lib/form5472Fields.ts (F5472, getF5472Map) and
+ * src/lib/form1120Fields.ts (getF1120Map). To add a new year:
+ *
+ *   1. Drop the AcroForm PDF into public/pdf/.
+ *   2. Run `node scripts/audit-pdf-fields.mjs` to see which expected fields
+ *      are missing in the new PDF.
+ *   3. Update resolveForm5472Path / resolveForm1120Path below, and add a
+ *      per-year override in form5472Fields.ts / form1120Fields.ts as needed.
+ *
+ * Field names are simple flat AcroForm names (NOT XFA dot-paths). Verified
+ * by live PDF dump — see scripts/audit-pdf-fields.mjs.
  *
  * ── Form 5472 field map ────────────────────────────────────────────────────────────────────────────
  * See form5472Fields.ts (F5472 constants) for the complete mapping.
@@ -35,8 +51,12 @@
  */
 
 import { PDFDocument, PDFCheckBox, PDFTextField, rgb, StandardFonts } from 'pdf-lib';
-import { F5472 } from './form5472Fields';
+import { F5472, getF5472Map, type F5472Map } from './form5472Fields';
+import { getF1120Map, type F1120Map } from './form1120Fields';
 import type { Filing, Transaction, Address } from './supabase';
+
+// Re-exported so legacy imports keep working.
+export { F5472 } from './form5472Fields';
 
 // ── IRS mailing address ────────────────────────────────────────────────────────────────────────────
 const IRS_MAILING_ADDRESS = [
@@ -46,9 +66,43 @@ const IRS_MAILING_ADDRESS = [
   'Ogden, UT 84201',
 ];
 
-// ── Template paths — must match filenames in public/pdf/ ──────────────────────────────────────
-const FORM_5472_PATH = `${import.meta.env.BASE_URL}pdf/Form-5472.pdf`;
-const FORM_1120_PATH = `${import.meta.env.BASE_URL}pdf/Form-1120-Page-1.pdf`;
+// ── Per-year template path resolvers ──────────────────────────────────────────
+// Files must exist under public/pdf/. Returning a missing path will surface a
+// 404 with a helpful message in fetchPdfBytes().
+const PDF_BASE = `${import.meta.env.BASE_URL}pdf/`;
+
+function resolveForm5472Path(taxYear: number): string {
+  if (taxYear <= 2021) return `${PDF_BASE}Form-5472-2019-2021.pdf`;
+  if (taxYear === 2022) return `${PDF_BASE}Form-5472-2022.pdf`;
+  if (taxYear === 2023) return `${PDF_BASE}Form-5472-2023.pdf`;
+  return `${PDF_BASE}Form-5472.pdf`;
+}
+
+function resolveForm1120Path(taxYear: number): string {
+  if (taxYear === 2019) return `${PDF_BASE}Form-1120-2019.pdf`;
+  if (taxYear === 2020) return `${PDF_BASE}Form-1120-2020.pdf`;
+  if (taxYear === 2021) return `${PDF_BASE}Form-1120-2021.pdf`;
+  if (taxYear === 2022) return `${PDF_BASE}Form-1120-2022.pdf`;
+  if (taxYear === 2023) return `${PDF_BASE}Form-1120-2023.pdf`;
+  if (taxYear === 2024) return `${PDF_BASE}Form-1120-2024.pdf`;
+  if (taxYear >= 2025)  return `${PDF_BASE}Form-1120-2025.pdf`;
+  // Pre-2019 fallback: also lands on the 2025 PDF (closest to the canonical
+  // page-1 schema). Users filing pre-2019 returns should not exist in
+  // practice since EARLIEST_SUPPORTED_TAX_YEAR is 2019.
+  return `${PDF_BASE}Form-1120-2025.pdf`;
+}
+
+// Earliest tax year we ship a PDF for. Used by the filing wizard to clamp the
+// tax-year selector — keep in sync with resolveForm5472Path coverage.
+export const EARLIEST_SUPPORTED_TAX_YEAR = 2019;
+
+function parseTaxYear(year: string | null | undefined): number {
+  const n = parseInt((year ?? '').toString(), 10);
+  if (!Number.isFinite(n) || n < EARLIEST_SUPPORTED_TAX_YEAR) {
+    return new Date().getFullYear() - 1;
+  }
+  return n;
+}
 
 const pdfCache: Record<string, ArrayBuffer> = {};
 
@@ -57,7 +111,9 @@ async function fetchPdfBytes(path: string): Promise<ArrayBuffer> {
   const res = await fetch(path);
   if (!res.ok) throw new Error(
     `Could not load PDF template at ${path} (${res.status}). ` +
-    `Ensure public/pdf/Form-5472.pdf and public/pdf/Form-1120-Page-1.pdf exist.`
+    `Ensure the corresponding file exists under public/pdf/. ` +
+    `See resolveForm5472Path / resolveForm1120Path in src/lib/pdfGenerator.ts ` +
+    `for the per-year mapping.`
   );
   const bytes = await res.arrayBuffer();
   if (bytes.byteLength < 1000) throw new Error(
@@ -231,7 +287,8 @@ function resolvePeriodEnd(
     const month = parseInt(monthStr, 10);
     const day   = parseInt(dayStr, 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      return { label: `${MONTH_NAMES[month - 1]} ${day}`, year: yearStr };
+      // Zero-pad to match resolvePeriodBegin formatting.
+      return { label: `${MONTH_NAMES[month - 1]} ${String(day).padStart(2, '0')}`, year: yearStr };
     }
   }
   return { label: 'December 31', year: taxYear };
@@ -389,10 +446,13 @@ export async function fillForm5472(
   filing: Filing,
   transactions: Transaction[]
 ): Promise<Uint8Array> {
-  const bytes = await fetchPdfBytes(FORM_5472_PATH);
+  const taxYear    = filing.tax_year ?? String(new Date().getFullYear() - 1);
+  const taxYearNum = parseTaxYear(taxYear);
+  const F: F5472Map = getF5472Map(taxYearNum);
+
+  const bytes = await fetchPdfBytes(resolveForm5472Path(taxYearNum));
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const txn = aggregateTransactions(transactions);
-  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
   const isInitial = filing.initial_return === true || !!(
     filing.date_of_incorporation &&
@@ -402,76 +462,89 @@ export async function fillForm5472(
   // ── Header: tax year
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
-  setText(doc, F5472.TAX_YEAR_BEGIN,      begin.label, 8);
-  setText(doc, F5472.TAX_YEAR_BEGIN_YEAR, begin.year,  8);
-  setText(doc, F5472.TAX_YEAR_END,        end.label,   8);
-  setText(doc, F5472.TAX_YEAR_END_YEAR,   end.year,    8);
+  setText(doc, F.TAX_YEAR_BEGIN,      begin.label, 8);
+  setText(doc, F.TAX_YEAR_BEGIN_YEAR, begin.year,  8);
+  setText(doc, F.TAX_YEAR_END,        end.label,   8);
+  setText(doc, F.TAX_YEAR_END_YEAR,   end.year,    8);
 
   // ── Part I - Reporting Corporation
-  setText(doc, F5472.CORP_NAME,           filing.llc_name ?? '');
-  setText(doc, F5472.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
-  setText(doc, F5472.CORP_EIN,            fmtEin(filing.ein));
-  setText(doc, F5472.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
-  setText(doc, F5472.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
-  setText(doc, F5472.CORP_ACTIVITY,      filing.naics_description ?? '', 8);
-  setText(doc, F5472.CORP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
+  setText(doc, F.CORP_NAME,           filing.llc_name ?? '');
+  setText(doc, F.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
+  setText(doc, F.CORP_EIN,            fmtEin(filing.ein));
+  setText(doc, F.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
+  setText(doc, F.CORP_TOTAL_ASSETS,   fmt(filing.total_assets));
+  setText(doc, F.CORP_ACTIVITY,      filing.naics_description ?? '', 8);
+  setText(doc, F.CORP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
   try {
-    const actField = doc.getForm().getField(F5472.CORP_ACTIVITY);
-    if (actField instanceof PDFTextField) actField.setFontSize(8);
-    const actCodeField = doc.getForm().getField(F5472.CORP_ACTIVITY_CODE);
-    if (actCodeField instanceof PDFTextField) actCodeField.setFontSize(8);
+    if (F.CORP_ACTIVITY) {
+      const actField = doc.getForm().getField(F.CORP_ACTIVITY);
+      if (actField instanceof PDFTextField) actField.setFontSize(8);
+    }
+    if (F.CORP_ACTIVITY_CODE) {
+      const actCodeField = doc.getForm().getField(F.CORP_ACTIVITY_CODE);
+      if (actCodeField instanceof PDFTextField) actCodeField.setFontSize(8);
+    }
   } catch { /* field not found - already warned in setText */ }
 
   const grossTotal = txn.total_received + txn.total_paid +
     txn.capital_contribution + txn.distribution +
     txn.formation_costs + txn.property_transfer;
-  setText(doc, F5472.CORP_GROSS_PAYMENTS, fmt(grossTotal));
-  setText(doc, F5472.CORP_NUM_FORMS,      '1');
-  setText(doc, F5472.CORP_GROSS_ALL,      fmt(grossTotal));
+  setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossTotal));
+  setText(doc, F.CORP_NUM_FORMS,      '1');
+  setText(doc, F.CORP_GROSS_ALL,      fmt(grossTotal));
 
-  setCheck(doc, F5472.CONSOLIDATED_FILING, false);
-  setCheck(doc, F5472.INITIAL_RETURN_YES,  isInitial);
-  setText(doc,  F5472.PARTS_VIII_COUNT,   '0');
+  setCheck(doc, F.CONSOLIDATED_FILING, false);
+  setCheck(doc, F.INITIAL_RETURN_YES,  isInitial);
+  setText(doc,  F.PARTS_VIII_COUNT,   '0');
 
-  setText(doc, F5472.CORP_COUNTRY_OF_INC,         'United States');
-  setText(doc, F5472.CORP_DATE_OF_INCORPORATION,  fmtDate(filing.date_of_incorporation));
-  setText(doc, F5472.CORP_RESIDENT_COUNTRY,       filing.owner_country_residence ?? 'United States');
-  setText(doc, F5472.CORP_COUNTRY_BUSINESS,
-    filing.mailing_address?.country ?? 'United States');
+  setText(doc, F.CORP_COUNTRY_OF_INC,         'United States');
+  setText(doc, F.CORP_DATE_OF_INCORPORATION,  fmtDate(filing.date_of_incorporation));
+  // The reporting corporation IS the US LLC. Both its country of residence
+  // and its country of business are always the United States. Do NOT
+  // substitute the foreign owner's country here.
+  setText(doc, F.CORP_RESIDENT_COUNTRY,       'United States');
+  setText(doc, F.CORP_COUNTRY_BUSINESS,       'United States');
 
-  setCheck(doc, F5472.FOREIGN_OWNS_50PCT,       true);
-  setCheck(doc, F5472.CORP_IS_FOREIGN_OWNED_DE, true);
+  setCheck(doc, F.FOREIGN_OWNS_50PCT,       true);
+  setCheck(doc, F.CORP_IS_FOREIGN_OWNED_DE, true);
 
   // ── Part II - 25% Foreign Shareholder (row 4)
-  setText(doc, F5472.SHAREHOLDER_NAME,
+  setText(doc, F.SHAREHOLDER_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
   );
-  setText(doc, F5472.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
-  setText(doc, F5472.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
-  setText(doc, F5472.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
-  setText(doc, F5472.SHAREHOLDER_COUNTRY_BUSINESS,    filing.owner_country_citizenship ?? '');
-  setText(doc, F5472.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
-  setText(doc, F5472.SHAREHOLDER_RESIDENT_COUNTRY,
+  setText(doc, F.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
+  setText(doc, F.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
+  setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
+  // Line 4c: country where the shareholder conducts business — NOT citizenship.
+  // The wizard does not yet collect this as a dedicated field, so fall back to
+  // country of residence (a much closer approximation than citizenship).
+  setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS,    filing.owner_country_residence ?? '');
+  setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
+  setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
   // ── Part III - Related Party
-  setCheck(doc, F5472.RP_IS_FOREIGN_PERSON, true);
-  setCheck(doc, F5472.RP_IS_US_PERSON,      false);
-  setText(doc, F5472.RP_NAME,
+  setCheck(doc, F.RP_IS_FOREIGN_PERSON, true);
+  setCheck(doc, F.RP_IS_US_PERSON,      false);
+  setText(doc, F.RP_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
   );
-  setText(doc, F5472.RP_US_TIN,         filing.owner_us_tin ?? '');
-  setText(doc, F5472.RP_REFERENCE_ID,   filing.owner_reference_id ?? '');
-  setText(doc, F5472.RP_FOREIGN_TIN,    filing.owner_foreign_tax_id ?? '');
-  setText(doc, F5472.RP_ACTIVITY,      filing.owner_business_activity ?? filing.naics_description ?? '', 8);
-  setText(doc, F5472.RP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
+  setText(doc, F.RP_US_TIN,         filing.owner_us_tin ?? '');
+  setText(doc, F.RP_REFERENCE_ID,   filing.owner_reference_id ?? '');
+  setText(doc, F.RP_FOREIGN_TIN,    filing.owner_foreign_tax_id ?? '');
+  setText(doc, F.RP_ACTIVITY,      filing.owner_business_activity ?? filing.naics_description ?? '', 8);
+  setText(doc, F.RP_ACTIVITY_CODE, filing.naics_code ? String(filing.naics_code) : '', 8);
   try {
-    const rpActField = doc.getForm().getField(F5472.RP_ACTIVITY);
-    if (rpActField instanceof PDFTextField) rpActField.setFontSize(8);
-    const rpActCodeField = doc.getForm().getField(F5472.RP_ACTIVITY_CODE);
-    if (rpActCodeField instanceof PDFTextField) rpActCodeField.setFontSize(8);
+    if (F.RP_ACTIVITY) {
+      const rpActField = doc.getForm().getField(F.RP_ACTIVITY);
+      if (rpActField instanceof PDFTextField) rpActField.setFontSize(8);
+    }
+    if (F.RP_ACTIVITY_CODE) {
+      const rpActCodeField = doc.getForm().getField(F.RP_ACTIVITY_CODE);
+      if (rpActCodeField instanceof PDFTextField) rpActCodeField.setFontSize(8);
+    }
   } catch { /* field not found */ }
 
   // Fix: Part III 8e checkboxes now driven by rp_is_related_only / rp_is_both.
@@ -480,55 +553,57 @@ export async function fillForm5472(
   // rp_is_both         = true  -> tick boxes 2 AND 3 simultaneously.
   const rpIsRelatedOnly = filing.rp_is_related_only === true;
   const rpIsBoth        = filing.rp_is_both === true;
-  setCheck(doc, F5472.RP_RELATED_TO_CORP,        false);
-  setCheck(doc, F5472.RP_RELATED_TO_SHAREHOLDER, rpIsRelatedOnly || rpIsBoth);
-  setCheck(doc, F5472.RP_IS_25PCT_SHAREHOLDER,   !rpIsRelatedOnly || rpIsBoth);
+  setCheck(doc, F.RP_RELATED_TO_CORP,        false);
+  setCheck(doc, F.RP_RELATED_TO_SHAREHOLDER, rpIsRelatedOnly || rpIsBoth);
+  setCheck(doc, F.RP_IS_25PCT_SHAREHOLDER,   !rpIsRelatedOnly || rpIsBoth);
 
-  setText(doc, F5472.RP_COUNTRY_BUSINESS,
-    filing.owner_country_citizenship ?? filing.owner_country_residence ?? '');
-  setText(doc, F5472.RP_RESIDENT_COUNTRY,
+  // RP country-of-business: same reasoning as line 4c above — prefer residence,
+  // not citizenship.
+  setText(doc, F.RP_COUNTRY_BUSINESS,
+    filing.owner_country_residence ?? '');
+  setText(doc, F.RP_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
   // ── Part IV - Monetary Transactions
   if (txn.hasPartIV) {
-    setText(doc, F5472.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
-    setText(doc, F5472.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
-    setText(doc, F5472.LINE_11_PCT_PAYMENTS_RECEIVED,   '');
-    setText(doc, F5472.LINE_12_CST_PAYMENTS_RECEIVED,   '');
-    setText(doc, F5472.LINE_13A_RENTS_RECEIVED,         fmt(txn.rents_received));
-    setText(doc, F5472.LINE_13B_ROYALTIES_RECEIVED,     fmt(txn.royalties_received));
-    setText(doc, F5472.LINE_14_INTANGIBLE_RECEIVED,     fmt(txn.intangible_received));
-    setText(doc, F5472.LINE_15_SERVICES_RECEIVED,       fmt(txn.services_received));
-    setText(doc, F5472.LINE_16_COMMISSIONS_RECEIVED,    fmt(txn.commissions_received));
+    setText(doc, F.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
+    setText(doc, F.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
+    setText(doc, F.LINE_11_PCT_PAYMENTS_RECEIVED,   '');
+    setText(doc, F.LINE_12_CST_PAYMENTS_RECEIVED,   '');
+    setText(doc, F.LINE_13A_RENTS_RECEIVED,         fmt(txn.rents_received));
+    setText(doc, F.LINE_13B_ROYALTIES_RECEIVED,     fmt(txn.royalties_received));
+    setText(doc, F.LINE_14_INTANGIBLE_RECEIVED,     fmt(txn.intangible_received));
+    setText(doc, F.LINE_15_SERVICES_RECEIVED,       fmt(txn.services_received));
+    setText(doc, F.LINE_16_COMMISSIONS_RECEIVED,    fmt(txn.commissions_received));
     // Lines 17a / 31a (beginning balances) are not collected in the wizard —
     // leave blank rather than writing an explicit zero so the field stays empty.
-    setText(doc, F5472.LINE_17B_BORROWED_END,           fmt(txn.borrowed_end));
-    setText(doc, F5472.LINE_18_INTEREST_RECEIVED,       fmt(txn.interest_received));
-    setText(doc, F5472.LINE_19_INSURANCE_RECEIVED,      fmt(txn.insurance_received));
-    setText(doc, F5472.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
-    setText(doc, F5472.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
-    setText(doc, F5472.LINE_22_TOTAL_RECEIVED,          fmt(txn.total_received));
-    setText(doc, F5472.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
-    setText(doc, F5472.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
-    setText(doc, F5472.LINE_25_PCT_PAYMENTS_PAID,       '');
-    setText(doc, F5472.LINE_26_CST_PAYMENTS_PAID,       '');
-    setText(doc, F5472.LINE_27A_RENTS_PAID,             fmt(txn.rents_paid));
-    setText(doc, F5472.LINE_27B_ROYALTIES_PAID,         fmt(txn.royalties_paid));
-    setText(doc, F5472.LINE_28_INTANGIBLE_PAID,         fmt(txn.intangible_paid));
-    setText(doc, F5472.LINE_29_SERVICES_PAID,           fmt(txn.services_paid));
-    setText(doc, F5472.LINE_30_COMMISSIONS_PAID,        fmt(txn.commissions_paid));
+    setText(doc, F.LINE_17B_BORROWED_END,           fmt(txn.borrowed_end));
+    setText(doc, F.LINE_18_INTEREST_RECEIVED,       fmt(txn.interest_received));
+    setText(doc, F.LINE_19_INSURANCE_RECEIVED,      fmt(txn.insurance_received));
+    setText(doc, F.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
+    setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
+    setText(doc, F.LINE_22_TOTAL_RECEIVED,          fmt(txn.total_received));
+    setText(doc, F.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
+    setText(doc, F.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
+    setText(doc, F.LINE_25_PCT_PAYMENTS_PAID,       '');
+    setText(doc, F.LINE_26_CST_PAYMENTS_PAID,       '');
+    setText(doc, F.LINE_27A_RENTS_PAID,             fmt(txn.rents_paid));
+    setText(doc, F.LINE_27B_ROYALTIES_PAID,         fmt(txn.royalties_paid));
+    setText(doc, F.LINE_28_INTANGIBLE_PAID,         fmt(txn.intangible_paid));
+    setText(doc, F.LINE_29_SERVICES_PAID,           fmt(txn.services_paid));
+    setText(doc, F.LINE_30_COMMISSIONS_PAID,        fmt(txn.commissions_paid));
     // Line 31a intentionally omitted (beginning balance not collected)
-    setText(doc, F5472.LINE_31B_LOANED_END,             fmt(txn.loaned_end));
-    setText(doc, F5472.LINE_32_INTEREST_PAID,           fmt(txn.interest_paid));
-    setText(doc, F5472.LINE_33_INSURANCE_PAID,          fmt(txn.insurance_paid));
-    setText(doc, F5472.LINE_34_LOAN_GUARANTEE_PAID,     fmt(txn.loan_guarantee_paid));
-    setText(doc, F5472.LINE_35_OTHER_PAID,              fmt(txn.other_paid));
-    setText(doc, F5472.LINE_36_TOTAL_PAID,              fmt(txn.total_paid));
+    setText(doc, F.LINE_31B_LOANED_END,             fmt(txn.loaned_end));
+    setText(doc, F.LINE_32_INTEREST_PAID,           fmt(txn.interest_paid));
+    setText(doc, F.LINE_33_INSURANCE_PAID,          fmt(txn.insurance_paid));
+    setText(doc, F.LINE_34_LOAN_GUARANTEE_PAID,     fmt(txn.loan_guarantee_paid));
+    setText(doc, F.LINE_35_OTHER_PAID,              fmt(txn.other_paid));
+    setText(doc, F.LINE_36_TOTAL_PAID,              fmt(txn.total_paid));
   }
 
   // ── Part V / VI checkboxes
-  setCheck(doc, F5472.PART_V_CHECKBOX,  txn.hasPartV);
-  setCheck(doc, F5472.PART_VI_CHECKBOX, true);
+  setCheck(doc, F.PART_V_CHECKBOX,  txn.hasPartV);
+  setCheck(doc, F.PART_VI_CHECKBOX, true);
 
   const helvetica = await doc.embedFont(StandardFonts.Helvetica);
   doc.getForm().updateFieldAppearances(helvetica);
@@ -540,9 +615,12 @@ export async function fillForm5472(
 // ─── Pro Forma Form 1120 (page 1 only) filler ────────────────────────────────────────────
 
 export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
-  const bytes = await fetchPdfBytes(FORM_1120_PATH);
+  const taxYear    = filing.tax_year ?? String(new Date().getFullYear() - 1);
+  const taxYearNum = parseTaxYear(taxYear);
+  const F1120: F1120Map = getF1120Map(taxYearNum);
+
+  const bytes = await fetchPdfBytes(resolveForm1120Path(taxYearNum));
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const taxYear = filing.tax_year ?? String(new Date().getFullYear() - 1);
 
   const set = (name: string, val: string, fs?: number) => setText(doc, name, val, fs);
   const chk = (name: string, val: boolean) => setCheck(doc, name, val);
@@ -550,17 +628,26 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   const begin = resolvePeriodBegin(filing, taxYear);
   const end   = resolvePeriodEnd(filing, taxYear);
 
-  set('BeginningDate', begin.label,        8);
-  set('EndingDate',    end.label,          8);
-  set('EndingYear',    end.year.slice(-2), 8);
+  set(F1120.BEGINNING_DATE, begin.label,        8);
+  set(F1120.ENDING_DATE,    end.label,          8);
+  set(F1120.ENDING_YEAR,    end.year.slice(-2), 8);
 
-  set('CorporateName', filing.llc_name ?? '');
-  set('EIN',           fmtEin(filing.ein));
-  set('AddressLine1',  fmtStreet(filing.mailing_address));
-  set('City',          filing.mailing_address?.city ?? '');
-  set('State',         filing.mailing_address?.region ?? '');
-  set('Country',       '');
-  set('Zipcode',       filing.mailing_address?.postal_code ?? '');
+  set(F1120.CORP_NAME, filing.llc_name ?? '');
+  set(F1120.EIN,       fmtEin(filing.ein));
+
+  // Address: revisions are split between "single address line + combined
+  // city/state/zip" (most years 2019-2024) and "split fields" (the fallback
+  // Form-1120-Page-1.pdf). Fill whichever style the resolved map declares.
+  set(F1120.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
+  set(F1120.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
+  set(F1120.CORP_ADDRESS_LINE1,  fmtStreet(filing.mailing_address));
+  set(F1120.CORP_CITY,           filing.mailing_address?.city ?? '');
+  set(F1120.CORP_STATE,          filing.mailing_address?.region ?? '');
+  set(F1120.CORP_COUNTRY,        filing.mailing_address?.country ?? '');
+  set(F1120.CORP_ZIP,            filing.mailing_address?.postal_code ?? '');
+
+  set(F1120.TOTAL_ASSETS,      fmt(filing.total_assets));
+  set(F1120.DATE_INCORPORATED, fmtDate(filing.date_of_incorporation));
 
   const isFinal = !!(
     filing.date_of_closure &&
@@ -570,14 +657,14 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
     filing.date_of_incorporation &&
     String(new Date(filing.date_of_incorporation).getUTCFullYear()) === taxYear
   );
-  chk('Initial Return', isInitial);
-  chk('FinalReturn',    isFinal);
-  chk('NameChange',     filing.name_change    ?? false);
-  chk('AddressChange',  filing.address_change ?? false);
+  chk(F1120.INITIAL_RETURN, isInitial);
+  chk(F1120.FINAL_RETURN,   isFinal);
+  chk(F1120.NAME_CHANGE,    filing.name_change    ?? false);
+  chk(F1120.ADDRESS_CHANGE, filing.address_change ?? false);
 
-  set('Signature', filing.owner_full_name ?? '');
-  set('Date',  todayFormatted());
-  set('Title', filing.signer_title ?? 'Owner');
+  set(F1120.SIGNATURE, filing.owner_full_name ?? '');
+  set(F1120.DATE,      todayFormatted());
+  set(F1120.TITLE,     filing.signer_title ?? 'Owner');
 
   const helvetica = await doc.embedFont(StandardFonts.Helvetica);
   doc.getForm().updateFieldAppearances(helvetica);
