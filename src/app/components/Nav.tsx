@@ -17,7 +17,7 @@ const navLinks = [
   { to: "/waitlist", label: "Waitlist" },
 ];
 
-// --- helpers for the user chip ---------------------------------------------
+//777 --- helpers for the user chip ---------------------------------------------
 function getDisplayName(user: User): string {
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof meta.full_name === "string" ? meta.full_name : "";
