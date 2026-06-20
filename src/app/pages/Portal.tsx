@@ -346,7 +346,7 @@ export function Portal() {
 
                 {mode === 'forgot' && (
                   <button type="button" onClick={() => { setMode('login'); setError(''); }} style={{ width: '100%', background: 'none', border: '1px solid var(--tf-border)', color: 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
-                    \u2190 Back to Log In
+                    ← Back to Log In
                   </button>
                 )}
 
