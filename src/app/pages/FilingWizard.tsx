@@ -290,7 +290,9 @@ export default function FilingWizard() {
     })();
   }, [filingId]);
 
-  // ── Load transactions when on step 3 ─────────────────────────────────────
+  // FIX (point 5): load transactions any time step 3 becomes active —
+  // including when the user navigates Back from step 4 — so the list is
+  // always fresh and never shows a stale empty state.
   useEffect(() => {
     if (step !== 3 || !filingId) return;
     (async () => {
@@ -302,6 +304,23 @@ export default function FilingWizard() {
         .order('created_at', { ascending: true });
       setTransactions(data ?? []);
       setTxLoading(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, filingId]);
+
+  // FIX (point 9): refresh the filing record from DB every time the user
+  // reaches Step 4 so the review screen always shows the latest saved values
+  // (Steps 1 and 2 save to DB but only update local state — filing object
+  // would otherwise remain stale after those saves).
+  useEffect(() => {
+    if (step !== 4 || !filingId) return;
+    (async () => {
+      const { data: fi } = await supabase
+        .from('filings')
+        .select('*')
+        .eq('id', filingId)
+        .single();
+      if (fi) setFiling(fi);
     })();
   }, [step, filingId]);
 
@@ -436,6 +455,10 @@ export default function FilingWizard() {
         .select('*')
         .eq('filing_id', filingId);
 
+      // FIX (point 10): generate the PDF first — only mark as completed if
+      // the full PDF assembly and download succeeds. Previously the status
+      // update ran even when assembleFilingPackage threw, leaving filings
+      // stuck as 'completed' with no actual PDF produced.
       const pdfBytes = await assembleFilingPackage(fi, txns ?? []);
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
@@ -445,7 +468,7 @@ export default function FilingWizard() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Mark as completed (valid DB status value)
+      // Only reaches here if PDF was generated without throwing.
       await supabase
         .from('filings')
         .update({ status: 'completed', updated_at: new Date().toISOString() })

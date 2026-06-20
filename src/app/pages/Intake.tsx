@@ -184,9 +184,9 @@ export function Intake() {
         setStep((s) => s + 1);
       }
     } else if (step === 3) {
-      // save transactions then go to review
-      await saveTransactions();
-      setStep(4);
+      // FIX (point 6): only advance to review if transactions saved without error
+      const saved = await saveTransactions();
+      if (saved) setStep(4);
     }
   };
 
@@ -194,24 +194,35 @@ export function Intake() {
 
   // ── transaction helpers ───────────────────────────────────────────────────
 
-  const saveTransactions = async () => {
-    if (!filingId) return;
-    // delete existing and reinsert
-    await supabase.from('reportable_transactions').delete().eq('filing_id', filingId);
-    const rows = transactions
-      .filter((t) => t.amount_usd && Number(t.amount_usd) > 0)
-      .map((t) => ({
-        filing_id: filingId,
-        transaction_type: t.transaction_type,
-        direction: t.direction,
-        amount_usd: Number(t.amount_usd),
-        description: t.description || null,
-        transaction_date: t.transaction_date || null,
-        is_royalty: t.is_royalty,
-      }));
-    if (rows.length) {
-      const { error: err } = await supabase.from('reportable_transactions').insert(rows);
-      if (err) setError(err.message);
+  // FIX (point 4): upsert instead of delete-then-reinsert to avoid race
+  // conditions and to preserve DB-generated IDs for rows that already exist.
+  const saveTransactions = async (): Promise<boolean> => {
+    if (!filingId) return false;
+    setError(null);
+    try {
+      const rows = transactions
+        .filter((t) => t.amount_usd && Number(t.amount_usd) > 0)
+        .map((t) => ({
+          ...(t.id ? { id: t.id } : {}),
+          filing_id: filingId,
+          transaction_type: t.transaction_type,
+          direction: t.direction,
+          amount_usd: Number(t.amount_usd),
+          description: t.description || null,
+          transaction_date: t.transaction_date || null,
+          is_royalty: t.is_royalty,
+        }));
+
+      if (rows.length === 0) return true; // nothing to save is not an error
+
+      const { error: err } = await supabase
+        .from('reportable_transactions')
+        .upsert(rows, { onConflict: 'id' });
+      if (err) throw err;
+      return true;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save transactions');
+      return false;
     }
   };
 
