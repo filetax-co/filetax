@@ -95,13 +95,13 @@ export const get1120PdfUrl = (taxYear: number): string => {
 
 const resolvePeriodBegin = (filing: Filing): string => {
   if (filing.tax_period_begin) return fmtDate(filing.tax_period_begin);
-  const y = filing.tax_year ?? new Date().getFullYear();
+  const y = filing.tax_year != null ? Number(filing.tax_year) : new Date().getFullYear();
   return `01/01/${y}`;
 };
 
 const resolvePeriodEnd = (filing: Filing): string => {
   if (filing.tax_period_end) return fmtDate(filing.tax_period_end);
-  const y = filing.tax_year ?? new Date().getFullYear();
+  const y = filing.tax_year != null ? Number(filing.tax_year) : new Date().getFullYear();
   const mm = String(12).padStart(2, '0');
   const dd = String(31).padStart(2, '0');
   return `${mm}/${dd}/${y}`;
@@ -278,9 +278,11 @@ const fill5472 = async (
   setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS, filing.owner_country_residence ?? '');
   setText(doc, F.SHAREHOLDER_FOREIGN_TIN,      filing.owner_foreign_tax_id ?? '');
 
-  const taxYearVal = filing.tax_year ?? taxYear;
+  // tax_year is stored as string | null in Supabase; coerce to number before
+  // comparing with year_of_incorporation (which is always a number).
+  const taxYearVal = filing.tax_year != null ? Number(filing.tax_year) : taxYear;
   const incorpYear = filing.year_of_incorporation ?? 0;
-  checkBox(doc, F.INITIAL_RETURN_YES, incorpYear === taxYearVal);
+  checkBox(doc, F.INITIAL_RETURN_YES, incorpYear > 0 && incorpYear === taxYearVal);
 
   if (txn.hasPartIV) {
     setText(doc, F.LINE_9_SALES_RECEIVED,          fmt(txn.sales_received));
@@ -331,21 +333,21 @@ const fill1120 = async (
   const url = get1120PdfUrl(taxYear);
   const doc = await loadPdf(url);
   const F   = getF1120Map(taxYear);
-  const txn = aggregateTransactions(txns);
 
   const periodBegin = resolvePeriodBegin(filing);
   const periodEnd   = resolvePeriodEnd(filing);
 
-  setText(doc, F.CORP_NAME,        filing.llc_name ?? '');
-  setText(doc, F.EIN,              filing.ein ?? '');
-  setText(doc, F.BEGINNING_DATE,   periodBegin);
-  setText(doc, F.ENDING_DATE,      periodEnd);
-  setText(doc, F.TOTAL_ASSETS,     fmt(filing.total_assets));
+  setText(doc, F.CORP_NAME,         filing.llc_name ?? '');
+  setText(doc, F.EIN,               filing.ein ?? '');
+  setText(doc, F.BEGINNING_DATE,    periodBegin);
+  setText(doc, F.ENDING_DATE,       periodEnd);
+  setText(doc, F.TOTAL_ASSETS,      fmt(filing.total_assets));
   setText(doc, F.DATE_INCORPORATED, filing.year_of_incorporation ? String(filing.year_of_incorporation) : '');
-  setText(doc, F.CORP_STATE,       filing.state_of_formation ?? '');
+  setText(doc, F.CORP_STATE,        filing.state_of_formation ?? '');
 
-  const grossReceipts = txn.sales_received + txn.services_received;
-  void (grossReceipts + txn.rents_paid + txn.interest_paid + txn.borrowed_end + txn.loaned_end);
+  // Pro Forma 1120 is header-only — income/expense lines are intentionally
+  // left blank per IRS instructions for the 5472 attachment package.
+  void txns;
 
   return doc;
 };
@@ -362,7 +364,7 @@ export const generateFilingPackage = async (
   transactions: Transaction[],
   taxYear?: number,
 ): Promise<FilingPackage> => {
-  const year = taxYear ?? filing.tax_year ?? new Date().getFullYear() - 1;
+  const year = taxYear ?? (filing.tax_year != null ? Number(filing.tax_year) : new Date().getFullYear() - 1);
 
   const [doc5472, doc1120] = await Promise.all([
     fill5472(filing, transactions, year),
