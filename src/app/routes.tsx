@@ -14,7 +14,7 @@ import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Intake } from './pages/Intake';
-import { FilingWizard } from './pages/FilingWizard';
+import FilingWizard from './pages/FilingWizard';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
