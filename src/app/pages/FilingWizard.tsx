@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router';
 import { supabase, Filing, Transaction, Address } from '../../lib/supabase';
 
 // Categories supported by this wizard (subset of Transaction['transaction_type']).
-// Mirrors the legacy FilingTransactionCategory list.
 type WizardTxCategory =
   | 'capital_contribution'
   | 'distribution'
+  | 'dividend'
   | 'loan_to_llc'
   | 'loan_from_llc'
   | 'service_payment'
@@ -30,15 +30,15 @@ const US_STATES = [
 const TX_CATEGORIES: { value: WizardTxCategory; label: string }[] = [
   { value: 'capital_contribution', label: 'Capital Contribution' },
   { value: 'distribution',         label: 'Distribution' },
-  { value: 'loan_to_llc',          label: 'Loan to LLC' },
-  { value: 'loan_from_llc',        label: 'Loan from LLC' },
+  { value: 'dividend',             label: 'Dividend' },
+  { value: 'loan_to_llc',          label: 'Loan to LLC (owner lent to LLC)' },
+  { value: 'loan_from_llc',        label: 'Loan from LLC (owner borrowed from LLC)' },
   { value: 'service_payment',      label: 'Service Payment' },
   { value: 'rent_royalty',         label: 'Rent / Royalty / License' },
   { value: 'other',                label: 'Other' },
 ];
 
 // Returns the current year in US Eastern Time (IRS jurisdiction).
-// Handles EST (UTC-5) and EDT (UTC-4) automatically via America/New_York.
 function getEasternYear(): number {
   return Number(
     new Intl.DateTimeFormat('en-US', {
@@ -49,8 +49,6 @@ function getEasternYear(): number {
 }
 const ET_YEAR = getEasternYear();
 const CURRENT_TAX_YEAR = String(ET_YEAR - 1);
-// Newest first. Range covers EARLIEST_SUPPORTED_TAX_YEAR (driven by the PDF
-// resolver in pdfGenerator) through last completed calendar year.
 const TAX_YEARS = (() => {
   const newest = Number(CURRENT_TAX_YEAR);
   const out: string[] = [];
@@ -238,8 +236,6 @@ export default function FilingWizard() {
   const [txDesc, setTxDesc]           = useState('');
   const [txDirection, setTxDirection] = useState<'received' | 'paid'>('received');
   const [txIsRoyalty, setTxIsRoyalty] = useState(false);
-  const [txBorrowedEnd, setTxBorrowedEnd] = useState('');
-  const [txLoanedEnd, setTxLoanedEnd]     = useState('');
   const [txSaving, setTxSaving]       = useState(false);
 
   const isInitialAutoDetected = useMemo(
@@ -300,7 +296,7 @@ export default function FilingWizard() {
     (async () => {
       setTxLoading(true);
       const { data } = await supabase
-        .from('transactions')
+        .from('reportable_transactions')
         .select('*')
         .eq('filing_id', filingId)
         .order('created_at', { ascending: true });
@@ -375,67 +371,42 @@ export default function FilingWizard() {
     setError(null);
     try {
       const amt = Number(txAmount);
-      const payload: Partial<Transaction> = {
-        filing_id:        filingId,
-        transaction_type: txCategory,
-        description:      txDesc.trim() || null,
-        direction:        txDirection,
-        is_royalty:       txIsRoyalty,
-      } as Partial<Transaction>;
 
-      // Map category + direction to the correct Part IV line
-      if (txCategory === 'loan_to_llc') {
-        // Owner lent money TO the LLC — LLC borrowed from owner
-        // Ending balance: LLC owes owner → borrowed_end (line 17b, received side)
-        (payload as Record<string, unknown>).borrowed_end = amt;
-      } else if (txCategory === 'loan_from_llc') {
-        // Owner borrowed money FROM the LLC
-        // Ending balance: owner owes LLC → loaned_end (line 31b, paid side)
-        (payload as Record<string, unknown>).loaned_end = amt;
-      } else if (txCategory === 'capital_contribution') {
-        (payload as Record<string, unknown>).sales_received = amt;
-      } else if (txCategory === 'distribution') {
-        (payload as Record<string, unknown>).sales_paid = amt;
-      } else if (txCategory === 'service_payment') {
-        if (txDirection === 'received') {
-          (payload as Record<string, unknown>).services_received = amt;
-        } else {
-          (payload as Record<string, unknown>).services_paid = amt;
-        }
-      } else if (txCategory === 'rent_royalty') {
-        if (txDirection === 'received') {
-          if (txIsRoyalty) {
-            (payload as Record<string, unknown>).royalties_received = amt;
-          } else {
-            (payload as Record<string, unknown>).rents_received = amt;
-          }
-        } else {
-          if (txIsRoyalty) {
-            (payload as Record<string, unknown>).royalties_paid = amt;
-          } else {
-            (payload as Record<string, unknown>).rents_paid = amt;
-          }
-        }
-      } else {
-        // other
-        if (txDirection === 'received') {
-          (payload as Record<string, unknown>).other_received = amt;
-        } else {
-          (payload as Record<string, unknown>).other_paid = amt;
-        }
+      // Derive the canonical direction for categories where it is implicit.
+      // loan_to_llc   = owner lent TO the LLC   → LLC *received* the funds
+      // loan_from_llc = owner borrowed FROM LLC  → LLC *paid* out the funds
+      // capital_contribution = owner puts money in → LLC received
+      // distribution         = LLC returns money  → LLC paid
+      // dividend             = LLC distributes earnings → LLC paid
+      // All other categories: use the user-selected txDirection.
+      let direction: 'received' | 'paid' = txDirection;
+      if (txCategory === 'loan_to_llc' || txCategory === 'capital_contribution') {
+        direction = 'received';
+      } else if (
+        txCategory === 'loan_from_llc' ||
+        txCategory === 'distribution' ||
+        txCategory === 'dividend'
+      ) {
+        direction = 'paid';
       }
 
       const { data, error: err } = await supabase
-        .from('transactions')
-        .insert(payload)
+        .from('reportable_transactions')
+        .insert({
+          filing_id:        filingId,
+          transaction_type: txCategory,
+          amount_usd:       amt,
+          description:      txDesc.trim() || null,
+          direction,
+          is_royalty:       txIsRoyalty,
+        })
         .select()
         .single();
       if (err) throw err;
       setTransactions(prev => [...prev, data]);
       setTxAmount('');
       setTxDesc('');
-      setTxBorrowedEnd('');
-      setTxLoanedEnd('');
+      setTxIsRoyalty(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to add transaction');
     } finally {
@@ -444,7 +415,7 @@ export default function FilingWizard() {
   }
 
   async function handleDeleteTransaction(txId: string) {
-    const { error: err } = await supabase.from('transactions').delete().eq('id', txId);
+    const { error: err } = await supabase.from('reportable_transactions').delete().eq('id', txId);
     if (!err) setTransactions(prev => prev.filter(t => t.id !== txId));
   }
 
@@ -461,7 +432,7 @@ export default function FilingWizard() {
       if (!fi) throw new Error('Filing not found');
 
       const { data: txns } = await supabase
-        .from('transactions')
+        .from('reportable_transactions')
         .select('*')
         .eq('filing_id', filingId);
 
@@ -474,10 +445,10 @@ export default function FilingWizard() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Mark as filed
+      // Mark as completed (valid DB status value)
       await supabase
         .from('filings')
-        .update({ status: 'filed', updated_at: new Date().toISOString() })
+        .update({ status: 'completed', updated_at: new Date().toISOString() })
         .eq('id', filingId);
 
       navigate('/dashboard');
@@ -800,8 +771,12 @@ export default function FilingWizard() {
               </Field>
             </FieldRow>
 
-            {/* Direction — not shown for loans (direction is implicit) */}
-            {txCategory !== 'loan_to_llc' && txCategory !== 'loan_from_llc' && txCategory !== 'capital_contribution' && txCategory !== 'distribution' && (
+            {/* Direction — only shown for categories where it is ambiguous */}
+            {txCategory !== 'loan_to_llc' &&
+             txCategory !== 'loan_from_llc' &&
+             txCategory !== 'capital_contribution' &&
+             txCategory !== 'distribution' &&
+             txCategory !== 'dividend' && (
               <Field label="Direction" hint="Received = LLC received from owner; Paid = LLC paid to owner">
                 <Select value={txDirection} onChange={e => setTxDirection(e.target.value as 'received' | 'paid')}>
                   <option value="received">Received (by LLC)</option>
@@ -850,50 +825,36 @@ export default function FilingWizard() {
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {transactions.map(tx => {
-                const amt = (
-                  (tx as Record<string,unknown>).sales_received as number ||
-                  (tx as Record<string,unknown>).sales_paid as number ||
-                  (tx as Record<string,unknown>).services_received as number ||
-                  (tx as Record<string,unknown>).services_paid as number ||
-                  (tx as Record<string,unknown>).rents_received as number ||
-                  (tx as Record<string,unknown>).rents_paid as number ||
-                  (tx as Record<string,unknown>).royalties_received as number ||
-                  (tx as Record<string,unknown>).royalties_paid as number ||
-                  (tx as Record<string,unknown>).other_received as number ||
-                  (tx as Record<string,unknown>).other_paid as number ||
-                  (tx as Record<string,unknown>).borrowed_end as number ||
-                  (tx as Record<string,unknown>).loaned_end as number ||
-                  0
-                );
-                return (
-                  <div key={tx.id} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'var(--tf-surface)', border: '1px solid var(--tf-border)',
-                    borderRadius: '0.4rem', padding: '0.6rem 0.75rem', fontSize: '0.875rem',
-                  }}>
-                    <div>
-                      <span style={{ fontWeight: 600, color: 'var(--tf-text)' }}>
-                        {TX_CATEGORIES.find(c => c.value === tx.transaction_type)?.label ?? tx.transaction_type}
-                      </span>
-                      {tx.description && (
-                        <span style={{ color: 'var(--tf-muted)', marginLeft: '0.5rem' }}>— {tx.description}</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--tf-text)' }}>
-                        ${Number(amt).toLocaleString()}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteTransaction(tx.id)}
-                        style={{ color: '#a12c7b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
+              {transactions.map(tx => (
+                <div key={tx.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'var(--tf-surface)', border: '1px solid var(--tf-border)',
+                  borderRadius: '0.4rem', padding: '0.6rem 0.75rem', fontSize: '0.875rem',
+                }}>
+                  <div>
+                    <span style={{ fontWeight: 600, color: 'var(--tf-text)' }}>
+                      {TX_CATEGORIES.find(c => c.value === tx.transaction_type)?.label ?? tx.transaction_type}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--tf-primary)', marginLeft: '0.4rem' }}>
+                      {tx.direction}
+                    </span>
+                    {tx.description && (
+                      <span style={{ color: 'var(--tf-muted)', marginLeft: '0.5rem' }}>— {tx.description}</span>
+                    )}
                   </div>
-                );
-              })}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--tf-text)' }}>
+                      ${Number(tx.amount_usd).toLocaleString()}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteTransaction(tx.id)}
+                      style={{ color: '#a12c7b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
