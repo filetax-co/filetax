@@ -119,6 +119,12 @@ create table if not exists public.filings (
   parties_count     int     not null default 1,
   complex_sections  text[]  not null default '{}',
 
+  -- ── Signer / activity ─────────────────────────────────────────────────────
+  -- signer_title: printed on the Form 1120 signature line (default "Owner")
+  -- owner_business_activity: principal business activity description
+  signer_title              text,
+  owner_business_activity   text,
+
   -- ── Payment ───────────────────────────────────────────────────────────────
   paid_at               timestamptz,
   payment_id            text,
@@ -159,6 +165,9 @@ create trigger filings_set_updated_at
 -- Only service-role (edge functions like verify-payment) may write the payment
 -- columns or flip status to 'paid' / 'completed'. RLS lacks column-level WITH
 -- CHECK, so we enforce this with a trigger.
+--
+-- Covers both INSERT and UPDATE so a client cannot bypass the check by
+-- inserting a new row already marked status='paid'.
 create or replace function public.filings_block_payment_writes()
 returns trigger language plpgsql security definer as $$
 begin
@@ -169,12 +178,14 @@ begin
   -- Block the client from setting status='paid' under any circumstance.
   -- Allow paid -> completed (the user clicking Download), but only when the
   -- filing is already in a paid state.
+  -- On INSERT old is null, so `is distinct from` correctly fires for any
+  -- non-default value the client tries to sneak in.
   if new.status is distinct from old.status then
     if new.status = 'paid' then
       raise exception 'filings.status cannot be set to paid from the client'
         using errcode = '42501';
     end if;
-    if new.status = 'completed' and old.status not in ('paid','completed') then
+    if new.status = 'completed' and (old.status is null or old.status not in ('paid','completed')) then
       raise exception 'filings.status cannot be set to completed until status=paid'
         using errcode = '42501';
     end if;
@@ -189,12 +200,12 @@ begin
   end if;
 
   return new;
-end;
+ end;
 $$;
 
 drop trigger if exists filings_block_payment_writes on public.filings;
 create trigger filings_block_payment_writes
-  before update on public.filings
+  before insert or update on public.filings
   for each row execute procedure public.filings_block_payment_writes();
 
 
@@ -439,6 +450,22 @@ do $$ begin
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='date_of_closure') then alter table public.filings add column date_of_closure date; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='name_change') then alter table public.filings add column name_change boolean; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='address_change') then alter table public.filings add column address_change boolean; end if;
+end; $$;
+
+-- filings: signer_title + owner_business_activity (Fix 3d)
+do $$ begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='filings' and column_name='signer_title'
+  ) then
+    alter table public.filings add column signer_title text;
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='filings' and column_name='owner_business_activity'
+  ) then
+    alter table public.filings add column owner_business_activity text;
+  end if;
 end; $$;
 
 -- reportable_transactions table (if upgrading from schema without it)
