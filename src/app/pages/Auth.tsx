@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -10,16 +10,22 @@ import { useAuth } from '../context/AuthContext';
 export function Auth() {
   const { session, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     if (loading) return;
-    // Already signed in → go straight to dashboard
+    const next = searchParams.get('next');
     if (session) {
-      navigate('/dashboard', { replace: true });
+      // Already signed in — go to the deep-link destination or dashboard.
+      navigate(next ?? '/dashboard', { replace: true });
     } else {
-      navigate('/portal?mode=login', { replace: true });
+      // Not signed in — forward to Portal, preserving the deep link.
+      const portalUrl = next
+        ? `/portal?mode=login&next=${encodeURIComponent(next)}`
+        : '/portal?mode=login';
+      navigate(portalUrl, { replace: true });
     }
-  }, [session, loading, navigate]);
+  }, [session, loading, navigate, searchParams]);
 
   return null;
 }

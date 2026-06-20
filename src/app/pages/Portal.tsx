@@ -37,6 +37,10 @@ const howItWorksSteps = [
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
 
+// Base path of the app (e.g. "/5472" on GitHub Pages, "" locally).
+// import.meta.env.BASE_URL is set by Vite from vite.config.ts `base`.
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // strip trailing slash
+
 export function Portal() {
   usePageMeta({
     title: 'Start Your Filing | FileTax.co',
@@ -50,6 +54,8 @@ export function Portal() {
   const partiesParam = searchParams.get('parties');
   const rclParam = searchParams.get('rcl');
   const newFiling = searchParams.get('new-filing') === '1';
+  // After login/signup, where should we send the user?
+  const nextParam = searchParams.get('next');
 
   const activeSections = sectionsParam ? sectionsParam.split(',').filter(Boolean) : [];
   const parties = partiesParam ? Number(partiesParam) : 1;
@@ -67,7 +73,7 @@ export function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const dashboardPath = newFiling ? '/dashboard?new-filing=1' : '/dashboard';
+  const dashboardPath = nextParam ?? (newFiling ? '/dashboard?new-filing=1' : '/dashboard');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +85,9 @@ export function Portal() {
       setSubmitting(true);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
-        { redirectTo: window.location.origin + '/reset-password' },
+        // Use BASE so the link works on GitHub Pages (/5472/reset-password)
+        // as well as locally (/reset-password).
+        { redirectTo: window.location.origin + BASE + '/reset-password' },
       );
       setSubmitting(false);
       if (resetError) { setError(resetError.message); return; }
@@ -99,7 +107,8 @@ export function Portal() {
         password,
         options: {
           data: { full_name: name.trim() },
-          emailRedirectTo: window.location.origin + dashboardPath,
+          // Include BASE so the confirmation link lands on the correct path.
+          emailRedirectTo: window.location.origin + BASE + dashboardPath,
         },
       });
 
@@ -147,6 +156,7 @@ export function Portal() {
       return;
     }
 
+    // Respect ?next= deep link; fall back to dashboard.
     navigate(dashboardPath);
   };
 
@@ -245,7 +255,7 @@ export function Portal() {
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
               <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>
-                {howItWorksOpen ? '−' : '+'}
+                {howItWorksOpen ? '\u2212' : '+'}
               </span>
             </button>
             {howItWorksOpen && (
@@ -327,13 +337,13 @@ export function Portal() {
 
                 <button type="submit" disabled={submitting} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', minHeight: '44px', marginBottom: '0.875rem', opacity: submitting ? 0.7 : 1 }}>
                   {submitting
-                    ? (mode === 'forgot' ? 'Sending…' : mode === 'signup' ? 'Creating account…' : 'Signing in…')
+                    ? (mode === 'forgot' ? 'Sending\u2026' : mode === 'signup' ? 'Creating account\u2026' : 'Signing in\u2026')
                     : (mode === 'forgot' ? 'Send Reset Link' : mode === 'signup' ? 'Create Free Account' : 'Sign In')}
                 </button>
 
                 {mode === 'forgot' && (
                   <button type="button" onClick={() => { setMode('login'); setError(''); }} style={{ width: '100%', background: 'none', border: '1px solid var(--tf-border)', color: 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
-                    ← Back to Log In
+                    \u2190 Back to Log In
                   </button>
                 )}
 
