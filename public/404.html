@@ -13,12 +13,19 @@
       var pathSegmentsToKeep = 1;
 
       var l = window.location;
+      var pathParts = l.pathname.split('/');
+      var basePath = pathParts.slice(0, 1 + pathSegmentsToKeep).join('/');
+      var appPath = pathParts.slice(1 + pathSegmentsToKeep).join('/');
+
+      // Encode the full path + search + hash into a single query param
+      // so index.html can decode it back
+      var encoded = (appPath ? '/' + appPath : '')
+        + (l.search ? l.search.replace(/&/g, '~and~') : '')
+        + l.hash;
+
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
+        basePath + '/?/' + encoded.replace(/^\//, '')
       );
     </script>
   </head>
