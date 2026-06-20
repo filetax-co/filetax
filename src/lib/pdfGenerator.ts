@@ -3,6 +3,7 @@
  *
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
  * Entry point: generateFilingPackage(filing, transactions, taxYear)
+ *              assembleFilingPackage (alias — same function, kept for callers)
  */
 
 import {
@@ -257,38 +258,31 @@ const fill5472 = async (
   const periodBegin = resolvePeriodBegin(filing);
   const periodEnd   = resolvePeriodEnd(filing);
 
-  // Parse period begin/end into components for the split date fields
   const [pbM, pbD, pbY] = periodBegin.split('/');
   const [_peM, _peD, peY] = periodEnd.split('/');
 
-  // ── Header — Tax Year
   setText(doc, F.TAX_YEAR_BEGIN,      pbM && pbD ? `${pbM === '01' ? 'January' : pbM} ${pbD}` : periodBegin);
   setText(doc, F.TAX_YEAR_BEGIN_YEAR, pbY ?? '');
   setText(doc, F.TAX_YEAR_END,        periodEnd);
   setText(doc, F.TAX_YEAR_END_YEAR,   peY ?? '');
 
-  // ── Part I — LLC / reporting corporation
-  setText(doc, F.CORP_NAME,         filing.llc_name ?? '');
-  setText(doc, F.CORP_EIN,          filing.ein ?? '');
-  setText(doc, F.CORP_TOTAL_ASSETS, fmt(filing.total_assets));
+  setText(doc, F.CORP_NAME,            filing.llc_name ?? '');
+  setText(doc, F.CORP_EIN,             filing.ein ?? '');
+  setText(doc, F.CORP_TOTAL_ASSETS,    fmt(filing.total_assets));
   setText(doc, F.CORP_COUNTRY_OF_INC,  filing.country_of_incorporation ?? 'US');
   setText(doc, F.CORP_COUNTRY_BUSINESS, filing.country_of_business ?? filing.state_of_formation ?? '');
-  setText(doc, F.CORP_ACTIVITY,     (filing as Record<string, unknown>).owner_business_activity as string ?? '');
+  setText(doc, F.CORP_ACTIVITY,        (filing as Record<string, unknown>).owner_business_activity as string ?? '');
 
-  // ── Part II — 25% Foreign Shareholders
   setText(doc, F.SHAREHOLDER_NAME,             filing.owner_full_name ?? '');
   setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY, filing.owner_country_residence ?? '');
   setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS, filing.owner_country_residence ?? '');
   setText(doc, F.SHAREHOLDER_FOREIGN_TIN,      filing.owner_foreign_tax_id ?? '');
 
-  // ── Part I checkboxes
   const taxYearVal = filing.tax_year ?? taxYear;
   const incorpYear = filing.year_of_incorporation ?? 0;
   checkBox(doc, F.INITIAL_RETURN_YES, incorpYear === taxYearVal);
 
-  // ── Part IV — Monetary transactions
   if (txn.hasPartIV) {
-    // Received side
     setText(doc, F.LINE_9_SALES_RECEIVED,          fmt(txn.sales_received));
     setText(doc, F.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F.LINE_13A_RENTS_RECEIVED,         fmt(txn.rents_received));
@@ -302,7 +296,6 @@ const fill5472 = async (
     setText(doc, F.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
     setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
     setText(doc, F.LINE_22_TOTAL_RECEIVED,          fmt(totalReceived(txn)));
-    // Paid side
     setText(doc, F.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
     setText(doc, F.LINE_27A_RENTS_PAID,             fmt(txn.rents_paid));
@@ -318,12 +311,10 @@ const fill5472 = async (
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(totalPaid(txn)));
   }
 
-  // ── Part V — Distributions / contributions
   if (txn.hasPartV) {
     checkBox(doc, F.PART_V_CHECKBOX, true);
   }
 
-  // ── Signer title
   const signerTitle = (filing as Record<string, unknown>).signer_title as string | undefined;
   setText(doc, F.RP_ACTIVITY, signerTitle ?? 'Owner');
 
@@ -345,20 +336,15 @@ const fill1120 = async (
   const periodBegin = resolvePeriodBegin(filing);
   const periodEnd   = resolvePeriodEnd(filing);
 
-  setText(doc, F.CORP_NAME,      filing.llc_name ?? '');
-  setText(doc, F.EIN,            filing.ein ?? '');
-  setText(doc, F.BEGINNING_DATE, periodBegin);
-  setText(doc, F.ENDING_DATE,    periodEnd);
-  setText(doc, F.TOTAL_ASSETS,   fmt(filing.total_assets));
+  setText(doc, F.CORP_NAME,        filing.llc_name ?? '');
+  setText(doc, F.EIN,              filing.ein ?? '');
+  setText(doc, F.BEGINNING_DATE,   periodBegin);
+  setText(doc, F.ENDING_DATE,      periodEnd);
+  setText(doc, F.TOTAL_ASSETS,     fmt(filing.total_assets));
   setText(doc, F.DATE_INCORPORATED, filing.year_of_incorporation ? String(filing.year_of_incorporation) : '');
+  setText(doc, F.CORP_STATE,       filing.state_of_formation ?? '');
 
-  // Gross receipts from related-party transactions
   const grossReceipts = txn.sales_received + txn.services_received;
-  // 1120 field names vary by year — use CORP_ADDRESS as a no-op fallback for missing fields
-  // (all setText calls guard on empty fieldName already)
-  setText(doc, F.CORP_STATE,    filing.state_of_formation ?? '');
-
-  // Suppress unused-var warnings — txn used for completeness check
   void (grossReceipts + txn.rents_paid + txn.interest_paid + txn.borrowed_end + txn.loaned_end);
 
   return doc;
@@ -390,3 +376,6 @@ export const generateFilingPackage = async (
 
   return { form5472, form1120 };
 };
+
+/** @alias generateFilingPackage — kept for callers that use the old name */
+export const assembleFilingPackage = generateFilingPackage;
