@@ -43,7 +43,7 @@
  * CheckBox     NameChange
  * CheckBox     AddressChange
  * TextField    Signature       — owner_full_name (auto-filled at generation time)
- * TextField    Date            — today's date in MM/DD/YYYY format
+ * TextField    Date            — today's date in MM/DD/YYYY format (IRS Eastern Time)
  * TextField    Title           — filing.signer_title ?? "Owner" (default)
  * TextField    BeginningDate   — month+day only, e.g. "January 1" (year auto-filled by form)
  * TextField    EndingDate      — e.g. "December 31"
@@ -183,16 +183,24 @@ function fmtDate(val: string | null | undefined): string {
 }
 
 /**
- * Today's date formatted as MM/DD/YYYY — used for the signature Date field.
- * Uses local time (intentional: this is the date the form is generated/signed)
+ * Today's date formatted as MM/DD/YYYY in IRS Eastern Time (America/New_York).
+ *
+ * The IRS is headquartered in Washington D.C. and processes returns using
+ * Eastern Time. Using ET rather than the user's local clock ensures the
+ * signature date matches the IRS-jurisdiction date regardless of where the
+ * filer is located (e.g., India, Europe).
+ *
+ * Intl.DateTimeFormat is universally supported in modern browsers and Node.
  */
 function todayFormatted(): string {
-  const d = new Date();
-  return (
-    `${String(d.getMonth() + 1).padStart(2, '0')}/` +
-    `${String(d.getDate()).padStart(2, '0')}/` +
-    `${d.getFullYear()}`
-  );
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month:    '2-digit',
+    day:      '2-digit',
+    year:     'numeric',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+  return `${get('month')}/${get('day')}/${get('year')}`;
 }
 
 /** Street address only — line1 + line2 */
@@ -259,7 +267,6 @@ function resolvePeriodBegin(
     const d = new Date(filing.date_of_incorporation);
     if (!isNaN(d.getTime()) && String(d.getUTCFullYear()) === taxYear) {
       return {
-        // Fix: zero-pad day so "January 5" becomes "January 05" consistently
         label: `${MONTH_NAMES[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, '0')}`,
         year: taxYear,
       };
@@ -287,7 +294,6 @@ function resolvePeriodEnd(
     const month = parseInt(monthStr, 10);
     const day   = parseInt(dayStr, 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      // Zero-pad to match resolvePeriodBegin formatting.
       return { label: `${MONTH_NAMES[month - 1]} ${String(day).padStart(2, '0')}`, year: yearStr };
     }
   }
@@ -312,13 +318,13 @@ interface TxnTotals {
   intangible_received: number;
   services_received: number;
   commissions_received: number;
-  borrowed_begin: number;
-  borrowed_end: number;
+  // Line 17a (beginning balance) intentionally not collected — always zero.
+  borrowed_end: number;   // Line 17b — ending balance of amounts owed to related party
   interest_received: number;
   insurance_received: number;
   loan_guarantee_received: number;
   other_received: number;
-  total_received: number;
+  total_received: number; // Line 22 = sum of lines 9–21 (17b used, 17a omitted)
   sales_paid: number;
   tangible_prop_paid: number;
   rents_paid: number;
@@ -326,13 +332,13 @@ interface TxnTotals {
   intangible_paid: number;
   services_paid: number;
   commissions_paid: number;
-  loaned_begin: number;
-  loaned_end: number;
+  // Line 31a (beginning balance) intentionally not collected — always zero.
+  loaned_end: number;     // Line 31b — ending balance of amounts owed by related party
   interest_paid: number;
   insurance_paid: number;
   loan_guarantee_paid: number;
   other_paid: number;
-  total_paid: number;
+  total_paid: number;     // Line 36 = sum of lines 23–35 (31b used, 31a omitted)
   capital_contribution: number;
   distribution: number;
   formation_costs: number;
@@ -347,14 +353,14 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
     rents_received: 0, royalties_received: 0,
     intangible_received: 0, services_received: 0,
     commissions_received: 0,
-    borrowed_begin: 0, borrowed_end: 0,
+    borrowed_end: 0,
     interest_received: 0, insurance_received: 0,
     loan_guarantee_received: 0, other_received: 0, total_received: 0,
     sales_paid: 0, tangible_prop_paid: 0,
     rents_paid: 0, royalties_paid: 0,
     intangible_paid: 0, services_paid: 0,
     commissions_paid: 0,
-    loaned_begin: 0, loaned_end: 0,
+    loaned_end: 0,
     interest_paid: 0, insurance_paid: 0,
     loan_guarantee_paid: 0, other_paid: 0, total_paid: 0,
     capital_contribution: 0, distribution: 0,
@@ -390,8 +396,10 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
         dir === 'received' ? (t.commissions_received += amt) : (t.commissions_paid += amt);
         t.hasPartIV = true; break;
       case 'loan_to_llc':
+        // Recorded as the ending balance the LLC owes back to the owner (line 17b).
         t.borrowed_end += amt; t.hasPartIV = true; break;
       case 'loan_from_llc':
+        // Recorded as the ending balance the owner owes to the LLC (line 31b).
         t.loaned_end += amt; t.hasPartIV = true; break;
       case 'interest':
         dir === 'paid' ? (t.interest_paid += amt) : (t.interest_received += amt);
@@ -413,29 +421,46 @@ function aggregateTransactions(txns: Transaction[]): TxnTotals {
         t.formation_costs += amt; t.hasPartV = true; break;
       case 'property_transfer':
         t.property_transfer += amt; t.hasPartV = true; break;
-      // Fix: nonmonetary_other is exported in PART_V_CATEGORIES so the UI can
-      // present it as a valid choice. Mark hasPartV so the Part V statement page
-      // is generated; amount goes to 0 (non-monetary means no dollar figure).
       case 'nonmonetary_other':
         t.hasPartV = true; break;
     }
   }
 
+  // Line 22 = sum of lines 9–21.
+  // Line 17 uses only the ENDING balance (17b). Beginning balance (17a) is
+  // not collected by the wizard and is excluded from this total.
   t.total_received =
-    t.sales_received + t.tangible_prop_received +
-    t.rents_received + t.royalties_received +
-    t.intangible_received + t.services_received +
-    t.commissions_received + t.borrowed_end +
-    t.interest_received + t.insurance_received +
-    t.loan_guarantee_received + t.other_received;
+    t.sales_received +           // line 9
+    t.tangible_prop_received +   // line 10
+    // lines 11, 12 (PCT/CST) always zero for SMLLC
+    t.rents_received +           // line 13a
+    t.royalties_received +       // line 13b
+    t.intangible_received +      // line 14
+    t.services_received +        // line 15
+    t.commissions_received +     // line 16
+    t.borrowed_end +             // line 17b (ending balance — part of lines 1f on the form)
+    t.interest_received +        // line 18
+    t.insurance_received +       // line 19
+    t.loan_guarantee_received +  // line 20
+    t.other_received;            // line 21
 
+  // Line 36 = sum of lines 23–35.
+  // Line 31 uses only the ENDING balance (31b). Beginning balance (31a) is
+  // not collected by the wizard and is excluded from this total.
   t.total_paid =
-    t.sales_paid + t.tangible_prop_paid +
-    t.rents_paid + t.royalties_paid +
-    t.intangible_paid + t.services_paid +
-    t.commissions_paid + t.loaned_end +
-    t.interest_paid + t.insurance_paid +
-    t.loan_guarantee_paid + t.other_paid;
+    t.sales_paid +               // line 23
+    t.tangible_prop_paid +       // line 24
+    // lines 25, 26 (PCT/CST) always zero for SMLLC
+    t.rents_paid +               // line 27a
+    t.royalties_paid +           // line 27b
+    t.intangible_paid +          // line 28
+    t.services_paid +            // line 29
+    t.commissions_paid +         // line 30
+    t.loaned_end +               // line 31b (ending balance — part of lines 1h on the form)
+    t.interest_paid +            // line 32
+    t.insurance_paid +           // line 33
+    t.loan_guarantee_paid +      // line 34
+    t.other_paid;                // line 35
 
   return t;
 }
@@ -500,15 +525,17 @@ export async function fillForm5472(
   setText(doc, F.CORP_COUNTRY_OF_INC,         'United States');
   setText(doc, F.CORP_DATE_OF_INCORPORATION,  fmtDate(filing.date_of_incorporation));
   // The reporting corporation IS the US LLC. Both its country of residence
-  // and its country of business are always the United States. Do NOT
-  // substitute the foreign owner's country here.
+  // and its country of business are always the United States.
   setText(doc, F.CORP_RESIDENT_COUNTRY,       'United States');
   setText(doc, F.CORP_COUNTRY_BUSINESS,       'United States');
 
   setCheck(doc, F.FOREIGN_OWNS_50PCT,       true);
+  // For a foreign-owned SMLLC the correct Part I checkbox is the
+  // "25% foreign-owned disregarded entity" box (box 3).
   setCheck(doc, F.CORP_IS_FOREIGN_OWNED_DE, true);
 
   // ── Part II - 25% Foreign Shareholder (row 4)
+  // For an SMLLC the 100% foreign owner IS the sole 25% shareholder.
   setText(doc, F.SHAREHOLDER_NAME,
     fmtNameAddress(filing.owner_full_name, filing.owner_address ?? filing.mailing_address),
     8
@@ -516,15 +543,21 @@ export async function fillForm5472(
   setText(doc, F.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
   setText(doc, F.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
   setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
-  // Line 4c: country where the shareholder conducts business — NOT citizenship.
-  // The wizard does not yet collect this as a dedicated field, so fall back to
-  // country of residence (a much closer approximation than citizenship).
   setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS,    filing.owner_country_residence ?? '');
   setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,
     filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // ── Part III - Related Party
+  // ── Part III - Related Party (line 8e checkboxes)
+  //
+  // For a foreign-owned SMLLC the logic is always:
+  //   Box 2 (related to 25% foreign shareholder) — tick YES
+  //   Box 3 (IS the 25% foreign shareholder)     — tick YES
+  //   Box 1 (related to reporting corporation)   — tick NO
+  //
+  // The owner IS the sole 25% shareholder AND is related to themselves as
+  // such. There is no complex multi-layer structure for a plain SMLLC, so
+  // "related to reporting corporation" (box 1) is never used here.
   setCheck(doc, F.RP_IS_FOREIGN_PERSON, true);
   setCheck(doc, F.RP_IS_US_PERSON,      false);
   setText(doc, F.RP_NAME,
@@ -547,18 +580,13 @@ export async function fillForm5472(
     }
   } catch { /* field not found */ }
 
-  // Fix: Part III 8e checkboxes now driven by rp_is_related_only / rp_is_both.
-  // Default (false/undefined) = owner IS the 25% shareholder (SMLLC standard case).
-  // rp_is_related_only = true  -> tick box 2 only (related to shareholder, not the shareholder itself).
-  // rp_is_both         = true  -> tick boxes 2 AND 3 simultaneously.
-  const rpIsRelatedOnly = filing.rp_is_related_only === true;
-  const rpIsBoth        = filing.rp_is_both === true;
-  setCheck(doc, F.RP_RELATED_TO_CORP,        false);
-  setCheck(doc, F.RP_RELATED_TO_SHAREHOLDER, rpIsRelatedOnly || rpIsBoth);
-  setCheck(doc, F.RP_IS_25PCT_SHAREHOLDER,   !rpIsRelatedOnly || rpIsBoth);
+  // Line 8e: the related party IS the 25% shareholder (box 3) AND is
+  // related to the 25% shareholder (box 2). Box 1 (related to reporting
+  // corporation) is always false for the SMLLC use-case.
+  setCheck(doc, F.RP_RELATED_TO_CORP,        false); // box 1 — never for SMLLC
+  setCheck(doc, F.RP_RELATED_TO_SHAREHOLDER, true);  // box 2 — always tick
+  setCheck(doc, F.RP_IS_25PCT_SHAREHOLDER,   true);  // box 3 — always tick
 
-  // RP country-of-business: same reasoning as line 4c above — prefer residence,
-  // not citizenship.
   setText(doc, F.RP_COUNTRY_BUSINESS,
     filing.owner_country_residence ?? '');
   setText(doc, F.RP_RESIDENT_COUNTRY,
@@ -566,6 +594,7 @@ export async function fillForm5472(
 
   // ── Part IV - Monetary Transactions
   if (txn.hasPartIV) {
+    // ── Received block (lines 9–21 → total line 22) ──
     setText(doc, F.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F.LINE_11_PCT_PAYMENTS_RECEIVED,   '');
@@ -575,14 +604,18 @@ export async function fillForm5472(
     setText(doc, F.LINE_14_INTANGIBLE_RECEIVED,     fmt(txn.intangible_received));
     setText(doc, F.LINE_15_SERVICES_RECEIVED,       fmt(txn.services_received));
     setText(doc, F.LINE_16_COMMISSIONS_RECEIVED,    fmt(txn.commissions_received));
-    // Lines 17a / 31a (beginning balances) are not collected in the wizard —
-    // leave blank rather than writing an explicit zero so the field stays empty.
+    // Line 17a (beginning balance) is not collected — leave blank.
+    // Line 17b (ending balance) feeds into line 22 and is part of "1f" on
+    // the summary schedule.
     setText(doc, F.LINE_17B_BORROWED_END,           fmt(txn.borrowed_end));
     setText(doc, F.LINE_18_INTEREST_RECEIVED,       fmt(txn.interest_received));
     setText(doc, F.LINE_19_INSURANCE_RECEIVED,      fmt(txn.insurance_received));
     setText(doc, F.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
     setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
+    // Line 22 = sum of lines 9–21 (17b included, 17a omitted).
     setText(doc, F.LINE_22_TOTAL_RECEIVED,          fmt(txn.total_received));
+
+    // ── Paid block (lines 23–35 → total line 36) ──
     setText(doc, F.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
     setText(doc, F.LINE_25_PCT_PAYMENTS_PAID,       '');
@@ -592,12 +625,15 @@ export async function fillForm5472(
     setText(doc, F.LINE_28_INTANGIBLE_PAID,         fmt(txn.intangible_paid));
     setText(doc, F.LINE_29_SERVICES_PAID,           fmt(txn.services_paid));
     setText(doc, F.LINE_30_COMMISSIONS_PAID,        fmt(txn.commissions_paid));
-    // Line 31a intentionally omitted (beginning balance not collected)
+    // Line 31a (beginning balance) is not collected — leave blank.
+    // Line 31b (ending balance) feeds into line 36 and is part of "1h" on
+    // the summary schedule.
     setText(doc, F.LINE_31B_LOANED_END,             fmt(txn.loaned_end));
     setText(doc, F.LINE_32_INTEREST_PAID,           fmt(txn.interest_paid));
     setText(doc, F.LINE_33_INSURANCE_PAID,          fmt(txn.insurance_paid));
     setText(doc, F.LINE_34_LOAN_GUARANTEE_PAID,     fmt(txn.loan_guarantee_paid));
     setText(doc, F.LINE_35_OTHER_PAID,              fmt(txn.other_paid));
+    // Line 36 = sum of lines 23–35 (31b included, 31a omitted).
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(txn.total_paid));
   }
 
@@ -635,9 +671,6 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   set(F1120.CORP_NAME, filing.llc_name ?? '');
   set(F1120.EIN,       fmtEin(filing.ein));
 
-  // Address: revisions are split between "single address line + combined
-  // city/state/zip" (most years 2019-2024) and "split fields" (the fallback
-  // Form-1120-Page-1.pdf). Fill whichever style the resolved map declares.
   set(F1120.CORP_ADDRESS,        fmtStreet(filing.mailing_address));
   set(F1120.CORP_CITY_STATE_ZIP, fmtCityStateZip(filing.mailing_address));
   set(F1120.CORP_ADDRESS_LINE1,  fmtStreet(filing.mailing_address));
@@ -663,6 +696,8 @@ export async function fillProForma1120(filing: Filing): Promise<Uint8Array> {
   chk(F1120.ADDRESS_CHANGE, filing.address_change ?? false);
 
   set(F1120.SIGNATURE, filing.owner_full_name ?? '');
+  // Date field uses IRS Eastern Time so the signature date matches IRS
+  // jurisdiction regardless of where the filer generates the PDF.
   set(F1120.DATE,      todayFormatted());
   set(F1120.TITLE,     filing.signer_title ?? 'Owner');
 
@@ -708,8 +743,6 @@ export async function generateStatementsPdf(
     return lines;
   }
 
-  // Fix: extracted page drawer factory so Page 1 and Page 2 share the same
-  // implementation without duplicating three inner functions per page.
   function makePageDrawer(page: ReturnType<typeof pdfDoc.addPage>) {
     const margin   = 72;
     const maxWidth = 612 - margin * 2;
@@ -750,7 +783,7 @@ export async function generateStatementsPdf(
     return { page, margin, drawLine, drawWrapped, drawDivider, getY: () => y, setY: (v: number) => { y = v; } };
   }
 
-  // ── PAGE 1: Part VI Statement ────────────────────────────────────────────────────────────────
+  // ── PAGE 1: Part VI Statement
   {
     const p1 = makePageDrawer(pdfDoc.addPage([612, 792]));
     const { drawLine, drawWrapped, drawDivider, page, margin, getY, setY } = p1;
@@ -805,7 +838,6 @@ export async function generateStatementsPdf(
 
     drawDivider();
 
-    // Signature line
     let y = getY();
     y -= 18;
     setY(y);
@@ -836,7 +868,7 @@ export async function generateStatementsPdf(
     }
   }
 
-  // ── PAGE 2: Part V Statement ────────────────────────────────────────────────────────────────
+  // ── PAGE 2: Part V Statement
   if (txn.hasPartV) {
     const p2 = makePageDrawer(pdfDoc.addPage([612, 792]));
     const { drawLine, drawWrapped, drawDivider } = p2;
