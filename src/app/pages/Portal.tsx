@@ -107,11 +107,11 @@ export function Portal() {
         password,
         options: {
           data: { full_name: name.trim() },
-          // Point to the app root so the confirmation link always lands on a
-          // real page (GitHub Pages only serves index.html at the base path).
-          // Supabase sets the session via the URL hash; AuthContext picks it up
-          // and the user lands on the homepage already signed in.
-          emailRedirectTo: window.location.origin + BASE + '/',
+          // After the user clicks the confirmation link in their email, redirect
+          // them straight to /dashboard so they land already signed in and ready
+          // to start their filing — not on the homepage where they'd need to
+          // navigate again.
+          emailRedirectTo: window.location.origin + BASE + '/dashboard',
         },
       });
 
@@ -173,7 +173,7 @@ export function Portal() {
       <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>
         {mode === 'forgot'
           ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>  
-          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account and access your filing dashboard.</>}
+          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account — you will land directly on your filing dashboard.</>}
       </p>
     </div>
   );

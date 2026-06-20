@@ -18,18 +18,19 @@ export function ResetPassword() {
   const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    // 1. The PASSWORD_RECOVERY event often fires BEFORE this component mounts
-    //    (Supabase exchanges the URL hash tokens immediately on page load).
-    //    So we first check whether a recovery session already exists.
+    // 1. Check whether Supabase already exchanged the recovery token before
+    //    this component mounted (common when PKCE + detectSessionInUrl is on).
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setSessionReady(true);
-      }
+      if (session) setSessionReady(true);
     });
 
-    // 2. Also subscribe in case the event fires after mount (e.g. slow redirects).
+    // 2. Subscribe for the PASSWORD_RECOVERY event specifically.
+    //    We intentionally do NOT set sessionReady on a plain SIGNED_IN event
+    //    here — that would allow any logged-in user who navigates to
+    //    /reset-password to submit the form without actually coming from a
+    //    reset email. Only PASSWORD_RECOVERY guarantees the intent.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+      if (event === 'PASSWORD_RECOVERY') {
         setSessionReady(true);
       }
     });

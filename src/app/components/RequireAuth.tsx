@@ -15,6 +15,9 @@ export function RequireAuth() {
 
   useEffect(() => {
     if (DEV_SKIP_AUTH) return;
+    // Only redirect once we're sure there's no session — never redirect while
+    // still loading, to avoid a flash-redirect when the session is already
+    // present in storage but hasn't resolved yet.
     if (!loading && !user) {
       const next = encodeURIComponent(location.pathname + location.search);
       navigate(`/portal?mode=login&next=${next}`, { replace: true });
@@ -23,6 +26,9 @@ export function RequireAuth() {
 
   if (DEV_SKIP_AUTH) return <Outlet />;
 
+  // Show a neutral loading screen while the session is resolving.
+  // Previously this rendered null, which caused a brief blank flash before
+  // the redirect or the protected page appeared.
   if (loading) {
     return (
       <section style={{ padding: '5rem 1rem', textAlign: 'center' }}>

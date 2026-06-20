@@ -21,7 +21,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION on mount — use it as single source of truth
+    // Seed the initial session immediately so that on a hard refresh we don't
+    // hold `loading: true` while waiting for the INITIAL_SESSION event. This
+    // is especially important on GitHub Pages where the page reloads after a
+    // confirmation/recovery redirect and the session already exists in storage.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Keep session in sync for sign-in / sign-out / token-refresh events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setLoading(false);
