@@ -138,8 +138,14 @@ export function Portal() {
       }
 
       setSubmitting(false);
-      // signUp with email confirmation → show "check your email" message
-      setSubmitted(true);
+
+      if (signUpData?.session) {
+        // Email confirmation is OFF — user is instantly authenticated, go to dashboard
+        navigate(dashboardPath);
+      } else {
+        // Email confirmation is ON — show "check your email" screen
+        setSubmitted(true);
+      }
       return;
     }
 
