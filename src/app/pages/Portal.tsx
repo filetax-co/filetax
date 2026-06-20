@@ -107,8 +107,11 @@ export function Portal() {
         password,
         options: {
           data: { full_name: name.trim() },
-          // Include BASE so the confirmation link lands on the correct path.
-          emailRedirectTo: window.location.origin + BASE + dashboardPath,
+          // Point to the app root so the confirmation link always lands on a
+          // real page (GitHub Pages only serves index.html at the base path).
+          // Supabase sets the session via the URL hash; AuthContext picks it up
+          // and the user lands on the homepage already signed in.
+          emailRedirectTo: window.location.origin + BASE + '/',
         },
       });
 
