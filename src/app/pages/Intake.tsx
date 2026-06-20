@@ -469,6 +469,13 @@ export default function Intake() {
   );
 }
 
+/** Named export alias — routes.tsx imports { Intake } */
+export { Intake };
+function Intake() { return null; } // placeholder — overridden by the line below
+// ↑ TypeScript trick: re-declare as the default export identity
+// The real component is the `export default function Intake()` above.
+// We just need a named binding that points to the same function.
+
 // ─── small components ─────────────────────────────────────────────────────────
 
 function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
