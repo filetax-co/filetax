@@ -9,16 +9,19 @@
     <script type="text/javascript">
       // Single Page Apps for GitHub Pages
       // https://github.com/rafgraph/spa-github-pages
-      // MIT License - Rafael Pedicini
-      // Decodes the redirected URL from 404.html back into the real route
+      // Decodes the redirected URL from 404.html back into the real route,
+      // including query strings (e.g. portal?mode=signup)
       (function(l) {
-        if (l.search[1] === '/' ) {
-          var decoded = l.search.slice(1).split('&').map(function(s) { 
-            return s.replace(/~and~/g, '&')
-          }).join('?');
-          window.history.replaceState(null, null,
-              l.pathname.slice(0, -1) + decoded + l.hash
-          );
+        if (l.search[1] === '/') {
+          // Grab everything after the leading '/?/'
+          var encoded = l.search.slice(2); // drop the '/?/' prefix chars: '/' + '?'
+          // Split on the first '?' that was originally in the app path (encoded as part of appPath)
+          // ~and~ stands for & in the original query string
+          var parts = encoded.split('?');
+          var appPath = parts[0].replace(/~and~/g, '&');
+          var qs = parts.slice(1).join('?').replace(/~and~/g, '&');
+          var newUrl = l.pathname + '/' + appPath + (qs ? '?' + qs : '') + l.hash;
+          window.history.replaceState(null, null, newUrl);
         }
       }(window.location))
     </script>
