@@ -51,7 +51,7 @@ const STEP_LABELS = ['LLC details', 'Owner details', 'Transactions', 'Review'];
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-export default function Intake() {
+export function Intake() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const filingId = params.get('filing_id');
@@ -456,7 +456,7 @@ export default function Intake() {
           )}
           {step < 4 ? (
             <button onClick={handleNext} style={primaryBtnStyle} type="button" disabled={saving}>
-              {saving ? 'Saving…' : step === 3 ? 'Save &amp; review' : 'Save &amp; continue'}
+              {saving ? 'Saving…' : step === 3 ? 'Save & review' : 'Save & continue'}
             </button>
           ) : (
             <button onClick={handleSubmit} style={primaryBtnStyle} type="button" disabled={saving}>
@@ -469,12 +469,7 @@ export default function Intake() {
   );
 }
 
-/** Named export alias — routes.tsx imports { Intake } */
-export { Intake };
-function Intake() { return null; } // placeholder — overridden by the line below
-// ↑ TypeScript trick: re-declare as the default export identity
-// The real component is the `export default function Intake()` above.
-// We just need a named binding that points to the same function.
+export default Intake;
 
 // ─── small components ─────────────────────────────────────────────────────────
 
