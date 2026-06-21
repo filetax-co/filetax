@@ -59,6 +59,9 @@ export default function FilingWizard() {
   const [generating, setGenerating] = useState(false);
   const [genErr,     setGenErr]     = useState<string | null>(null);
 
+  // Suppress unused-variable warning — showTxForm is kept for future modal use
+  void showTxForm;
+
   // ── load existing filing on mount ─────────────────────────────────────────
 
   useEffect(() => {
@@ -260,6 +263,14 @@ export default function FilingWizard() {
   };
 
   // ── step 4: generate PDF ──────────────────────────────────────────────────
+  //
+  // Generates the complete filing package and downloads a single combined PDF:
+  //   Pro Forma 1120 → Form 5472 → Part V statement (if applicable) → Part VI statement
+  //
+  // Part VI is always included (managerial services FMV disclosure).
+  // Part V is included only when distributions, contributions, dividends,
+  // or formation-cost payments are present.
+  // property_transfer and nonmonetary_other are disclosed in Part VI only.
 
   const handleGenerate = async () => {
     if (!filingId || !filing) return;
@@ -279,13 +290,11 @@ export default function FilingWizard() {
         .eq('filing_id', filingId);
       if (txErr2) throw txErr2;
 
-      const { assembleFilingPackage } = await import('../../lib/pdfGenerator');
-      const { form5472, form1120 } = await assembleFilingPackage(fi, txns ?? []);
-      // Merge both PDFs into a single Uint8Array for download
-      const merged = new Uint8Array(form5472.byteLength + form1120.byteLength);
-      merged.set(form5472, 0);
-      merged.set(form1120, form5472.byteLength);
-      const blob = new Blob([merged], { type: 'application/pdf' });
+      const { generateFilingPackage } = await import('../../lib/pdfGenerator');
+      const pkg = await generateFilingPackage(fi, txns ?? []);
+
+      // Download the single combined PDF (1120 + 5472 + Part V if applicable + Part VI always)
+      const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
@@ -577,6 +586,9 @@ export default function FilingWizard() {
                 <option value="dividend">Dividend</option>
                 <option value="capital_contribution">Capital Contribution</option>
                 <option value="distribution">Distribution</option>
+                <option value="formation_costs">Formation Costs (paid by owner)</option>
+                <option value="property_transfer">Property Transfer (Part VI)</option>
+                <option value="nonmonetary_other">Other Nonmonetary (Part VI)</option>
                 <option value="other">Other</option>
               </select>
             </Field>
@@ -595,7 +607,7 @@ export default function FilingWizard() {
                 step="0.01"
                 value={txForm.amount_usd ?? ''}
                 onChange={e => handleTxFormChange('amount_usd', e.target.value ? Number(e.target.value) : null)}
-                placeholder="0.00"
+                placeholder="0.00 (leave blank if nonmonetary)"
               />
             </Field>
 
@@ -620,6 +632,13 @@ export default function FilingWizard() {
             </Field>
           </div>
 
+          {/* Hint for Part VI types */}
+          {(txForm.transaction_type === 'property_transfer' || txForm.transaction_type === 'nonmonetary_other') && (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--tf-text-muted)', marginBottom: '1rem', padding: '0.625rem 0.875rem', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.375rem' }}>
+              ℹ️ This transaction type is disclosed in the <strong>Part VI statement</strong> (nonmonetary / less-than-FMV), not Part V. The amount field is optional — leave blank if no monetary consideration was exchanged.
+            </p>
+          )}
+
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => setStep(2)}
@@ -633,14 +652,14 @@ export default function FilingWizard() {
             </button>
             <button
               onClick={handleSaveTransaction}
-              disabled={txSaving || !txForm.amount_usd}
+              disabled={txSaving}
               style={{
                 background: 'var(--tf-primary)', color: '#fff',
                 border: 'none', borderRadius: '0.5rem',
                 padding: '0.6rem 1.4rem', fontWeight: 600,
                 fontSize: '0.9rem',
-                cursor: txSaving || !txForm.amount_usd ? 'not-allowed' : 'pointer',
-                opacity: txSaving || !txForm.amount_usd ? 0.5 : 1,
+                cursor: txSaving ? 'not-allowed' : 'pointer',
+                opacity: txSaving ? 0.5 : 1,
               }}
             >
               {txSaving ? 'Saving…' : 'Save Transaction'}
@@ -665,7 +684,7 @@ export default function FilingWizard() {
           {/* Summary card */}
           <div style={{
             background: 'var(--tf-surface)', border: '1px solid var(--tf-border)',
-            borderRadius: '0.75rem', padding: '1.25rem 1.5rem', marginBottom: '1.5rem',
+            borderRadius: '0.75rem', padding: '1.25rem 1.5rem', marginBottom: '1rem',
             display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem',
           }}>
             <SummaryRow label="LLC Name"        value={filing?.llc_name} />
@@ -673,6 +692,24 @@ export default function FilingWizard() {
             <SummaryRow label="Tax Year"        value={filing?.tax_year ? String(filing.tax_year) : undefined} />
             <SummaryRow label="Foreign Owner"   value={filing?.owner_full_name} />
             <SummaryRow label="Transactions"    value={String(transactions.length)} />
+          </div>
+
+          {/* What's included info box */}
+          <div style={{
+            fontSize: '0.8125rem', color: 'var(--tf-text-muted)',
+            padding: '0.75rem 1rem', marginBottom: '1.5rem',
+            background: 'var(--tf-surface)', border: '1px solid var(--tf-border)',
+            borderRadius: '0.5rem', lineHeight: 1.6,
+          }}>
+            <strong style={{ color: 'var(--tf-text)' }}>What's included in the download:</strong>
+            <ul style={{ margin: '0.4rem 0 0 1.1rem', padding: 0 }}>
+              <li>Pro Forma 1120</li>
+              <li>Form 5472</li>
+              {transactions.some(tx => ['distribution','dividend','capital_contribution','formation_costs'].includes(tx.transaction_type)) && (
+                <li>Part V Statement — owner distributions, contributions &amp; payments</li>
+              )}
+              <li>Part VI Statement — managerial services FMV disclosure{transactions.some(tx => tx.transaction_type === 'property_transfer') ? ' + property transfer detail' : ''}{transactions.some(tx => tx.transaction_type === 'nonmonetary_other') ? ' + other nonmonetary transactions' : ''}</li>
+            </ul>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -690,7 +727,7 @@ export default function FilingWizard() {
               onClick={handleGenerate}
               disabled={generating}
               style={{
-                background: generating ? 'var(--tf-primary)' : 'var(--tf-primary)',
+                background: 'var(--tf-primary)',
                 color: '#fff', border: 'none', borderRadius: '0.5rem',
                 padding: '0.6rem 1.75rem', fontWeight: 700,
                 fontSize: '1rem',
@@ -698,7 +735,7 @@ export default function FilingWizard() {
                 opacity: generating ? 0.75 : 1,
               }}
             >
-              {generating ? 'Generating…' : '⬇ Generate & Download'}
+              {generating ? 'Generating…' : '⬇ Download Complete Filing'}
             </button>
           </div>
         </div>

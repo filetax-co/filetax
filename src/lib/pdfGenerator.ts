@@ -181,20 +181,25 @@ export interface AggregatedTransactions {
   hasPartIV: boolean;
   /**
    * true when any of these types are present:
-   *   distribution, dividend, capital_contribution,
-   *   formation_costs, property_transfer, nonmonetary_other
+   *   distribution, dividend, capital_contribution
    * Ticks PART_V_CHECKBOX and triggers the Part V statement.
+   *
+   * Note: property_transfer and nonmonetary_other belong ONLY in Part VI
+   * (they are nonmonetary / less-than-FMV transactions disclosed there).
    */
   hasPartV: boolean;
   /**
    * true always (every 5472 filing involves managerial services by the
    * foreign owner whose FMV cannot be determined).
-   * Additionally true when property_transfer transactions exist.
+   * Additionally true when property_transfer or nonmonetary_other
+   * transactions exist.
    * Ticks PART_VI_CHECKBOX and triggers the Part VI statement.
    */
   hasPartVI: boolean;
   /** true when any property_transfer transactions exist (used by Part VI statement) */
   hasPropertyTransfer: boolean;
+  /** true when any nonmonetary_other transactions exist (used by Part VI statement) */
+  hasNonmonetaryOther: boolean;
 }
 
 export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactions => {
@@ -215,11 +220,13 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
     loaned_begin: 0, loaned_end: 0,
     distributions_paid: 0, contributions_received: 0,
     hasPartIV: false,
+    // Part V: only monetary owner transactions (distributions, contributions, dividends)
     hasPartV: false,
     // Part VI is ALWAYS true — managerial services by foreign owner are
     // present in every filing and have no determinable FMV.
     hasPartVI: true,
     hasPropertyTransfer: false,
+    hasNonmonetaryOther: false,
   };
 
   for (const tx of txns) {
@@ -274,16 +281,16 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       case 'other':
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         t.hasPartIV = true; break;
-      // ── Part V narrative-only types ────────────────────────────────────────
-      // No FMV to post on Part IV lines; described in the Part V attachment.
-      case 'formation_costs':
-      case 'nonmonetary_other':
-        t.hasPartV = true; break;
-      // property_transfer: goes into BOTH Part V (owner payment on behalf of
-      // LLC) AND Part VI (potential transfer at less than FMV).
+      // ── Part VI only — nonmonetary / less-than-FMV transactions ─────────────
+      // These are NOT reported on Part V (no monetary amount to disclose there).
+      // They are always disclosed in the Part VI statement instead.
       case 'property_transfer':
-        t.hasPartV = true;
         t.hasPropertyTransfer = true; break;
+      case 'nonmonetary_other':
+        t.hasNonmonetaryOther = true; break;
+      // formation_costs: owner paid something on behalf of LLC — Part V disclosure
+      case 'formation_costs':
+        t.hasPartV = true; break;
       default:
         break;
     }
@@ -404,18 +411,18 @@ const drawStatementHeader = (
 
 // ─── Part V statement ─────────────────────────────────────────────────────────────────────────────
 //
-// Required by Form 5472, Part V (checkbox “TransactionsWithOwner”).
-// Documents all transactions between the LLC and its foreign owner that are
-// not monetary exchanges reportable on Part IV — specifically:
-//   • Owner distributions (withdrawals)
+// Required by Form 5472, Part V (checkbox "TransactionsWithOwner").
+// Documents monetary transactions between the LLC and its foreign owner:
+//   • Owner distributions / withdrawals
+//   • Dividends paid to owner
 //   • Capital contributions by the owner
 //   • Payments made by the owner on behalf of the LLC (formation costs)
-//   • Property transfers
-//   • Other nonmonetary / non-arm’s-length transactions
+//
+// NOTE: property_transfer and nonmonetary_other are Part VI disclosures ONLY.
+// They are NOT included in this Part V statement.
 
 const PART_V_TYPES = new Set([
-  'distribution', 'dividend', 'capital_contribution',
-  'formation_costs', 'property_transfer', 'nonmonetary_other',
+  'distribution', 'dividend', 'capital_contribution', 'formation_costs',
 ]);
 
 const PART_V_TYPE_LABELS: Record<string, string> = {
@@ -423,8 +430,6 @@ const PART_V_TYPE_LABELS: Record<string, string> = {
   dividend:             'Dividend Paid to Owner',
   capital_contribution: 'Capital Contribution by Owner',
   formation_costs:      'Payment by Owner on Behalf of LLC (Formation / Start-up Costs)',
-  property_transfer:    'Property Transfer Between LLC and Owner',
-  nonmonetary_other:    'Other Nonmonetary / Non-arm\'s-Length Transaction',
 };
 
 export const buildPartVStatement = async (
@@ -452,16 +457,16 @@ export const buildPartVStatement = async (
 
   // Intro paragraph
   const intro =
-    'Pursuant to the Instructions for Form 5472 (Part V, “TransactionsWithOwner” checkbox), '
+    'Pursuant to the Instructions for Form 5472 (Part V, "TransactionsWithOwner" checkbox), '
     + 'the reporting corporation listed above had the following transactions with its '
     + 'foreign owner or related party during the tax year. These transactions include '
-    + 'owner withdrawals (distributions), capital contributions, payments made by the '
-    + 'owner on behalf of the LLC, property transfers, and other non-arm\'s-length '
-    + 'transactions that are required to be disclosed under this Part.';
+    + 'owner withdrawals (distributions), capital contributions, dividends, and payments '
+    + 'made by the owner on behalf of the LLC (such as formation costs) that are required '
+    + 'to be disclosed under this Part.';
   cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y -= 14;
 
-  // ── Aggregated monetary totals block (distributions & contributions) ──────
+  // ── Aggregated monetary totals block ──────────────────────────────────────────
   const txn = aggregateTransactions(txns);
   if (txn.distributions_paid > 0 || txn.contributions_received > 0) {
     cursor.y = drawWrapped(page, 'Summary of Monetary Part V Transactions:', MARGIN, cursor.y,
@@ -480,7 +485,7 @@ export const buildPartVStatement = async (
     cursor.y -= 12;
   }
 
-  // ── Individual transaction entries ────────────────────────────────────────────
+  // ── Individual transaction entries ────────────────────────────────────────────────
   if (partVTxns.length > 0) {
     cursor.y = drawWrapped(page, 'Transaction Detail:', MARGIN, cursor.y,
       { size: 10, font: bold }, fonts);
@@ -507,9 +512,9 @@ export const buildPartVStatement = async (
     cursor.y -= 2;
 
     const fields: [string, string][] = [
-      ['Date:',      txDate],
-      ['Direction:', dirText],
-      ['Amount:',    amtText],
+      ['Date:',        txDate],
+      ['Direction:',   dirText],
+      ['Amount:',      amtText],
       ['Description:', desc],
     ];
 
@@ -546,15 +551,15 @@ export const buildPartVStatement = async (
 
 // ─── Part VI statement ────────────────────────────────────────────────────────────────────────────
 //
-// Required by Form 5472, Part VI (checkbox “NonMonetoryTransactionsWithOwner”).
+// Required by Form 5472, Part VI (checkbox "NonMonetoryTransactionsWithOwner").
 // This statement is ALWAYS generated for every 5472 filing because the foreign
 // owner of a domestic disregarded entity necessarily provides managerial and
 // operational services to the LLC whose fair market value cannot be determined
 // with certainty.
 //
-// Additionally, if any property_transfer transactions exist, a second paragraph
-// is included disclosing that property was transferred at a value that may be
-// less than fair market value.
+// Item 1 (always): Managerial services FMV disclosure.
+// Item 2 (conditional): property_transfer transactions (transfer at less than FMV).
+// Item 3 (conditional): nonmonetary_other transactions.
 
 export const buildPartVIStatement = async (
   filing: Filing,
@@ -562,6 +567,7 @@ export const buildPartVIStatement = async (
   taxYear: number,
 ): Promise<PDFDocument> => {
   const propertyTransferTxns = txns.filter(tx => tx.transaction_type === 'property_transfer');
+  const nonmonetaryOtherTxns = txns.filter(tx => tx.transaction_type === 'nonmonetary_other');
 
   const doc   = await PDFDocument.create();
   const bold  = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -579,7 +585,7 @@ export const buildPartVIStatement = async (
     filing, periodBegin, periodEnd, taxYear, fonts,
   );
 
-  // ── Item 1: Managerial services (always present) ────────────────────────────
+  // ── Item 1: Managerial services (always present) ──────────────────────────────────
   cursor.y = drawWrapped(page,
     'Item 1 — Managerial and Operational Services by Foreign Owner (FMV Not Determinable)',
     MARGIN, cursor.y, { size: 10, font: bold }, fonts);
@@ -602,7 +608,7 @@ export const buildPartVIStatement = async (
   cursor.y = drawWrapped(page, managerialText, MARGIN + 12, cursor.y, { size: 10 }, fonts);
   cursor.y -= 16;
 
-  // ── Item 2: Property transfer (conditional) ───────────────────────────────────
+  // ── Item 2: Property transfer (conditional) ────────────────────────────────────────
   if (propertyTransferTxns.length > 0) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
@@ -636,10 +642,53 @@ export const buildPartVIStatement = async (
       cursor.y -= 2;
 
       const fields: [string, string][] = [
-        ['Date:',              txDate],
-        ['Direction:',         dirText],
-        ['Consideration:',     amtText],
+        ['Date:',               txDate],
+        ['Direction:',          dirText],
+        ['Consideration:',      amtText],
         ['Property described:', desc],
+      ];
+
+      for (const [fieldLabel, fieldValue] of fields) {
+        if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+        const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
+        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+        cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
+          { size: 10, maxWidth: COL_W - 24 - labelW }, fonts);
+      }
+      cursor.y -= 10;
+    });
+  }
+
+  // ── Item 3: Other nonmonetary transactions (conditional) ──────────────────────────
+  if (nonmonetaryOtherTxns.length > 0) {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+
+    const itemNum = propertyTransferTxns.length > 0 ? 3 : 2;
+    cursor.y = drawWrapped(page,
+      `Item ${itemNum} — Other Nonmonetary Transactions (FMV Not Determinable)`,
+      MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+    cursor.y -= 4;
+
+    cursor.y = drawWrapped(page,
+      `During the tax year, the following nonmonetary transaction(s) occurred between ` +
+      `${llcName} and ${ownerName}. No consideration was exchanged and/or the fair ` +
+      `market value cannot be determined:`,
+      MARGIN + 12, cursor.y, { size: 10 }, fonts);
+    cursor.y -= 10;
+
+    nonmonetaryOtherTxns.forEach((tx, idx) => {
+      if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+
+      const txDate = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
+      const desc   = tx.description?.trim() || '(No description provided)';
+
+      cursor.y = drawWrapped(page, `Transaction ${idx + 1}:`, MARGIN + 12, cursor.y,
+        { size: 10, font: bold }, fonts);
+      cursor.y -= 2;
+
+      const fields: [string, string][] = [
+        ['Date:',        txDate],
+        ['Description:', desc],
       ];
 
       for (const [fieldLabel, fieldValue] of fields) {
@@ -887,13 +936,13 @@ export interface FilingPackage {
   combined: Uint8Array;
   /**
    * Standalone Part V statement — owner distributions, contributions,
-   * formation costs, property transfers, other nonmonetary transactions.
+   * dividends, and formation-cost payments.
    * Present only when hasPartV is true.
    */
   statement_partV?: Uint8Array;
   /**
    * Standalone Part VI statement — managerial services FMV disclosure
-   * (always present) plus property-transfer-at-less-than-FMV detail
+   * (always present) plus property_transfer and nonmonetary_other detail
    * (when applicable).
    * Always present.
    */
@@ -916,7 +965,7 @@ export const generateFilingPackage = async (
     buildPartVIStatement(filing, transactions, year),
   ]);
 
-  // Part V statement only when owner transactions exist
+  // Part V statement only when monetary owner transactions exist
   const docPartV = txn.hasPartV
     ? await buildPartVStatement(filing, transactions, year)
     : null;
