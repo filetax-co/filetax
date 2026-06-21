@@ -53,7 +53,8 @@ export const router = createBrowserRouter(
           Component: RequireAuth,
           children: [
             { path: 'dashboard', Component: Dashboard },
-            { path: 'intake/:filingId', Component: Intake },
+            // intake uses ?filing_id= query-string, not a path param
+            { path: 'intake', Component: Intake },
             { path: 'filing/:id', Component: FilingWizard },
           ],
         },
