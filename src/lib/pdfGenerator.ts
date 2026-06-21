@@ -174,12 +174,27 @@ export interface AggregatedTransactions {
   borrowed_end: number;
   loaned_begin: number;
   loaned_end: number;
-  // Part V — Distributions / contributions
+  // Part V — Distributions / contributions / nonmonetary owner transactions
   distributions_paid: number;
   contributions_received: number;
   // flags
   hasPartIV: boolean;
+  /**
+   * true when any of these types are present:
+   *   distribution, dividend, capital_contribution,
+   *   formation_costs, property_transfer, nonmonetary_other
+   * Ticks PART_V_CHECKBOX and triggers the Part V statement.
+   */
   hasPartV: boolean;
+  /**
+   * true always (every 5472 filing involves managerial services by the
+   * foreign owner whose FMV cannot be determined).
+   * Additionally true when property_transfer transactions exist.
+   * Ticks PART_VI_CHECKBOX and triggers the Part VI statement.
+   */
+  hasPartVI: boolean;
+  /** true when any property_transfer transactions exist (used by Part VI statement) */
+  hasPropertyTransfer: boolean;
 }
 
 export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactions => {
@@ -199,7 +214,12 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
     borrowed_begin: 0, borrowed_end: 0,
     loaned_begin: 0, loaned_end: 0,
     distributions_paid: 0, contributions_received: 0,
-    hasPartIV: false, hasPartV: false,
+    hasPartIV: false,
+    hasPartV: false,
+    // Part VI is ALWAYS true — managerial services by foreign owner are
+    // present in every filing and have no determinable FMV.
+    hasPartVI: true,
+    hasPropertyTransfer: false,
   };
 
   for (const tx of txns) {
@@ -254,15 +274,16 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       case 'other':
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         t.hasPartIV = true; break;
-      // ── Part V / Part VI narrative-only types ──────────────────────────────────
-      // These transactions are described in an attached statement; they have no
-      // determinable FMV to report on AcroForm Part IV lines (per IRS instructions
-      // for Form 5472). No dollar amount is accumulated, but hasPartV must be set
-      // so the Part V checkbox is ticked and the statement attachment is triggered.
+      // ── Part V narrative-only types ────────────────────────────────────────
+      // No FMV to post on Part IV lines; described in the Part V attachment.
       case 'formation_costs':
-      case 'property_transfer':
       case 'nonmonetary_other':
         t.hasPartV = true; break;
+      // property_transfer: goes into BOTH Part V (owner payment on behalf of
+      // LLC) AND Part VI (potential transfer at less than FMV).
+      case 'property_transfer':
+        t.hasPartV = true;
+        t.hasPropertyTransfer = true; break;
       default:
         break;
     }
@@ -287,24 +308,123 @@ const totalPaid = (t: AggregatedTransactions): number =>
   t.loan_guarantee_paid + t.other_paid + t.loaned_end +
   t.distributions_paid;
 
-// ─── Part V statement builder ───────────────────────────────────────────────────────────
-//
-// Per IRS instructions for Form 5472, Part V (line 40b), when the taxpayer has
-// formation costs, property transfers, or other nonmonetary/non-arm's-length
-// transactions that cannot be valued at FMV, they must attach a statement
-// describing the nature, terms, and conditions of each transaction.
-// This function builds that statement as a standalone PDF page.
+// ─── shared statement page utilities ─────────────────────────────────────────────────────────
 
-const PART_V_NARRATIVE_TYPES = new Set([
-  'formation_costs',
-  'property_transfer',
-  'nonmonetary_other',
+const PAGE_W  = 612; // US Letter
+const PAGE_H  = 792;
+const MARGIN  = 56;
+const COL_W   = PAGE_W - MARGIN * 2;
+const MIN_Y   = MARGIN + 60;
+
+type FontPair = { bold: Awaited<ReturnType<PDFDocument['embedFont']>>; reg: Awaited<ReturnType<PDFDocument['embedFont']>> };
+
+/**
+ * Word-wrap `text` into `doc`'s `page` starting at (x, y).
+ * Returns the y coordinate AFTER the last line drawn.
+ */
+const drawWrapped = (
+  page: PDFPage,
+  text: string,
+  x: number,
+  y: number,
+  opts: {
+    size?:     number;
+    font?:     FontPair['bold'] | FontPair['reg'];
+    color?:    ReturnType<typeof rgb>;
+    maxWidth?: number;
+  },
+  fonts: FontPair,
+): number => {
+  const size   = opts.size     ?? 10;
+  const font   = opts.font     ?? fonts.reg;
+  const color  = opts.color    ?? rgb(0, 0, 0);
+  const maxW   = opts.maxWidth ?? COL_W;
+  const lineH  = size * 1.45;
+  const words  = text.split(' ');
+  let   line   = '';
+  let   drawY  = y;
+
+  for (const word of words) {
+    const trial = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(trial, size) > maxW && line) {
+      page.drawText(line, { x, y: drawY, size, font, color });
+      drawY -= lineH;
+      line   = word;
+    } else {
+      line = trial;
+    }
+  }
+  if (line) {
+    page.drawText(line, { x, y: drawY, size, font, color });
+    drawY -= lineH;
+  }
+  return drawY;
+};
+
+/** Append a new Letter page and return it with a reset cursor. */
+const newPage = (doc: PDFDocument): { page: PDFPage; cursor: { y: number } } => {
+  const page = doc.addPage([PAGE_W, PAGE_H]);
+  return { page, cursor: { y: PAGE_H - MARGIN } };
+};
+
+/** Draw a full-width horizontal rule at cursor.y; advances cursor. */
+const drawRule = (page: PDFPage, cursor: { y: number }, thick = 0.75): void => {
+  page.drawLine({
+    start:     { x: MARGIN, y: cursor.y },
+    end:       { x: PAGE_W - MARGIN, y: cursor.y },
+    thickness: thick,
+    color:     rgb(0, 0, 0),
+  });
+  cursor.y -= 14;
+};
+
+/** Standard statement header block (title + entity line + period + rule). */
+const drawStatementHeader = (
+  page: PDFPage,
+  cursor: { y: number },
+  title: string,
+  filing: Filing,
+  periodBegin: string,
+  periodEnd: string,
+  taxYear: number,
+  fonts: FontPair,
+): void => {
+  cursor.y = drawWrapped(page, title, MARGIN, cursor.y,
+    { size: 13, font: fonts.bold }, fonts);
+  cursor.y -= 4;
+  cursor.y = drawWrapped(page,
+    `Taxpayer: ${filing.llc_name ?? ''}  —  EIN: ${filing.ein ?? ''}`,
+    MARGIN, cursor.y, { size: 10 }, fonts);
+  cursor.y = drawWrapped(page,
+    `Tax Year: ${periodBegin} – ${periodEnd}  (Tax Year ${taxYear})`,
+    MARGIN, cursor.y, { size: 10 }, fonts);
+  cursor.y -= 6;
+  drawRule(page, cursor);
+};
+
+// ─── Part V statement ─────────────────────────────────────────────────────────────────────────────
+//
+// Required by Form 5472, Part V (checkbox “TransactionsWithOwner”).
+// Documents all transactions between the LLC and its foreign owner that are
+// not monetary exchanges reportable on Part IV — specifically:
+//   • Owner distributions (withdrawals)
+//   • Capital contributions by the owner
+//   • Payments made by the owner on behalf of the LLC (formation costs)
+//   • Property transfers
+//   • Other nonmonetary / non-arm’s-length transactions
+
+const PART_V_TYPES = new Set([
+  'distribution', 'dividend', 'capital_contribution',
+  'formation_costs', 'property_transfer', 'nonmonetary_other',
 ]);
 
-const TYPE_LABELS: Record<string, string> = {
-  formation_costs:    'Formation Costs (Part V, Line 40b)',
-  property_transfer:  'Property Transfer — Non-arm\'s Length (Part V, Line 40b)',
-  nonmonetary_other:  'Other Nonmonetary / Non-arm\'s Length Transaction (Part V, Line 40b)',
+const PART_V_TYPE_LABELS: Record<string, string> = {
+  distribution:         'Distribution / Withdrawal by Owner',
+  dividend:             'Dividend Paid to Owner',
+  capital_contribution: 'Capital Contribution by Owner',
+  formation_costs:      'Payment by Owner on Behalf of LLC (Formation / Start-up Costs)',
+  property_transfer:    'Property Transfer Between LLC and Owner',
+  nonmonetary_other:    'Other Nonmonetary / Non-arm\'s-Length Transaction',
 };
 
 export const buildPartVStatement = async (
@@ -312,162 +432,233 @@ export const buildPartVStatement = async (
   txns: Transaction[],
   taxYear: number,
 ): Promise<PDFDocument> => {
-  const narrativeTxns = txns.filter(tx => PART_V_NARRATIVE_TYPES.has(tx.transaction_type));
+  const partVTxns = txns.filter(tx => PART_V_TYPES.has(tx.transaction_type));
 
-  const doc  = await PDFDocument.create();
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const reg  = await doc.embedFont(StandardFonts.Helvetica);
+  const doc   = await PDFDocument.create();
+  const bold  = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg   = await doc.embedFont(StandardFonts.Helvetica);
+  const fonts: FontPair = { bold, reg };
 
-  const PAGE_W = 612;  // US Letter
-  const PAGE_H = 792;
-  const MARGIN = 56;
-  const COL_W  = PAGE_W - MARGIN * 2;
-
-  // Helper: add a new page and return it with a fresh cursor
-  const addPage = (): { page: PDFPage; cursor: { y: number } } => {
-    const page = doc.addPage([PAGE_W, PAGE_H]);
-    return { page, cursor: { y: PAGE_H - MARGIN } };
-  };
-
-  // Helper: draw text, returns new y after drawing
-  const draw = (
-    page: PDFPage,
-    text: string,
-    x: number,
-    y: number,
-    opts: { size?: number; font?: typeof bold; color?: ReturnType<typeof rgb>; maxWidth?: number },
-  ): number => {
-    const size  = opts.size  ?? 10;
-    const font  = opts.font  ?? reg;
-    const color = opts.color ?? rgb(0, 0, 0);
-    // Word-wrap naively by splitting on spaces and measuring
-    const words  = text.split(' ');
-    const maxW   = opts.maxWidth ?? COL_W;
-    let   line   = '';
-    let   drawY  = y;
-    const lineH  = size * 1.45;
-
-    for (const word of words) {
-      const trial = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(trial, size) > maxW && line) {
-        page.drawText(line, { x, y: drawY, size, font, color });
-        drawY -= lineH;
-        line   = word;
-      } else {
-        line = trial;
-      }
-    }
-    if (line) {
-      page.drawText(line, { x, y: drawY, size, font, color });
-      drawY -= lineH;
-    }
-    return drawY;
-  };
-
-  // ── Page 1: header ────────────────────────────────────────────────────────────────
-  let { page, cursor } = addPage();
-
-  // Document title
-  cursor.y = draw(page, 'STATEMENT REQUIRED UNDER FORM 5472, PART V', MARGIN, cursor.y, {
-    size: 13, font: bold,
-  });
-  cursor.y -= 4;
-
-  // Sub-heading: entity + period
   const periodBegin = resolvePeriodBegin(filing);
   const periodEnd   = resolvePeriodEnd(filing);
-  cursor.y = draw(
-    page,
-    `Taxpayer: ${filing.llc_name ?? ''} — EIN: ${filing.ein ?? ''}`,
-    MARGIN, cursor.y, { size: 10 },
-  );
-  cursor.y = draw(
-    page,
-    `Tax Year: ${periodBegin} – ${periodEnd}  (Tax Year ${taxYear})`,
-    MARGIN, cursor.y, { size: 10 },
-  );
-  cursor.y -= 6;
 
-  // Divider
-  page.drawLine({
-    start: { x: MARGIN, y: cursor.y },
-    end:   { x: PAGE_W - MARGIN, y: cursor.y },
-    thickness: 0.75,
-    color: rgb(0, 0, 0),
-  });
-  cursor.y -= 14;
+  let { page, cursor } = newPage(doc);
 
-  // Introductory paragraph (IRS-facing language)
+  drawStatementHeader(
+    page, cursor,
+    'STATEMENT REQUIRED UNDER FORM 5472, PART V — TRANSACTIONS WITH FOREIGN OWNER',
+    filing, periodBegin, periodEnd, taxYear, fonts,
+  );
+
+  // Intro paragraph
   const intro =
-    'Pursuant to the Instructions for Form 5472 (Part V, Line 40b), the reporting ' +
-    'corporation listed above had the following transactions during the tax year that ' +
-    'cannot be reported at fair market value on Part IV because they are formation costs, ' +
-    'property transfers, or other nonmonetary / non-arm\'s-length transactions. ' +
-    'Each transaction is described below.';
-  cursor.y = draw(page, intro, MARGIN, cursor.y, { size: 10 });
+    'Pursuant to the Instructions for Form 5472 (Part V, “TransactionsWithOwner” checkbox), '
+    + 'the reporting corporation listed above had the following transactions with its '
+    + 'foreign owner or related party during the tax year. These transactions include '
+    + 'owner withdrawals (distributions), capital contributions, payments made by the '
+    + 'owner on behalf of the LLC, property transfers, and other non-arm\'s-length '
+    + 'transactions that are required to be disclosed under this Part.';
+  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y -= 14;
 
-  // ── Transaction entries ───────────────────────────────────────────────────────────
-  const MIN_Y = MARGIN + 60; // minimum bottom margin before page break
-
-  narrativeTxns.forEach((tx, idx) => {
-    // Page break if not enough room for a full entry
-    if (cursor.y < MIN_Y) {
-      ({ page, cursor } = addPage());
+  // ── Aggregated monetary totals block (distributions & contributions) ──────
+  const txn = aggregateTransactions(txns);
+  if (txn.distributions_paid > 0 || txn.contributions_received > 0) {
+    cursor.y = drawWrapped(page, 'Summary of Monetary Part V Transactions:', MARGIN, cursor.y,
+      { size: 10, font: bold }, fonts);
+    cursor.y -= 2;
+    if (txn.distributions_paid > 0) {
+      cursor.y = drawWrapped(page,
+        `Total Distributions / Withdrawals paid to Owner:  $${txn.distributions_paid.toLocaleString('en-US')}`,
+        MARGIN + 12, cursor.y, { size: 10 }, fonts);
     }
+    if (txn.contributions_received > 0) {
+      cursor.y = drawWrapped(page,
+        `Total Capital Contributions received from Owner:  $${txn.contributions_received.toLocaleString('en-US')}`,
+        MARGIN + 12, cursor.y, { size: 10 }, fonts);
+    }
+    cursor.y -= 12;
+  }
 
-    const label = TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type;
-    const txDate = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
-    const direction = tx.direction ?? 'N/A';
-    const desc = tx.description?.trim() || '(No description provided)';
+  // ── Individual transaction entries ────────────────────────────────────────────
+  if (partVTxns.length > 0) {
+    cursor.y = drawWrapped(page, 'Transaction Detail:', MARGIN, cursor.y,
+      { size: 10, font: bold }, fonts);
+    cursor.y -= 4;
+  }
 
-    // Entry header
-    cursor.y = draw(page, `Transaction ${idx + 1}: ${label}`, MARGIN, cursor.y, {
-      size: 10, font: bold,
-    });
+  partVTxns.forEach((tx, idx) => {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+
+    const label     = PART_V_TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type;
+    const txDate    = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
+    const dirText   = tx.direction === 'paid'
+      ? 'Paid by LLC to related party'
+      : tx.direction === 'received'
+        ? 'Received by LLC from related party'
+        : tx.direction;
+    const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
+      ? `$${tx.amount_usd.toLocaleString('en-US')}`
+      : 'N/A (nonmonetary — FMV not determinable)';
+    const desc      = tx.description?.trim() || '(No description provided)';
+
+    cursor.y = drawWrapped(page, `Transaction ${idx + 1}: ${label}`, MARGIN, cursor.y,
+      { size: 10, font: bold }, fonts);
     cursor.y -= 2;
 
-    // Fields
     const fields: [string, string][] = [
       ['Date:',      txDate],
-      ['Direction:', direction === 'paid' ? 'Paid by LLC to related party' : direction === 'received' ? 'Received by LLC from related party' : direction],
+      ['Direction:', dirText],
+      ['Amount:',    amtText],
       ['Description:', desc],
     ];
 
     for (const [fieldLabel, fieldValue] of fields) {
-      // Measure label width so value starts after it
+      if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
       const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
       page.drawText(fieldLabel, { x: MARGIN + 12, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
-      cursor.y = draw(page, fieldValue, MARGIN + 12 + labelW, cursor.y, {
-        size: 10,
-        maxWidth: COL_W - 12 - labelW,
-      });
+      cursor.y = drawWrapped(page, fieldValue, MARGIN + 12 + labelW, cursor.y,
+        { size: 10, maxWidth: COL_W - 12 - labelW }, fonts);
     }
 
     cursor.y -= 12;
 
-    // Thin separator between entries
-    if (idx < narrativeTxns.length - 1) {
+    if (idx < partVTxns.length - 1) {
+      if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
       page.drawLine({
         start: { x: MARGIN + 12, y: cursor.y },
         end:   { x: PAGE_W - MARGIN, y: cursor.y },
-        thickness: 0.35,
-        color: rgb(0.6, 0.6, 0.6),
+        thickness: 0.35, color: rgb(0.6, 0.6, 0.6),
       });
       cursor.y -= 10;
     }
   });
 
-  // ── Footer on last page ───────────────────────────────────────────────────────────
+  // Footer
   cursor.y -= 20;
-  if (cursor.y < MIN_Y) {
-    ({ page, cursor } = addPage());
-  }
-  draw(
-    page,
-    'This statement is attached to and made a part of Form 5472 filed by the reporting corporation named above.',
-    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) },
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  drawWrapped(page,
+    'This statement is attached to and made a part of Form 5472 (Part V) filed by the reporting corporation named above.',
+    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) }, fonts);
+
+  return doc;
+};
+
+// ─── Part VI statement ────────────────────────────────────────────────────────────────────────────
+//
+// Required by Form 5472, Part VI (checkbox “NonMonetoryTransactionsWithOwner”).
+// This statement is ALWAYS generated for every 5472 filing because the foreign
+// owner of a domestic disregarded entity necessarily provides managerial and
+// operational services to the LLC whose fair market value cannot be determined
+// with certainty.
+//
+// Additionally, if any property_transfer transactions exist, a second paragraph
+// is included disclosing that property was transferred at a value that may be
+// less than fair market value.
+
+export const buildPartVIStatement = async (
+  filing: Filing,
+  txns: Transaction[],
+  taxYear: number,
+): Promise<PDFDocument> => {
+  const propertyTransferTxns = txns.filter(tx => tx.transaction_type === 'property_transfer');
+
+  const doc   = await PDFDocument.create();
+  const bold  = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg   = await doc.embedFont(StandardFonts.Helvetica);
+  const fonts: FontPair = { bold, reg };
+
+  const periodBegin = resolvePeriodBegin(filing);
+  const periodEnd   = resolvePeriodEnd(filing);
+
+  let { page, cursor } = newPage(doc);
+
+  drawStatementHeader(
+    page, cursor,
+    'STATEMENT REQUIRED UNDER FORM 5472, PART VI — NONMONETARY AND LESS-THAN-FMV TRANSACTIONS',
+    filing, periodBegin, periodEnd, taxYear, fonts,
   );
+
+  // ── Item 1: Managerial services (always present) ────────────────────────────
+  cursor.y = drawWrapped(page,
+    'Item 1 — Managerial and Operational Services by Foreign Owner (FMV Not Determinable)',
+    MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+  cursor.y -= 4;
+
+  const ownerName = filing.owner_full_name ?? 'the foreign owner';
+  const llcName   = filing.llc_name ?? 'the reporting corporation';
+
+  const managerialText =
+    `During the tax year ended ${periodEnd}, ${ownerName} (the 25% foreign shareholder and ` +
+    `related party) provided managerial, operational, and administrative services to ` +
+    `${llcName} (the reporting corporation). These services included, but were not ` +
+    `limited to, general management, strategic decision-making, business development, ` +
+    `and operational oversight. The fair market value of these services cannot be ` +
+    `determined with reasonable certainty because no arm's-length charge was established ` +
+    `and no comparable uncontrolled transactions exist for this type of owner-directed ` +
+    `management activity. Accordingly, no dollar amount is reported on Part IV of ` +
+    `Form 5472 for these services, and they are disclosed here pursuant to Part VI.`;
+
+  cursor.y = drawWrapped(page, managerialText, MARGIN + 12, cursor.y, { size: 10 }, fonts);
+  cursor.y -= 16;
+
+  // ── Item 2: Property transfer (conditional) ───────────────────────────────────
+  if (propertyTransferTxns.length > 0) {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+
+    cursor.y = drawWrapped(page,
+      'Item 2 — Transfer of Property at Less Than Fair Market Value',
+      MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+    cursor.y -= 4;
+
+    cursor.y = drawWrapped(page,
+      `During the tax year, the following property transfer(s) occurred between ` +
+      `${llcName} and ${ownerName}. The consideration paid, if any, may have been ` +
+      `less than the fair market value of the property transferred. Each transfer is ` +
+      `described below:`,
+      MARGIN + 12, cursor.y, { size: 10 }, fonts);
+    cursor.y -= 10;
+
+    propertyTransferTxns.forEach((tx, idx) => {
+      if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+
+      const txDate  = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
+      const dirText = tx.direction === 'paid'
+        ? 'Property transferred from LLC to owner'
+        : 'Property transferred from owner to LLC';
+      const amtText = tx.amount_usd != null && tx.amount_usd !== 0
+        ? `$${tx.amount_usd.toLocaleString('en-US')} (consideration paid; FMV may differ)`
+        : 'No consideration paid (gratuitous transfer or FMV not determinable)';
+      const desc    = tx.description?.trim() || '(No description provided)';
+
+      cursor.y = drawWrapped(page, `Transfer ${idx + 1}:`, MARGIN + 12, cursor.y,
+        { size: 10, font: bold }, fonts);
+      cursor.y -= 2;
+
+      const fields: [string, string][] = [
+        ['Date:',              txDate],
+        ['Direction:',         dirText],
+        ['Consideration:',     amtText],
+        ['Property described:', desc],
+      ];
+
+      for (const [fieldLabel, fieldValue] of fields) {
+        if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+        const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
+        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+        cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
+          { size: 10, maxWidth: COL_W - 24 - labelW }, fonts);
+      }
+      cursor.y -= 10;
+    });
+  }
+
+  // Footer
+  cursor.y -= 20;
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  drawWrapped(page,
+    'This statement is attached to and made a part of Form 5472 (Part VI) filed by the reporting corporation named above.',
+    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) }, fonts);
 
   return doc;
 };
@@ -600,10 +791,15 @@ const fill5472 = async (
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(totalPaid(txn)));
   }
 
-  // ── Part V — Non-monetary / distributions ───────────────────────────────────────
+  // ── Part V — owner transactions checkbox ───────────────────────────────────────
   if (txn.hasPartV) {
     checkBox(doc, F.PART_V_CHECKBOX, true);
   }
+
+  // ── Part VI — nonmonetary transactions checkbox (always ticked) ───────────────
+  // Every foreign-owned DE filing has managerial services whose FMV cannot
+  // be determined; Part VI must always be checked and the statement attached.
+  checkBox(doc, F.PART_VI_CHECKBOX, true);
 
   return doc;
 };
@@ -665,12 +861,6 @@ const fill1120 = async (
 };
 
 // ─── merge helper ─────────────────────────────────────────────────────────────────────────────────
-//
-// Flattens AcroForm fields in `src` (so field values are baked into the page
-// content as plain graphics) then copies all its pages into `dest`.
-// Flattening is required before copyPages — without it, field widgets from
-// different PDFs collide in the merged document and values disappear or render
-// incorrectly in strict PDF readers (Adobe, IRS e-file tools).
 
 const mergeInto = async (dest: PDFDocument, src: PDFDocument): Promise<void> => {
   src.getForm().flatten();
@@ -688,18 +878,26 @@ export interface FilingPackage {
   /** Individual Pro Forma 1120 (AcroForm, field values still editable) */
   form1120: Uint8Array;
   /**
-   * Combined filing package: Pro Forma 1120 pages first, then Form 5472 pages,
-   * then the Part V statement (if applicable).
-   * Fields are flattened (baked in) so the merged document renders correctly
-   * in all PDF viewers and IRS submission tools.
+   * Combined filing package (pages flattened and merged):
+   *   1. Pro Forma 1120
+   *   2. Form 5472
+   *   3. Part V statement (if hasPartV)
+   *   4. Part VI statement (always)
    */
   combined: Uint8Array;
   /**
-   * Standalone Part V statement PDF — present only when the filing contains
-   * formation_costs, property_transfer, or nonmonetary_other transactions.
-   * Undefined otherwise.
+   * Standalone Part V statement — owner distributions, contributions,
+   * formation costs, property transfers, other nonmonetary transactions.
+   * Present only when hasPartV is true.
    */
-  statement?: Uint8Array;
+  statement_partV?: Uint8Array;
+  /**
+   * Standalone Part VI statement — managerial services FMV disclosure
+   * (always present) plus property-transfer-at-less-than-FMV detail
+   * (when applicable).
+   * Always present.
+   */
+  statement_partVI: Uint8Array;
 }
 
 export const generateFilingPackage = async (
@@ -711,39 +909,39 @@ export const generateFilingPackage = async (
 
   const txn = aggregateTransactions(transactions);
 
-  // Build all PDFs in parallel where possible
-  const [doc5472, doc1120] = await Promise.all([
+  // Build AcroForm PDFs + Part VI statement in parallel (Part VI is always needed)
+  const [doc5472, doc1120, docPartVI] = await Promise.all([
     fill5472(filing, transactions, year),
     fill1120(filing, transactions, year),
+    buildPartVIStatement(filing, transactions, year),
   ]);
 
-  // Build statement only when needed
-  const docStatement = txn.hasPartV
+  // Part V statement only when owner transactions exist
+  const docPartV = txn.hasPartV
     ? await buildPartVStatement(filing, transactions, year)
     : null;
 
-  // Build the combined PDF: 1120 first (cover), then 5472, then statement
+  // Combined PDF: 1120 → 5472 → Part V statement (if present) → Part VI statement
   const merged = await PDFDocument.create();
   await mergeInto(merged, doc1120);
   await mergeInto(merged, doc5472);
-  if (docStatement) {
-    await mergeInto(merged, docStatement);
-  }
+  if (docPartV) await mergeInto(merged, docPartV);
+  await mergeInto(merged, docPartVI);
 
+  // Save all in parallel
   const saveJobs: Promise<Uint8Array>[] = [
     doc5472.save(),
     doc1120.save(),
     merged.save(),
+    docPartVI.save(),
   ];
-  if (docStatement) {
-    saveJobs.push(docStatement.save());
-  }
+  if (docPartV) saveJobs.push(docPartV.save());
 
   const saved = await Promise.all(saveJobs);
-  const [form5472, form1120, combined] = saved;
-  const statement = docStatement ? saved[3] : undefined;
+  const [form5472, form1120, combined, statement_partVI] = saved;
+  const statement_partV = docPartV ? saved[4] : undefined;
 
-  return { form5472, form1120, combined, statement };
+  return { form5472, form1120, combined, statement_partVI, statement_partV };
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */
