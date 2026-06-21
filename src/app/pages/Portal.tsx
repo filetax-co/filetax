@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
@@ -41,6 +41,17 @@ const howItWorksSteps = [
 // import.meta.env.BASE_URL is set by Vite from vite.config.ts `base`.
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // strip trailing slash
 
+// Cooldown in seconds before the user can request another confirmation/reset email.
+const RESEND_COOLDOWN = 60;
+
+/** Normalise Supabase rate-limit messages into something user-friendly. */
+function friendlyError(msg: string): string {
+  if (/security purposes|rate.?limit|too many|after \d+ second/i.test(msg)) {
+    return 'Please wait a moment before requesting another email. Check your inbox (and spam folder) first.';
+  }
+  return msg;
+}
+
 export function Portal() {
   usePageMeta({
     title: 'Start Your Filing | FileTax.co',
@@ -68,10 +79,35 @@ export function Portal() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const initialMode = searchParams.get('mode') === 'login' ? 'login' : 'signup';
-  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>( initialMode);
+  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>(initialMode);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+
+  // ── Resend cooldown ──────────────────────────────────────────────────────
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Start a countdown whenever we successfully send a confirmation/reset email.
+  const startCooldown = () => {
+    setResendCooldown(RESEND_COOLDOWN);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Clean up timer on unmount.
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   const dashboardPath = nextParam ?? (newFiling ? '/dashboard?new-filing=1' : '/dashboard');
 
@@ -90,8 +126,9 @@ export function Portal() {
         { redirectTo: window.location.origin + BASE + '/reset-password' },
       );
       setSubmitting(false);
-      if (resetError) { setError(resetError.message); return; }
+      if (resetError) { setError(friendlyError(resetError.message)); return; }
       setSubmitted(true);
+      startCooldown();
       return;
     }
 
@@ -116,7 +153,7 @@ export function Portal() {
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        setError(friendlyError(signUpError.message));
         setSubmitting(false);
         return;
       }
@@ -145,6 +182,7 @@ export function Portal() {
       } else {
         // Email confirmation is ON — show "check your email" screen
         setSubmitted(true);
+        startCooldown();
       }
       return;
     }
@@ -161,12 +199,41 @@ export function Portal() {
 
     setSubmitting(false);
     if (signInError) {
-      setError(signInError.message);
+      setError(friendlyError(signInError.message));
       return;
     }
 
     // Respect ?next= deep link; fall back to dashboard.
     navigate(dashboardPath);
+  };
+
+  // ── Resend confirmation email ─────────────────────────────────────────────
+  const handleResend = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    setResendSuccess(false);
+    setError('');
+
+    if (mode === 'forgot') {
+      const { error: resendError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: window.location.origin + BASE + '/reset-password' },
+      );
+      setResending(false);
+      if (resendError) { setError(friendlyError(resendError.message)); return; }
+    } else {
+      // Re-trigger signup to resend the confirmation email.
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin + BASE + '/dashboard' },
+      });
+      setResending(false);
+      if (resendError) { setError(friendlyError(resendError.message)); return; }
+    }
+
+    setResendSuccess(true);
+    startCooldown();
   };
 
   // ── Submitted confirmation UI ─────────────────────────────────────────────
@@ -176,11 +243,44 @@ export function Portal() {
       <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>
         {mode === 'forgot' ? 'Reset link sent' : 'Check your email'}
       </p>
-      <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>
+      <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
         {mode === 'forgot'
-          ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>  
+          ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>
           : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account — you will land directly on your filing dashboard.</>}
       </p>
+
+      {/* Resend button */}
+      {resendSuccess && (
+        <p style={{ color: '#059669', fontSize: '0.8125rem', marginBottom: '0.75rem', fontWeight: 500 }}>
+          ✓ Email resent successfully.
+        </p>
+      )}
+      {error && (
+        <p style={{ color: '#DC2626', fontSize: '0.8125rem', marginBottom: '0.75rem' }}>{error}</p>
+      )}
+      <button
+        type="button"
+        onClick={handleResend}
+        disabled={resendCooldown > 0 || resending}
+        style={{
+          background: 'none',
+          border: '1px solid var(--tf-border)',
+          color: resendCooldown > 0 ? 'var(--tf-muted)' : '#0284C7',
+          fontWeight: 600,
+          fontSize: '0.875rem',
+          padding: '0.5rem 1.25rem',
+          borderRadius: '0.5rem',
+          cursor: resendCooldown > 0 || resending ? 'not-allowed' : 'pointer',
+          opacity: resendCooldown > 0 || resending ? 0.6 : 1,
+          minHeight: '40px',
+        }}
+      >
+        {resending
+          ? 'Sending…'
+          : resendCooldown > 0
+          ? `Resend in ${resendCooldown}s`
+          : 'Resend email'}
+      </button>
     </div>
   );
 
