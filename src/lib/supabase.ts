@@ -24,11 +24,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 export type Address = {
-  line1?: string;
-  line2?: string;
+  street?: string;
   city?: string;
-  region?: string;
-  postal_code?: string;
+  state?: string;
+  zip?: string;
   country?: string;
 };
 
@@ -76,7 +75,9 @@ export type Filing = {
   llc_name?: string | null;
   ein?: string | null;
   state_of_formation?: string | null;
-  mailing_address?: Address | null;
+  country_of_incorporation?: string | null;
+  /** US mailing address of the LLC / corporation */
+  llc_us_address?: Address | null;
 
   // ── Form 5472 / Pro Forma 1120 fields ───────────────────────────────────
   total_assets?: number | null;
@@ -101,7 +102,8 @@ export type Filing = {
   owner_resident_country?: string | null;
   owner_passport_number?: string | null;
   owner_foreign_tax_id?: string | null;
-  owner_address?: Address | null;
+  /** Foreign address of the owner / related party */
+  owner_foreign_address?: Address | null;
   /**
    * Used by pdfGenerator for Part III field RP_ACTIVITY.
    * Defaults to naics_description if not set.
