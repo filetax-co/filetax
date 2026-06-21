@@ -467,11 +467,35 @@ const fill1120 = async (
   return doc;
 };
 
+// ─── merge helper ─────────────────────────────────────────────────────────────────────────────────
+//
+// Flattens AcroForm fields in `src` (so field values are baked into the page
+// content as plain graphics) then copies all its pages into `dest`.
+// Flattening is required before copyPages — without it, field widgets from
+// different PDFs collide in the merged document and values disappear or render
+// incorrectly in strict PDF readers (Adobe, IRS e-file tools).
+
+const mergeInto = async (dest: PDFDocument, src: PDFDocument): Promise<void> => {
+  src.getForm().flatten();
+  const pages = await dest.copyPages(src, src.getPageIndices());
+  for (const page of pages) {
+    dest.addPage(page);
+  }
+};
+
 // ─── public entry point ────────────────────────────────────────────────────────────────────────────
 
 export interface FilingPackage {
+  /** Individual Form 5472 (AcroForm, field values still editable) */
   form5472: Uint8Array;
+  /** Individual Pro Forma 1120 (AcroForm, field values still editable) */
   form1120: Uint8Array;
+  /**
+   * Combined filing package: Pro Forma 1120 pages first, then Form 5472 pages.
+   * Fields are flattened (baked in) so the merged document renders correctly
+   * in all PDF viewers and IRS submission tools.
+   */
+  combined: Uint8Array;
 }
 
 export const generateFilingPackage = async (
@@ -486,12 +510,18 @@ export const generateFilingPackage = async (
     fill1120(filing, transactions, year),
   ]);
 
-  const [form5472, form1120] = await Promise.all([
+  // Build the combined PDF: 1120 first (cover), then 5472 appended
+  const merged = await PDFDocument.create();
+  await mergeInto(merged, doc1120);
+  await mergeInto(merged, doc5472);
+
+  const [form5472, form1120, combined] = await Promise.all([
     doc5472.save(),
     doc1120.save(),
+    merged.save(),
   ]);
 
-  return { form5472, form1120 };
+  return { form5472, form1120, combined };
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */
