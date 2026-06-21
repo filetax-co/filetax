@@ -10,6 +10,9 @@ import {
   PDFDocument,
   PDFTextField,
   PDFCheckBox,
+  PDFPage,
+  rgb,
+  StandardFonts,
 } from 'pdf-lib';
 import {
   Filing,
@@ -284,6 +287,191 @@ const totalPaid = (t: AggregatedTransactions): number =>
   t.loan_guarantee_paid + t.other_paid + t.loaned_end +
   t.distributions_paid;
 
+// ─── Part V statement builder ───────────────────────────────────────────────────────────
+//
+// Per IRS instructions for Form 5472, Part V (line 40b), when the taxpayer has
+// formation costs, property transfers, or other nonmonetary/non-arm's-length
+// transactions that cannot be valued at FMV, they must attach a statement
+// describing the nature, terms, and conditions of each transaction.
+// This function builds that statement as a standalone PDF page.
+
+const PART_V_NARRATIVE_TYPES = new Set([
+  'formation_costs',
+  'property_transfer',
+  'nonmonetary_other',
+]);
+
+const TYPE_LABELS: Record<string, string> = {
+  formation_costs:    'Formation Costs (Part V, Line 40b)',
+  property_transfer:  'Property Transfer — Non-arm\'s Length (Part V, Line 40b)',
+  nonmonetary_other:  'Other Nonmonetary / Non-arm\'s Length Transaction (Part V, Line 40b)',
+};
+
+export const buildPartVStatement = async (
+  filing: Filing,
+  txns: Transaction[],
+  taxYear: number,
+): Promise<PDFDocument> => {
+  const narrativeTxns = txns.filter(tx => PART_V_NARRATIVE_TYPES.has(tx.transaction_type));
+
+  const doc  = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg  = await doc.embedFont(StandardFonts.Helvetica);
+
+  const PAGE_W = 612;  // US Letter
+  const PAGE_H = 792;
+  const MARGIN = 56;
+  const COL_W  = PAGE_W - MARGIN * 2;
+
+  // Helper: add a new page and return it with a fresh cursor
+  const addPage = (): { page: PDFPage; cursor: { y: number } } => {
+    const page = doc.addPage([PAGE_W, PAGE_H]);
+    return { page, cursor: { y: PAGE_H - MARGIN } };
+  };
+
+  // Helper: draw text, returns new y after drawing
+  const draw = (
+    page: PDFPage,
+    text: string,
+    x: number,
+    y: number,
+    opts: { size?: number; font?: typeof bold; color?: ReturnType<typeof rgb>; maxWidth?: number },
+  ): number => {
+    const size  = opts.size  ?? 10;
+    const font  = opts.font  ?? reg;
+    const color = opts.color ?? rgb(0, 0, 0);
+    // Word-wrap naively by splitting on spaces and measuring
+    const words  = text.split(' ');
+    const maxW   = opts.maxWidth ?? COL_W;
+    let   line   = '';
+    let   drawY  = y;
+    const lineH  = size * 1.45;
+
+    for (const word of words) {
+      const trial = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(trial, size) > maxW && line) {
+        page.drawText(line, { x, y: drawY, size, font, color });
+        drawY -= lineH;
+        line   = word;
+      } else {
+        line = trial;
+      }
+    }
+    if (line) {
+      page.drawText(line, { x, y: drawY, size, font, color });
+      drawY -= lineH;
+    }
+    return drawY;
+  };
+
+  // ── Page 1: header ────────────────────────────────────────────────────────────────
+  let { page, cursor } = addPage();
+
+  // Document title
+  cursor.y = draw(page, 'STATEMENT REQUIRED UNDER FORM 5472, PART V', MARGIN, cursor.y, {
+    size: 13, font: bold,
+  });
+  cursor.y -= 4;
+
+  // Sub-heading: entity + period
+  const periodBegin = resolvePeriodBegin(filing);
+  const periodEnd   = resolvePeriodEnd(filing);
+  cursor.y = draw(
+    page,
+    `Taxpayer: ${filing.llc_name ?? ''} — EIN: ${filing.ein ?? ''}`,
+    MARGIN, cursor.y, { size: 10 },
+  );
+  cursor.y = draw(
+    page,
+    `Tax Year: ${periodBegin} – ${periodEnd}  (Tax Year ${taxYear})`,
+    MARGIN, cursor.y, { size: 10 },
+  );
+  cursor.y -= 6;
+
+  // Divider
+  page.drawLine({
+    start: { x: MARGIN, y: cursor.y },
+    end:   { x: PAGE_W - MARGIN, y: cursor.y },
+    thickness: 0.75,
+    color: rgb(0, 0, 0),
+  });
+  cursor.y -= 14;
+
+  // Introductory paragraph (IRS-facing language)
+  const intro =
+    'Pursuant to the Instructions for Form 5472 (Part V, Line 40b), the reporting ' +
+    'corporation listed above had the following transactions during the tax year that ' +
+    'cannot be reported at fair market value on Part IV because they are formation costs, ' +
+    'property transfers, or other nonmonetary / non-arm\'s-length transactions. ' +
+    'Each transaction is described below.';
+  cursor.y = draw(page, intro, MARGIN, cursor.y, { size: 10 });
+  cursor.y -= 14;
+
+  // ── Transaction entries ───────────────────────────────────────────────────────────
+  const MIN_Y = MARGIN + 60; // minimum bottom margin before page break
+
+  narrativeTxns.forEach((tx, idx) => {
+    // Page break if not enough room for a full entry
+    if (cursor.y < MIN_Y) {
+      ({ page, cursor } = addPage());
+    }
+
+    const label = TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type;
+    const txDate = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
+    const direction = tx.direction ?? 'N/A';
+    const desc = tx.description?.trim() || '(No description provided)';
+
+    // Entry header
+    cursor.y = draw(page, `Transaction ${idx + 1}: ${label}`, MARGIN, cursor.y, {
+      size: 10, font: bold,
+    });
+    cursor.y -= 2;
+
+    // Fields
+    const fields: [string, string][] = [
+      ['Date:',      txDate],
+      ['Direction:', direction === 'paid' ? 'Paid by LLC to related party' : direction === 'received' ? 'Received by LLC from related party' : direction],
+      ['Description:', desc],
+    ];
+
+    for (const [fieldLabel, fieldValue] of fields) {
+      // Measure label width so value starts after it
+      const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
+      page.drawText(fieldLabel, { x: MARGIN + 12, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+      cursor.y = draw(page, fieldValue, MARGIN + 12 + labelW, cursor.y, {
+        size: 10,
+        maxWidth: COL_W - 12 - labelW,
+      });
+    }
+
+    cursor.y -= 12;
+
+    // Thin separator between entries
+    if (idx < narrativeTxns.length - 1) {
+      page.drawLine({
+        start: { x: MARGIN + 12, y: cursor.y },
+        end:   { x: PAGE_W - MARGIN, y: cursor.y },
+        thickness: 0.35,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+      cursor.y -= 10;
+    }
+  });
+
+  // ── Footer on last page ───────────────────────────────────────────────────────────
+  cursor.y -= 20;
+  if (cursor.y < MIN_Y) {
+    ({ page, cursor } = addPage());
+  }
+  draw(
+    page,
+    'This statement is attached to and made a part of Form 5472 filed by the reporting corporation named above.',
+    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) },
+  );
+
+  return doc;
+};
+
 // ─── Form 5472 filler ───────────────────────────────────────────────────────────────────────────
 
 const fill5472 = async (
@@ -500,11 +688,18 @@ export interface FilingPackage {
   /** Individual Pro Forma 1120 (AcroForm, field values still editable) */
   form1120: Uint8Array;
   /**
-   * Combined filing package: Pro Forma 1120 pages first, then Form 5472 pages.
+   * Combined filing package: Pro Forma 1120 pages first, then Form 5472 pages,
+   * then the Part V statement (if applicable).
    * Fields are flattened (baked in) so the merged document renders correctly
    * in all PDF viewers and IRS submission tools.
    */
   combined: Uint8Array;
+  /**
+   * Standalone Part V statement PDF — present only when the filing contains
+   * formation_costs, property_transfer, or nonmonetary_other transactions.
+   * Undefined otherwise.
+   */
+  statement?: Uint8Array;
 }
 
 export const generateFilingPackage = async (
@@ -514,23 +709,41 @@ export const generateFilingPackage = async (
 ): Promise<FilingPackage> => {
   const year = taxYear ?? (filing.tax_year != null ? Number(filing.tax_year) : new Date().getFullYear() - 1);
 
+  const txn = aggregateTransactions(transactions);
+
+  // Build all PDFs in parallel where possible
   const [doc5472, doc1120] = await Promise.all([
     fill5472(filing, transactions, year),
     fill1120(filing, transactions, year),
   ]);
 
-  // Build the combined PDF: 1120 first (cover), then 5472 appended
+  // Build statement only when needed
+  const docStatement = txn.hasPartV
+    ? await buildPartVStatement(filing, transactions, year)
+    : null;
+
+  // Build the combined PDF: 1120 first (cover), then 5472, then statement
   const merged = await PDFDocument.create();
   await mergeInto(merged, doc1120);
   await mergeInto(merged, doc5472);
+  if (docStatement) {
+    await mergeInto(merged, docStatement);
+  }
 
-  const [form5472, form1120, combined] = await Promise.all([
+  const saveJobs: Promise<Uint8Array>[] = [
     doc5472.save(),
     doc1120.save(),
     merged.save(),
-  ]);
+  ];
+  if (docStatement) {
+    saveJobs.push(docStatement.save());
+  }
 
-  return { form5472, form1120, combined };
+  const saved = await Promise.all(saveJobs);
+  const [form5472, form1120, combined] = saved;
+  const statement = docStatement ? saved[3] : undefined;
+
+  return { form5472, form1120, combined, statement };
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */
