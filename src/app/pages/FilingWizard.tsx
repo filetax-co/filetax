@@ -26,10 +26,11 @@ const TAX_YEARS = Array.from(
 // Combined PDF order:
 //   Pro Forma 1120 → Form 5472 → statement_partV (if hasPartV) → statement_partVI (always)
 //
-// statement_partVI is always included.
+// statement_partVI is always included (hardcoded true in pdfGenerator.ts).
 // statement_partV is included only when distributions, contributions, dividends,
-// or formation-cost payments are present.
-// property_transfer and nonmonetary_other are disclosed in statement_partVI only.
+// or formation-cost payments are present (hasPartV === true).
+// property_transfer and nonmonetary_other are disclosed in statement_partVI only —
+// they do NOT trigger hasPartV.
 
 export default function FilingWizard() {
   const { id } = useParams<{ id?: string }>();
@@ -84,8 +85,10 @@ export default function FilingWizard() {
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
       const pkg = await generateFilingPackage(fi, txns);
 
-      // Download the single combined PDF
-      // (Pro Forma 1120 → Form 5472 → statement_partV if applicable → statement_partVI always)
+      // Download the single combined PDF:
+      //   pkg.combined = Pro Forma 1120 + Form 5472
+      //                + pkg.statement_partV  (appended only when hasPartV is true)
+      //                + pkg.statement_partVI (always appended — hardcoded in pdfGenerator.ts)
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
