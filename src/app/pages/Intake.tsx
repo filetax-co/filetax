@@ -396,7 +396,14 @@ function buildRelatedPartyRef(name: string, index: number): string {
 export function Intake() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const filingId = params.get('filing_id');
+
+  // FIX: Keep filingId in local state so it is available immediately after the
+  // first INSERT, without waiting for useSearchParams to re-sync from the URL.
+  const [localFilingId, setLocalFilingId] = useState<string | null>(
+    params.get('filing_id'),
+  );
+  // Derived: prefer local state, fall back to URL param (handles direct-link / reload)
+  const filingId = localFilingId ?? params.get('filing_id');
 
   const [step, setStep]     = useState<IntakeStep>(1);
   const [saving, setSaving] = useState(false);
@@ -544,7 +551,11 @@ export function Intake() {
         const { data, error: err } = await supabase
           .from('filings').insert({ ...patch, user_id: user.id }).select('id').single();
         if (err) throw err;
-        return data.id as string;
+        const newId = data.id as string;
+        // FIX: store in local state immediately so subsequent steps see the id
+        setLocalFilingId(newId);
+        navigate(`?filing_id=${newId}`, { replace: true });
+        return newId;
       } else {
         const { error: err } = await supabase
           .from('filings').update(patch).eq('id', filingId);
@@ -567,7 +578,6 @@ export function Intake() {
     if (step < 3) {
       const id = await saveStep();
       if (id) {
-        if (!filingId) navigate(`?filing_id=${id}`, { replace: true });
         setStep((s) => (s + 1) as IntakeStep);
       }
     } else if (step === 3) {
@@ -1379,7 +1389,7 @@ function AddressFields({ value, onChange }: { value: Address; onChange: (a: Addr
       <Field label="City">
         <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
       </Field>
-      <Field label="State / Region">()
+      <Field label="State / Region">
         <input placeholder="State / Region" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
       </Field>
       <Field label="Postal code">
