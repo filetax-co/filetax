@@ -456,7 +456,7 @@ export function Intake() {
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
       setStateOfFormation(f.state_of_formation ?? '');
-      setTaxYear(String(f.tax_year ?? 2024));
+      setTaxYear(String(f.tax_year ?? '2024'));
       setMailing(f.mailing_address ?? {});
       setEntityBizActivity((f as Record<string, unknown>).entity_business_activity as string ?? '');
       setEntityBizCode((f as Record<string, unknown>).entity_business_code as string ?? '');
@@ -499,7 +499,8 @@ export function Intake() {
       llc_name:            llcName.trim() || null,
       ein:                 ein.trim() || null,
       state_of_formation:  stateOfFormation.trim() || null,
-      tax_year:            Number(taxYear),
+      // FIX: tax_year is a text column with a string CHECK — must send as string, not Number
+      tax_year:            taxYear,
       mailing_address:     mailing,
       entity_business_activity: entityBizActivity.trim() || null,
       entity_business_code:     entityBizCode.trim() || null,
@@ -904,7 +905,7 @@ export function Intake() {
                 {/* Tax year — 2019–2025 only */}
                 <Field label="Tax year *">
                   <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)}>
-                    {TAX_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                    {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
 
@@ -1378,7 +1379,7 @@ function AddressFields({ value, onChange }: { value: Address; onChange: (a: Addr
       <Field label="City">
         <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
       </Field>
-      <Field label="State / Region">
+      <Field label="State / Region">()
         <input placeholder="State / Region" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
       </Field>
       <Field label="Postal code">
