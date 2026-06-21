@@ -6,8 +6,16 @@
  * a single-file browser download.
  *
  * Downloaded file: FilingPackage_<year>_<slug>.pdf
- *   — Pro Forma 1120 pages first, then Form 5472 pages
- *   — AcroForm fields flattened (values baked in, renders correctly everywhere)
+ *   Combined PDF order:
+ *     1. Pro Forma 1120 pages
+ *     2. Form 5472 pages
+ *     3. statement_partV  — Part V statement (distributions, dividends,
+ *                           capital contributions, formation costs)
+ *                           ONLY included when hasPartV is true
+ *     4. statement_partVI — Part VI statement (managerial services FMV
+ *                           disclosure; property transfers; nonmonetary
+ *                           exchanges) — ALWAYS included in every filing
+ *   AcroForm fields flattened (values baked in, renders correctly everywhere)
  *
  * pdfGenerator (~480 kB) is dynamically imported on first click.
  */
