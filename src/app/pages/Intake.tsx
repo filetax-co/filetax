@@ -668,8 +668,8 @@ export function Intake() {
         .intake-form input:focus,
         .intake-form select:focus,
         .intake-form textarea:focus {
-          border-color: var(--tf-primary, #2563eb);
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-primary, #2563eb) 18%, transparent);
+          border-color: var(--tf-primary, #0284c7);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-primary, #0284c7) 18%, transparent);
         }
         .intake-form input::placeholder {
           color: var(--tf-text-muted, #9ca3af);
@@ -694,6 +694,72 @@ export function Intake() {
           color: var(--tf-text-muted, #6b7280);
           cursor: default;
         }
+
+        /* ── Stepper ────────────────────────────────────────── */
+        .stepper-track {
+          display: inline-flex;
+          align-items: center;
+          background: #f1f5f9;
+          border-radius: 2rem;
+          padding: 0.25rem;
+          gap: 0;
+          margin-bottom: 2rem;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          max-width: 100%;
+        }
+        .stepper-pill {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.35rem 0.9rem;
+          border-radius: 2rem;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          white-space: nowrap;
+          border: none;
+          background: transparent;
+          transition: background 0.15s, color 0.15s;
+          line-height: 1;
+        }
+        /* Active step */
+        .stepper-pill--active {
+          background: #0284c7;
+          color: #fff;
+          font-weight: 700;
+          cursor: default;
+          box-shadow: 0 1px 4px rgba(2,132,199,0.25);
+        }
+        /* Completed step */
+        .stepper-pill--done {
+          background: #e0f2fe;
+          color: #0369a1;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .stepper-pill--done:hover {
+          background: #bae6fd;
+        }
+        /* Future / pending step */
+        .stepper-pill--pending {
+          color: #94a3b8;
+          cursor: default;
+          opacity: 0.6;
+        }
+        .stepper-check {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1rem;
+          height: 1rem;
+          border-radius: 50%;
+          background: #0369a1;
+          color: #fff;
+          font-size: 0.6rem;
+          font-weight: 800;
+          line-height: 1;
+          flex-shrink: 0;
+        }
       `}</style>
 
       <div className="intake-form" style={{
@@ -703,33 +769,35 @@ export function Intake() {
         fontFamily: 'inherit',
       }}>
 
-        {/* ── Step breadcrumb ──────────────────────────────────────────── */}
-        <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {([1, 2, 3, 4] as IntakeStep[]).map((s) => (
-            <Fragment key={s}>
-              <button
-                onClick={() => { if (s < step) setStep(s); }}
-                style={{
-                  background: step === s ? 'var(--tf-primary, #2563eb)' : 'transparent',
-                  color: step === s ? '#fff' : step > s ? 'var(--tf-primary, #2563eb)' : 'var(--tf-text-muted, #6b7280)',
-                  border: `1px solid ${
-                    step === s  ? 'var(--tf-primary, #2563eb)'
-                    : step > s  ? 'var(--tf-primary, #2563eb)'
-                    : 'var(--tf-border, #d1d5db)'
-                  }`,
-                  borderRadius: '2rem',
-                  padding: '0.3rem 0.9rem',
-                  fontSize: '0.82rem',
-                  fontWeight: step === s ? 700 : 400,
-                  cursor: s < step ? 'pointer' : 'default',
-                  opacity: s > step ? 0.45 : 1,
-                }}
-              >
-                {s}. {STEP_LABELS[s]}
-              </button>
-              {s < 4 && <span style={{ color: 'var(--tf-text-muted, #9ca3af)', alignSelf: 'center' }}>›</span>}
-            </Fragment>
-          ))}
+        {/* ── Step breadcrumb — pill group on soft gray track ───────── */}
+        <nav aria-label="Form steps">
+          <div className="stepper-track">
+            {([1, 2, 3, 4] as IntakeStep[]).map((s) => {
+              const isDone   = s < step;
+              const isActive = s === step;
+              const isPending = s > step;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className={[
+                    'stepper-pill',
+                    isActive  ? 'stepper-pill--active'  : '',
+                    isDone    ? 'stepper-pill--done'    : '',
+                    isPending ? 'stepper-pill--pending' : '',
+                  ].join(' ')}
+                  onClick={() => { if (isDone) setStep(s); }}
+                  aria-current={isActive ? 'step' : undefined}
+                  tabIndex={isDone ? 0 : -1}
+                >
+                  {isDone && (
+                    <span className="stepper-check" aria-hidden="true">✓</span>
+                  )}
+                  {s}. {STEP_LABELS[s]}
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Error banner */}
@@ -1102,8 +1170,8 @@ export function Intake() {
                       {tx.related_party_naics && tx.related_party_naics !== '__manual__' && (
                         <span style={{
                           fontSize: '0.72rem',
-                          color: 'var(--tf-primary, #2563eb)',
-                          background: 'color-mix(in srgb, var(--tf-primary,#2563eb) 10%, transparent)',
+                          color: '#0284c7',
+                          background: '#e0f2fe',
                           padding: '0.1rem 0.4rem',
                           borderRadius: '0.25rem',
                           alignSelf: 'center',
@@ -1115,7 +1183,7 @@ export function Intake() {
                         <span style={{ color: 'var(--tf-text-muted, #6b7280)' }}> — {tx.description}</span>
                       )}
                     </div>
-                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--tf-primary, #2563eb)' }}>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7' }}>
                       ${Number(tx.amount_usd).toLocaleString()}
                     </span>
                     <button
@@ -1189,7 +1257,7 @@ export function Intake() {
                           NAICS {tx.related_party_naics}
                         </span>
                       )}
-                      <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--tf-primary, #2563eb)' }}>
+                      <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7' }}>
                         ${Number(tx.amount_usd).toLocaleString()}
                       </span>
                     </div>
@@ -1330,7 +1398,7 @@ const reviewGridStyle: React.CSSProperties = {
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: '0.6rem 1.5rem',
-  background: 'var(--tf-primary, #2563eb)',
+  background: '#0284c7',
   color: '#fff',
   border: 'none',
   borderRadius: '0.5rem',
@@ -1354,7 +1422,7 @@ const addBtnStyle: React.CSSProperties = {
   marginTop: '0.75rem',
   alignSelf: 'flex-start',
   padding: '0.4375rem 1rem',
-  background: 'var(--tf-primary, #2563eb)',
+  background: '#0284c7',
   color: '#fff',
   border: 'none',
   borderRadius: '0.375rem',
