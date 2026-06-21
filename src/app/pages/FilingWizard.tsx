@@ -46,8 +46,9 @@ export default function FilingWizard() {
   const [txErr,        setTxErr]        = useState<string | null>(null);
 
   // Step 3 — add transaction modal
-  const [showTxForm, setShowTxForm] = useState(false);
-  const [txForm,     setTxForm]     = useState<Partial<Transaction>>({
+  // _showTxForm is intentionally unused in JSX (modal kept for future use); setter is active
+  const [_showTxForm, setShowTxForm] = useState(false);
+  const [txForm,      setTxForm]     = useState<Partial<Transaction>>({
     transaction_type: 'sales',
     direction: 'received',
     amount_usd: undefined,
@@ -58,9 +59,6 @@ export default function FilingWizard() {
   // Step 4 — generate PDF
   const [generating, setGenerating] = useState(false);
   const [genErr,     setGenErr]     = useState<string | null>(null);
-
-  // Suppress unused-variable warning — showTxForm is kept for future modal use
-  void showTxForm;
 
   // ── load existing filing on mount ─────────────────────────────────────────
 
