@@ -73,27 +73,39 @@ const checkBox = (doc: PDFDocument, fieldName: string, checked: boolean): void =
 };
 
 // ─── tax-year → PDF URL resolver ─────────────────────────────────────────────
+//
+// Files available in public/pdf/:
+//   Form-5472.pdf            (2024 — latest/generic)
+//   Form-5472-2023.pdf
+//   Form-5472-2022.pdf
+//   Form-5472-2019-2021.pdf  (covers 2019, 2020, 2021)
+//   Form-1120-2025.pdf
+//   Form-1120-2024.pdf
+//   Form-1120-2023.pdf
+//   Form-1120-2022.pdf
+//   Form-1120-2021.pdf
+//   Form-1120-2020.pdf
+//   Form-1120-2019.pdf
 
 const BASE = import.meta.env.BASE_URL ?? '/';
 
 export const get5472PdfUrl = (taxYear: number): string => {
-  if (taxYear >= 2025) return `${BASE}forms/Form-5472-2025.pdf`;
-  if (taxYear === 2024) return `${BASE}forms/Form-5472-2024.pdf`;
-  if (taxYear === 2023) return `${BASE}forms/Form-5472-2023.pdf`;
-  if (taxYear === 2022) return `${BASE}forms/Form-5472-2022.pdf`;
-  if (taxYear === 2021) return `${BASE}forms/Form-5472-2021.pdf`;
-  if (taxYear === 2020) return `${BASE}forms/Form-5472-2020.pdf`;
-  return `${BASE}forms/Form-5472-2019.pdf`;
+  // 2024 and newer → use the latest generic Form-5472.pdf
+  if (taxYear >= 2024) return `${BASE}pdf/Form-5472.pdf`;
+  if (taxYear === 2023) return `${BASE}pdf/Form-5472-2023.pdf`;
+  if (taxYear === 2022) return `${BASE}pdf/Form-5472-2022.pdf`;
+  // 2019, 2020, 2021 all share one bundled PDF
+  return `${BASE}pdf/Form-5472-2019-2021.pdf`;
 };
 
 export const get1120PdfUrl = (taxYear: number): string => {
-  if (taxYear >= 2025) return `${BASE}forms/Form-1120-2025.pdf`;
-  if (taxYear === 2024) return `${BASE}forms/Form-1120-2024.pdf`;
-  if (taxYear === 2023) return `${BASE}forms/Form-1120-2023.pdf`;
-  if (taxYear === 2022) return `${BASE}forms/Form-1120-2022.pdf`;
-  if (taxYear === 2021) return `${BASE}forms/Form-1120-2021.pdf`;
-  if (taxYear === 2020) return `${BASE}forms/Form-1120-2020.pdf`;
-  return `${BASE}forms/Form-1120-2019.pdf`;
+  if (taxYear >= 2025) return `${BASE}pdf/Form-1120-2025.pdf`;
+  if (taxYear === 2024) return `${BASE}pdf/Form-1120-2024.pdf`;
+  if (taxYear === 2023) return `${BASE}pdf/Form-1120-2023.pdf`;
+  if (taxYear === 2022) return `${BASE}pdf/Form-1120-2022.pdf`;
+  if (taxYear === 2021) return `${BASE}pdf/Form-1120-2021.pdf`;
+  if (taxYear === 2020) return `${BASE}pdf/Form-1120-2020.pdf`;
+  return `${BASE}pdf/Form-1120-2019.pdf`;
 };
 
 // ─── period helpers ───────────────────────────────────────────────────────────
