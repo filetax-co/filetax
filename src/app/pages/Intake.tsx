@@ -582,23 +582,51 @@ export function Intake() {
     if (!filingId) return false;
     setError(null);
     try {
-      const rows = transactions
-        .filter((t) => t.amount_usd && Number(t.amount_usd) > 0)
+      const validTxns = transactions.filter(
+        (t) => t.amount_usd && Number(t.amount_usd) > 0,
+      );
+      if (validTxns.length === 0) return true;
+
+      // New rows (no id) → insert; existing rows (have id) → upsert
+      const toInsert = validTxns
+        .filter((t) => !t.id)
         .map((t) => ({
-          ...(t.id ? { id: t.id } : {}),
-          filing_id:          filingId,
-          transaction_type:   t.transaction_type,
-          direction:          t.direction,
-          amount_usd:         Number(t.amount_usd),
-          description:        t.description || null,
-          transaction_date:   t.transaction_date || null,
-          is_royalty:         t.is_royalty,
+          filing_id:           filingId,
+          transaction_type:    t.transaction_type,
+          direction:           t.direction,
+          amount_usd:          Number(t.amount_usd),
+          description:         t.description || null,
+          transaction_date:    t.transaction_date || null,
+          is_royalty:          t.is_royalty,
           related_party_naics: t.related_party_naics || null,
         }));
-      if (rows.length === 0) return true;
-      const { error: err } = await supabase
-        .from('reportable_transactions').upsert(rows, { onConflict: 'id' });
-      if (err) throw err;
+
+      const toUpsert = validTxns
+        .filter((t) => !!t.id)
+        .map((t) => ({
+          id:                  t.id!,
+          filing_id:           filingId,
+          transaction_type:    t.transaction_type,
+          direction:           t.direction,
+          amount_usd:          Number(t.amount_usd),
+          description:         t.description || null,
+          transaction_date:    t.transaction_date || null,
+          is_royalty:          t.is_royalty,
+          related_party_naics: t.related_party_naics || null,
+        }));
+
+      if (toInsert.length > 0) {
+        const { error: insErr } = await supabase
+          .from('reportable_transactions').insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      if (toUpsert.length > 0) {
+        const { error: upErr } = await supabase
+          .from('reportable_transactions').upsert(toUpsert, { onConflict: 'id' });
+        if (upErr) throw upErr;
+      }
+
       return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save transactions');
