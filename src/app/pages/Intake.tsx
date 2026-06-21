@@ -22,7 +22,7 @@ type TransactionRow = {
   description: string;
   transaction_date: string;
   is_royalty: boolean;
-  related_party_naics?: string;
+  related_party_naics?: string; // UI-only — NOT persisted (column not in DB)
 };
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -437,7 +437,7 @@ export function Intake() {
   const [txDesc,       setTxDesc]       = useState('');
   const [txDate,       setTxDate]       = useState('');
   const [txIsRoyalty,  setTxIsRoyalty]  = useState(false);
-  const [txRpNaics,    setTxRpNaics]    = useState(''); // related-party NAICS (point 11)
+  const [txRpNaics,    setTxRpNaics]    = useState(''); // UI-only — related-party NAICS (point 11)
 
   // auto-derive owner ref whenever name changes
   useEffect(() => {
@@ -485,7 +485,8 @@ export function Intake() {
           description: t.description ?? '',
           transaction_date: t.transaction_date ?? '',
           is_royalty: t.is_royalty ?? false,
-          related_party_naics: (t as Record<string, unknown>).related_party_naics as string ?? '',
+          // related_party_naics is UI-only; not stored in DB
+          related_party_naics: '',
         })));
       }
     })();
@@ -588,31 +589,30 @@ export function Intake() {
       if (validTxns.length === 0) return true;
 
       // New rows (no id) → insert; existing rows (have id) → upsert
+      // NOTE: related_party_naics is intentionally excluded — column does not exist in DB
       const toInsert = validTxns
         .filter((t) => !t.id)
         .map((t) => ({
-          filing_id:           filingId,
-          transaction_type:    t.transaction_type,
-          direction:           t.direction,
-          amount_usd:          Number(t.amount_usd),
-          description:         t.description || null,
-          transaction_date:    t.transaction_date || null,
-          is_royalty:          t.is_royalty,
-          related_party_naics: t.related_party_naics || null,
+          filing_id:        filingId,
+          transaction_type: t.transaction_type,
+          direction:        t.direction,
+          amount_usd:       Number(t.amount_usd),
+          description:      t.description || null,
+          transaction_date: t.transaction_date || null,
+          is_royalty:       t.is_royalty,
         }));
 
       const toUpsert = validTxns
         .filter((t) => !!t.id)
         .map((t) => ({
-          id:                  t.id!,
-          filing_id:           filingId,
-          transaction_type:    t.transaction_type,
-          direction:           t.direction,
-          amount_usd:          Number(t.amount_usd),
-          description:         t.description || null,
-          transaction_date:    t.transaction_date || null,
-          is_royalty:          t.is_royalty,
-          related_party_naics: t.related_party_naics || null,
+          id:               t.id!,
+          filing_id:        filingId,
+          transaction_type: t.transaction_type,
+          direction:        t.direction,
+          amount_usd:       Number(t.amount_usd),
+          description:      t.description || null,
+          transaction_date: t.transaction_date || null,
+          is_royalty:       t.is_royalty,
         }));
 
       if (toInsert.length > 0) {
@@ -645,7 +645,7 @@ export function Intake() {
         description:         txDesc,
         transaction_date:    txDate,
         is_royalty:          txIsRoyalty,
-        related_party_naics: txRpNaics,
+        related_party_naics: txRpNaics, // kept in local state only
       },
     ]);
     setTxAmt(''); setTxDesc(''); setTxDate('');
@@ -1153,8 +1153,8 @@ export function Intake() {
                   </Field>
                 )}
 
-                {/* Related-party NAICS (point 11) */}
-                <Field label="Related-party NAICS" hint="Type of business of the related party" style={{ gridColumn: '1 / -1' }}>
+                {/* Related-party NAICS (point 11) — UI display only, not saved to DB */}
+                <Field label="Related-party NAICS" hint="Type of business of the related party (display only)" style={{ gridColumn: '1 / -1' }}>
                   <select value={txRpNaics} onChange={(e) => setTxRpNaics(e.target.value)}>
                     <option value="">— Select NAICS (optional) —</option>
                     {RP_NAICS.map((n) => (
