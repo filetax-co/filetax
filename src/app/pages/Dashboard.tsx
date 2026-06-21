@@ -63,10 +63,10 @@ function actionLabel(status: Filing['status']): string {
   return 'View';
 }
 
-/** Route draft/in_progress → Intake wizard; paid/completed → FilingWizard (download step) */
+/** Route draft/in_progress → Intake wizard (?filing_id=); paid/completed → FilingWizard */
 function filingPath(f: Filing): string {
   if (f.status === 'paid' || f.status === 'completed') return `/filing/${f.id}`;
-  return `/intake/${f.id}`;
+  return `/intake?filing_id=${f.id}`;
 }
 
 export function Dashboard() {
@@ -169,7 +169,7 @@ export function Dashboard() {
       .update({ linked_filing_id: data.id, status: 'in_progress' })
       .eq('id', pendingIntake.id);
 
-    navigate(`/intake/${data.id}`);
+    navigate(`/intake?filing_id=${data.id}`);
   }
 
   async function startFiling(serviceType: ServiceType) {
@@ -192,7 +192,7 @@ export function Dashboard() {
       setError(error?.message ?? 'Could not create filing.');
       return;
     }
-    navigate(`/intake/${data.id}`);
+    navigate(`/intake?filing_id=${data.id}`);
   }
 
   const handleSignOut = async () => {
