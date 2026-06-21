@@ -38,6 +38,7 @@ export default function FilingWizard() {
   const [filing,   setFiling]     = useState<Filing | null>(null);
   const [saving,   setSaving]     = useState(false);
   const [saveErr,  setSaveErr]    = useState<string | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Step 2 — transaction list
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -73,6 +74,41 @@ export default function FilingWizard() {
       if (data) setFiling(data);
     })();
   }, [id]);
+
+  // ── pre-fill from user profile for NEW filings ────────────────────────────
+  // When there is no :id in the URL, load the user's saved profile and
+  // pre-populate every field except tax_year (the user must always choose
+  // which year they are filing for).
+
+  useEffect(() => {
+    if (id) return; // existing filing — already loaded above
+    if (profileLoaded) return;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      setProfileLoaded(true);
+      if (!profile) return;
+      setFiling(prev => ({
+        ...(prev ?? {} as Filing),
+        llc_name:                profile.llc_name                ?? prev?.llc_name                ?? '',
+        ein:                     profile.ein                     ?? prev?.ein                     ?? '',
+        state_of_formation:      profile.state_of_formation      ?? prev?.state_of_formation      ?? '',
+        country_of_incorporation: profile.country_of_incorporation ?? prev?.country_of_incorporation ?? '',
+        date_of_incorporation:   profile.date_of_incorporation   ?? prev?.date_of_incorporation   ?? null,
+        llc_us_address:          profile.llc_us_address          ?? prev?.llc_us_address          ?? null,
+        owner_full_name:         profile.owner_full_name         ?? prev?.owner_full_name         ?? '',
+        owner_country_residence: profile.owner_country_residence ?? prev?.owner_country_residence ?? '',
+        owner_foreign_tax_id:    profile.owner_foreign_tax_id    ?? prev?.owner_foreign_tax_id    ?? '',
+        owner_foreign_address:   profile.owner_foreign_address   ?? prev?.owner_foreign_address   ?? null,
+        // tax_year intentionally left as-is — user must pick it explicitly
+      }));
+    })();
+  }, [id, profileLoaded]);
 
   // ── step 2: load transactions when reaching step 2 ───────────────────────
 
@@ -164,6 +200,23 @@ export default function FilingWizard() {
         // Update the URL without remounting the component
         if (!filingId) navigate(`/filing/${data.id}`, { replace: true });
       }
+
+      // ── upsert user profile so the next filing is pre-filled ────────────
+      await supabase.from('user_profiles').upsert({
+        user_id:                 user.id,
+        llc_name:                filing.llc_name,
+        ein:                     filing.ein,
+        state_of_formation:      filing.state_of_formation,
+        country_of_incorporation: filing.country_of_incorporation,
+        date_of_incorporation:   filing.date_of_incorporation,
+        llc_us_address:          filing.llc_us_address,
+        owner_full_name:         filing.owner_full_name,
+        owner_country_residence: filing.owner_country_residence,
+        owner_foreign_tax_id:    filing.owner_foreign_tax_id,
+        owner_foreign_address:   filing.owner_foreign_address,
+        updated_at:              new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      // (profile upsert failure is non-fatal — we don't block the user)
 
       setStep(2);
     } catch (err) {
@@ -291,7 +344,12 @@ export default function FilingWizard() {
       ══════════════════════════════════════════════════════════════════ */}
       {step === 1 && (
         <div>
-          <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 1 — Company &amp; Owner Info</h2>
+          <h2 style={{ marginBottom: '0.5rem', fontSize: '1.25rem' }}>Step 1 — Company &amp; Owner Info</h2>
+          {!id && profileLoaded && filing?.llc_name && (
+            <p style={{ fontSize: '0.8rem', color: 'var(--tf-primary)', marginBottom: '1.25rem' }}>
+              ✓ Pre-filled from your last filing — just pick the tax year.
+            </p>
+          )}
 
           {saveErr && (
             <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '0.75rem 1rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
