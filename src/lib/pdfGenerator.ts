@@ -24,7 +24,7 @@ export type Form1120Fields = F1120Map;
 
 export const EARLIEST_SUPPORTED_TAX_YEAR = 2019;
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── helpers ───────────────────────────────────────────────────────────────────────────────
 
 const fmt = (n: number | null | undefined): string =>
   n != null && n !== 0 ? String(Math.round(n)) : '';
@@ -71,7 +71,7 @@ const checkBox = (doc: PDFDocument, fieldName: string, checked: boolean): void =
   }
 };
 
-// ─── tax-year → PDF URL resolver ─────────────────────────────────────────────
+// ─── tax-year → PDF URL resolver ────────────────────────────────────────────────────────
 //
 // Files available in public/pdf/:
 //   Form-5472.pdf            (2024 — latest/generic)
@@ -105,27 +105,27 @@ export const get1120PdfUrl = (taxYear: number): string => {
   return `${BASE}pdf/Form-1120-2019.pdf`;
 };
 
-// ─── address helpers ──────────────────────────────────────────────────────────
+// ─── address helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a combined "City, ST  ZIP" string from a Filing address object. */
+/** Build a combined "City, ST  ZIP" string from the LLC's US address. */
 const buildCityStateZip = (filing: Filing): string => {
-  const a = filing.mailing_address;
+  const a = filing.llc_us_address;
   if (!a) return filing.state_of_formation ?? '';
-  const city   = a.city ?? '';
-  const region = a.region ?? filing.state_of_formation ?? '';
-  const zip    = a.postal_code ?? '';
-  if (!city && !region && !zip) return '';
-  return [city, region].filter(Boolean).join(', ') + (zip ? `  ${zip}` : '');
+  const city  = a.city ?? '';
+  const state = a.state ?? filing.state_of_formation ?? '';
+  const zip   = a.zip ?? '';
+  if (!city && !state && !zip) return '';
+  return [city, state].filter(Boolean).join(', ') + (zip ? `  ${zip}` : '');
 };
 
-/** Return a single street line from a Filing address object. */
+/** Return a single street line from the LLC's US address. */
 const buildStreet = (filing: Filing): string => {
-  const a = filing.mailing_address;
+  const a = filing.llc_us_address;
   if (!a) return '';
-  return [a.line1, a.line2].filter(Boolean).join(', ');
+  return a.street ?? '';
 };
 
-// ─── period helpers ───────────────────────────────────────────────────────────
+// ─── period helpers ───────────────────────────────────────────────────────────────────
 
 const resolvePeriodBegin = (filing: Filing): string => {
   if (filing.tax_period_begin) return fmtDate(filing.tax_period_begin);
@@ -139,7 +139,7 @@ const resolvePeriodEnd = (filing: Filing): string => {
   return `12/31/${y}`;
 };
 
-// ─── transaction aggregation ──────────────────────────────────────────────────
+// ─── transaction aggregation ────────────────────────────────────────────────────────────
 
 export interface AggregatedTransactions {
   // Part IV — Received (LLC received from owner / foreign party)
@@ -259,7 +259,7 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
   return t;
 };
 
-// ─── total helpers ────────────────────────────────────────────────────────────
+// ─── total helpers ──────────────────────────────────────────────────────────────────────
 
 const totalReceived = (t: AggregatedTransactions): number =>
   t.sales_received + t.tangible_prop_received + t.rents_received +
@@ -275,7 +275,7 @@ const totalPaid = (t: AggregatedTransactions): number =>
   t.loan_guarantee_paid + t.other_paid + t.loaned_end +
   t.distributions_paid;
 
-// ─── Form 5472 filler ─────────────────────────────────────────────────────────
+// ─── Form 5472 filler ───────────────────────────────────────────────────────────────────────────
 
 const fill5472 = async (
   filing: Filing,
@@ -293,7 +293,7 @@ const fill5472 = async (
   const [pbM, pbD, pbY] = periodBegin.split('/');
   const [, , peY]       = periodEnd.split('/');
 
-  // ── Header — tax period ────────────────────────────────────────────────────
+  // ── Header — tax period ────────────────────────────────────────────────────────────
   const monthNames = [
     '', 'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
@@ -304,7 +304,7 @@ const fill5472 = async (
   setText(doc, F.TAX_YEAR_END,        periodEnd);
   setText(doc, F.TAX_YEAR_END_YEAR,   peY ?? '');
 
-  // ── Part I — Reporting Corporation ────────────────────────────────────────
+  // ── Part I — Reporting Corporation ──────────────────────────────────────────────
   setText(doc, F.CORP_NAME,                  filing.llc_name ?? '');
   setText(doc, F.CORP_ADDRESS,               buildStreet(filing));
   setText(doc, F.CORP_CITY_STATE_ZIP,        buildCityStateZip(filing));
@@ -313,49 +313,37 @@ const fill5472 = async (
   setText(doc, F.CORP_ACTIVITY,              filing.naics_description ?? filing.owner_business_activity ?? '');
   setText(doc, F.CORP_ACTIVITY_CODE,         filing.naics_code ?? '');
   setText(doc, F.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
-  // For a US LLC the country of incorporation is always US; resident country
-  // is derived from state_of_formation (domestic US entity).
-  setText(doc, F.CORP_COUNTRY_OF_INC,        'US');
+  setText(doc, F.CORP_COUNTRY_OF_INC,        filing.country_of_incorporation ?? 'US');
   setText(doc, F.CORP_RESIDENT_COUNTRY,      'US');
-  // Country where business is conducted — use state_of_formation (US state) as
-  // the most accurate available proxy; falls back to 'US'.
   setText(doc, F.CORP_COUNTRY_BUSINESS,      filing.state_of_formation ?? 'US');
 
   // 1f gross payments on this form / 1g number of 5472s / 1h gross all forms
-  // For a single-owner single-form filing these are all derived from Part IV.
   const grossThisForm = totalReceived(txn) + totalPaid(txn);
   setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossThisForm));
   setText(doc, F.CORP_NUM_FORMS,      '1');
   setText(doc, F.CORP_GROSS_ALL,      fmt(grossThisForm));
 
   // Checkboxes 1i / 1j / 2 / 3
-  // 1i — consolidated filing: always false for single-entity DE LLC
   checkBox(doc, F.CONSOLIDATED_FILING,       false);
-  // 1j — initial return: honour the explicit flag; fall back to incorp-year heuristic
   const taxYearVal = filing.tax_year != null ? Number(filing.tax_year) : taxYear;
   const incorpYear = filing.date_of_incorporation
     ? new Date(`${filing.date_of_incorporation}T12:00:00`).getFullYear()
     : 0;
   const isInitial  = filing.initial_return ?? (incorpYear > 0 && incorpYear === taxYearVal);
   checkBox(doc, F.INITIAL_RETURN_YES,        isInitial);
-  // 2 — foreign person owns ≥ 50 %: always true for a foreign-owned US DE LLC
   checkBox(doc, F.FOREIGN_OWNS_50PCT,        true);
-  // 3 — reporting corp is a foreign-owned US disregarded entity: always true
   checkBox(doc, F.CORP_IS_FOREIGN_OWNED_DE,  true);
 
-  // ── Part II — 25 % Foreign Shareholder ───────────────────────────────────
+  // ── Part II — 25 % Foreign Shareholder ───────────────────────────────────────────
   setText(doc, F.SHAREHOLDER_NAME,                filing.owner_full_name ?? '');
   setText(doc, F.SHAREHOLDER_US_TIN,              filing.owner_us_tin ?? '');
   setText(doc, F.SHAREHOLDER_REFERENCE_ID,        filing.owner_reference_id ?? '');
   setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         filing.owner_foreign_tax_id ?? '');
-  // Country where the shareholder conducts business (owner_primary_country is the
-  // country they operate from, which matches "country where business is conducted").
   setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS,    filing.owner_primary_country ?? filing.owner_country_residence ?? '');
   setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, filing.owner_country_citizenship ?? '');
   setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,    filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
-  // ── Part III — Related Party ──────────────────────────────────────────────
-  // For a single-member LLC the related party IS the 25 % foreign shareholder.
+  // ── Part III — Related Party ──────────────────────────────────────────────────────
   checkBox(doc, F.RP_IS_FOREIGN_PERSON, true);
   checkBox(doc, F.RP_IS_US_PERSON,      false);
 
@@ -369,9 +357,6 @@ const fill5472 = async (
   setText(doc, F.RP_RESIDENT_COUNTRY,  filing.owner_resident_country ?? filing.owner_country_residence ?? '');
 
   // 8e — Relationship checkboxes
-  // rp_is_both   = tick "both 25% shareholder AND related to another 25% shareholder"
-  // rp_is_related_only = tick "related to 25% shareholder but not the shareholder itself"
-  // default      = related party IS the 25% foreign shareholder (most common for SMLLC)
   if (filing.rp_is_both) {
     checkBox(doc, F.RP_RELATED_TO_CORP,        true);
     checkBox(doc, F.RP_RELATED_TO_SHAREHOLDER, true);
@@ -381,15 +366,13 @@ const fill5472 = async (
     checkBox(doc, F.RP_RELATED_TO_SHAREHOLDER, true);
     checkBox(doc, F.RP_IS_25PCT_SHAREHOLDER,   false);
   } else {
-    // Default: the RP is the sole 25% foreign shareholder
     checkBox(doc, F.RP_RELATED_TO_CORP,        false);
     checkBox(doc, F.RP_RELATED_TO_SHAREHOLDER, false);
     checkBox(doc, F.RP_IS_25PCT_SHAREHOLDER,   true);
   }
 
-  // ── Part IV — Monetary Transactions ──────────────────────────────────────
+  // ── Part IV — Monetary Transactions ──────────────────────────────────────────────
   if (txn.hasPartIV) {
-    // Received (lines 9–22)
     setText(doc, F.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F.LINE_13A_RENTS_RECEIVED,         fmt(txn.rents_received));
@@ -404,7 +387,6 @@ const fill5472 = async (
     setText(doc, F.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
     setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
     setText(doc, F.LINE_22_TOTAL_RECEIVED,          fmt(totalReceived(txn)));
-    // Paid (lines 23–36)
     setText(doc, F.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
     setText(doc, F.LINE_27A_RENTS_PAID,             fmt(txn.rents_paid));
@@ -421,7 +403,7 @@ const fill5472 = async (
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(totalPaid(txn)));
   }
 
-  // ── Part V — Non-monetary / distributions ────────────────────────────────
+  // ── Part V — Non-monetary / distributions ───────────────────────────────────────
   if (txn.hasPartV) {
     checkBox(doc, F.PART_V_CHECKBOX, true);
   }
@@ -429,7 +411,7 @@ const fill5472 = async (
   return doc;
 };
 
-// ─── Pro Forma 1120 filler ─────────────────────────────────────────────────────
+// ─── Pro Forma 1120 filler ──────────────────────────────────────────────────────────────────────────
 
 const fill1120 = async (
   filing: Filing,
@@ -444,7 +426,7 @@ const fill1120 = async (
   const periodEnd   = resolvePeriodEnd(filing);
   const [, , peY]   = periodEnd.split('/');
 
-  // ── Entity header ─────────────────────────────────────────────────────────
+  // ── Entity header ────────────────────────────────────────────────────────────────
   setText(doc, F.CORP_NAME,         filing.llc_name ?? '');
   setText(doc, F.EIN,               filing.ein ?? '');
   setText(doc, F.TOTAL_ASSETS,      fmt(filing.total_assets));
@@ -456,17 +438,17 @@ const fill1120 = async (
   setText(doc, F.CORP_ADDRESS,        buildStreet(filing));       // combined (2019–2024)
   setText(doc, F.CORP_CITY_STATE_ZIP, buildCityStateZip(filing)); // combined (2019–2024)
   setText(doc, F.CORP_ADDRESS_LINE1,  buildStreet(filing));       // split (fallback / 2025)
-  setText(doc, F.CORP_CITY,           filing.mailing_address?.city ?? '');
-  setText(doc, F.CORP_STATE,          filing.mailing_address?.region ?? filing.state_of_formation ?? '');
-  setText(doc, F.CORP_ZIP,            filing.mailing_address?.postal_code ?? '');
-  setText(doc, F.CORP_COUNTRY,        filing.mailing_address?.country ?? 'US');
+  setText(doc, F.CORP_CITY,    filing.llc_us_address?.city  ?? '');
+  setText(doc, F.CORP_STATE,   filing.llc_us_address?.state ?? filing.state_of_formation ?? '');
+  setText(doc, F.CORP_ZIP,     filing.llc_us_address?.zip   ?? '');
+  setText(doc, F.CORP_COUNTRY, filing.llc_us_address?.country ?? 'US');
 
-  // ── Tax period ─────────────────────────────────────────────────────────────
+  // ── Tax period ─────────────────────────────────────────────────────────────────────
   setText(doc, F.BEGINNING_DATE, periodBegin);
   setText(doc, F.ENDING_DATE,    periodEnd);
   setText(doc, F.ENDING_YEAR,    peY ?? '');
 
-  // ── Checkboxes ─────────────────────────────────────────────────────────────
+  // ── Checkboxes ─────────────────────────────────────────────────────────────────────
   const taxYearVal = filing.tax_year != null ? Number(filing.tax_year) : taxYear;
   const incorpYear = filing.date_of_incorporation
     ? new Date(`${filing.date_of_incorporation}T12:00:00`).getFullYear()
@@ -476,21 +458,16 @@ const fill1120 = async (
   checkBox(doc, F.NAME_CHANGE,     filing.name_change    ?? false);
   checkBox(doc, F.ADDRESS_CHANGE,  filing.address_change ?? false);
 
-  // ── Signature block ────────────────────────────────────────────────────────
-  // The Pro Forma 1120 signature block is typically left unsigned (the
-  // preparer / filer signs the physical copy). We populate the name and
-  // title fields so the downloaded PDF is ready to sign.
+  // ── Signature block ────────────────────────────────────────────────────────────────
   setText(doc, F.SIGNATURE, filing.owner_full_name ?? '');
   setText(doc, F.TITLE,     filing.signer_title ?? 'Managing Member');
 
-  // Pro Forma 1120 is header-only — income/expense lines are intentionally
-  // left blank per IRS instructions for the 5472 attachment package.
   void txns;
 
   return doc;
 };
 
-// ─── public entry point ───────────────────────────────────────────────────────
+// ─── public entry point ────────────────────────────────────────────────────────────────────────────
 
 export interface FilingPackage {
   form5472: Uint8Array;
