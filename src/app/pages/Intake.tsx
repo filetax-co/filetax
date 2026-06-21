@@ -51,12 +51,6 @@ const US_STATES: { value: string; label: string }[] = [
   { value: 'KY', label: 'Kentucky' },
   { value: 'LA', label: 'Louisiana' },
   { value: 'ME', label: 'Maine' },
-  { value: 'MD', label: 'Maryland' },
-  { value: 'MA', label: 'Massachusetts' },
-  { value: 'MI', label: 'Michigan' },
-  { value: 'MN', label: 'Minnesota' },
-  { value: 'MS', label: 'Mississippi' },
-  { value: 'MO', label: 'Missouri' },
   { value: 'MT', label: 'Montana' },
   { value: 'NE', label: 'Nebraska' },
   { value: 'NV', label: 'Nevada' },
@@ -84,6 +78,12 @@ const US_STATES: { value: string; label: string }[] = [
   { value: 'WI', label: 'Wisconsin' },
   { value: 'WY', label: 'Wyoming' },
   { value: 'PR', label: 'Puerto Rico' },
+  { value: 'MD', label: 'Maryland' },
+  { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' },
+  { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' },
+  { value: 'MO', label: 'Missouri' },
 ];
 
 // Countries (US first, then alphabetical)
@@ -759,6 +759,23 @@ export function Intake() {
           font-weight: 800;
           line-height: 1;
           flex-shrink: 0;
+        }
+
+        /* ── Stepper dark mode ──────────────────────────────── */
+        @media (prefers-color-scheme: dark) {
+          .stepper-track {
+            background: rgba(255, 255, 255, 0.10);
+          }
+          .stepper-pill--done {
+            background: rgba(255, 255, 255, 0.12);
+            color: #7dd3fc;
+          }
+          .stepper-pill--done:hover {
+            background: rgba(255, 255, 255, 0.18);
+          }
+          .stepper-check {
+            background: #0ea5e9;
+          }
         }
       `}</style>
 
