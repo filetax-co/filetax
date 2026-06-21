@@ -290,8 +290,13 @@ export default function FilingWizard() {
         .eq('filing_id', filingId);
       if (txErr2) throw txErr2;
 
+      // Guard: require at least one transaction before generating
+      if (!txns || txns.length === 0) {
+        throw new Error('No transactions found. Please add at least one reportable transaction before generating.');
+      }
+
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
-      const pkg = await generateFilingPackage(fi, txns ?? []);
+      const pkg = await generateFilingPackage(fi, txns);
 
       // Download the single combined PDF (1120 + 5472 + statement_partV if applicable + statement_partVI always)
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
@@ -299,8 +304,13 @@ export default function FilingWizard() {
       const a    = document.createElement('a');
       a.href     = url;
       a.download = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
+      // Append to DOM so Firefox triggers the download correctly, then remove.
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Defer revocation — browsers fetch the blob asynchronously after click().
+      // Revoking immediately can abort the download on Chrome mobile and Firefox.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
