@@ -265,12 +265,12 @@ export default function FilingWizard() {
   // ── step 4: generate PDF ──────────────────────────────────────────────────
   //
   // Generates the complete filing package and downloads a single combined PDF:
-  //   Pro Forma 1120 → Form 5472 → Part V statement (if applicable) → Part VI statement
+  //   Pro Forma 1120 → Form 5472 → statement_partV (if hasPartV) → statement_partVI (always)
   //
-  // Part VI is always included (managerial services FMV disclosure).
-  // Part V is included only when distributions, contributions, dividends,
+  // statement_partVI is always included (managerial services FMV disclosure).
+  // statement_partV is included only when distributions, contributions, dividends,
   // or formation-cost payments are present.
-  // property_transfer and nonmonetary_other are disclosed in Part VI only.
+  // property_transfer and nonmonetary_other are disclosed in statement_partVI only.
 
   const handleGenerate = async () => {
     if (!filingId || !filing) return;
@@ -293,7 +293,7 @@ export default function FilingWizard() {
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
       const pkg = await generateFilingPackage(fi, txns ?? []);
 
-      // Download the single combined PDF (1120 + 5472 + Part V if applicable + Part VI always)
+      // Download the single combined PDF (1120 + 5472 + statement_partV if applicable + statement_partVI always)
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
