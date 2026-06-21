@@ -251,6 +251,15 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       case 'other':
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         t.hasPartIV = true; break;
+      // ── Part V / Part VI narrative-only types ──────────────────────────────────
+      // These transactions are described in an attached statement; they have no
+      // determinable FMV to report on AcroForm Part IV lines (per IRS instructions
+      // for Form 5472). No dollar amount is accumulated, but hasPartV must be set
+      // so the Part V checkbox is ticked and the statement attachment is triggered.
+      case 'formation_costs':
+      case 'property_transfer':
+      case 'nonmonetary_other':
+        t.hasPartV = true; break;
       default:
         break;
     }
