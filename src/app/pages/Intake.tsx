@@ -32,7 +32,7 @@ type RelatedParty = {
   id?: string;
   name: string;
   ref_number: string;
-  country: string;           // principal country of business
+  country: string;
   country_residence: string;
   country_citizenship: string;
   foreign_tax_id: string;
@@ -43,17 +43,16 @@ type RelatedParty = {
 
 type TransactionRow = {
   id?: string;
-  related_party_index: number; // 0 = owner, 1+ = additional related parties
+  related_party_index: number;
   transaction_type: string;
   direction: 'paid' | 'received';
   amount_usd: string;
   description: string;
   transaction_date: string;
-  is_royalty: boolean;
   related_party_naics?: string;
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatEIN(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 9);
@@ -370,7 +369,7 @@ export function Intake() {
 
   // ── Step 2: Primary owner ──────────────────────────────────────────────────
   const [ownerName, setOwnerName] = useState('');
-  const [ownerCountry, setOwnerCountry] = useState('');         // principal country of business
+  const [ownerCountry, setOwnerCountry] = useState('');
   const [ownerCountryRes, setOwnerCountryRes] = useState('');
   const [ownerCountryCit, setOwnerCountryCit] = useState('');
   const [ownerSSN, setOwnerSSN] = useState('');
@@ -398,13 +397,12 @@ export function Intake() {
 
   // ── Step 4: Transactions ───────────────────────────────────────────────────
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0); // 0 = owner
+  const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('tangible_purchase');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
   const [txAmt, setTxAmt] = useState('');
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState('');
-  const [txIsRoyalty, setTxIsRoyalty] = useState(false);
   const [txRpNaics, setTxRpNaics] = useState('');
 
   // ── Step 5: Extension / delay ──────────────────────────────────────────────
@@ -415,8 +413,6 @@ export function Intake() {
   const today = new Date();
   const filingTiming = getFilingTimingStatus(taxYear, today);
 
-  // Build the full list of parties for transaction linking:
-  // index 0 = primary owner, index 1+ = additional related parties
   const allPartyLabels = [
     ownerName || 'Primary owner',
     ...relatedParties.map((rp, i) => rp.name || `Related party ${i + 1}`),
@@ -495,7 +491,6 @@ export function Intake() {
             amount_usd: String(t.amount_usd ?? ''),
             description: t.description ?? '',
             transaction_date: t.transaction_date ?? '',
-            is_royalty: t.is_royalty ?? false,
             related_party_naics: (t as any).related_party_naics ?? '',
           })),
         );
@@ -549,65 +544,53 @@ export function Intake() {
 
   // ── Save / navigation ─────────────────────────────────────────────────────
   const saveStep = async (): Promise<string | null> => {
-  setSaving(true);
-  setError(null);
+    setSaving(true);
+    setError(null);
 
-  try {
-    const patch = patchFromCurrentStep();
-    console.log('saveStep:start', { step, filingId, patch });
+    try {
+      const patch = patchFromCurrentStep();
 
-    if (!filingId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      if (!filingId) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) throw new Error('Not signed in');
+        if (!user) throw new Error('Not signed in');
 
-      const { data, error: err } = await supabase
-        .from('filings')
-        .insert({ ...patch, user_id: user.id })
-        .select('id')
-        .single();
+        const { data, error: err } = await supabase
+          .from('filings')
+          .insert({ ...patch, user_id: user.id })
+          .select('id')
+          .single();
 
-      if (err) {
-        console.error('saveStep:insert error', err, patch);
-        throw err;
+        if (err) throw err;
+
+        const newId = data.id as string;
+        setLocalFilingId(newId);
+        navigate(`?filing_id=${newId}&step=${step + 1}`, { replace: true });
+        return newId;
       }
 
-      const newId = data.id as string;
-      console.log('saveStep:insert success', { newId });
+      const { error: err } = await supabase
+        .from('filings')
+        .update(patch)
+        .eq('id', filingId);
 
-      setLocalFilingId(newId);
-      navigate(`?filing_id=${newId}&step=${step + 1}`, { replace: true });
-      return newId;
+      if (err) throw err;
+      return filingId;
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : typeof e === 'string'
+            ? e
+            : JSON.stringify(e)
+      );
+      return null;
+    } finally {
+      setSaving(false);
     }
-
-    const { error: err } = await supabase
-      .from('filings')
-      .update(patch)
-      .eq('id', filingId);
-
-    if (err) {
-      console.error('saveStep:update error', err, patch);
-      throw err;
-    }
-
-    console.log('saveStep:update success', { filingId, patch });
-    return filingId;
-  } catch (e: unknown) {
-    console.error('saveStep failed', e);
-    setError(
-      e instanceof Error
-        ? e.message
-        : typeof e === 'string'
-          ? e
-          : JSON.stringify(e)
-    );
-    return null;
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const saveTransactions = async (): Promise<boolean> => {
     if (!filingId) return false;
@@ -626,7 +609,6 @@ export function Intake() {
           amount_usd: Number(t.amount_usd),
           description: t.description || null,
           transaction_date: t.transaction_date || null,
-          is_royalty: t.is_royalty,
           related_party_naics: t.related_party_naics || null,
         }));
 
@@ -641,7 +623,6 @@ export function Intake() {
           amount_usd: Number(t.amount_usd),
           description: t.description || null,
           transaction_date: t.transaction_date || null,
-          is_royalty: t.is_royalty,
           related_party_naics: t.related_party_naics || null,
         }));
 
@@ -702,14 +683,12 @@ export function Intake() {
         amount_usd: txAmt,
         description: txDesc,
         transaction_date: txDate,
-        is_royalty: txIsRoyalty,
         related_party_naics: txRpNaics,
       },
     ]);
     setTxAmt('');
     setTxDesc('');
     setTxDate('');
-    setTxIsRoyalty(false);
     setTxRpNaics('');
   };
 
@@ -774,7 +753,6 @@ export function Intake() {
 
   const removeRp = (i: number) => {
     setRelatedParties((prev) => prev.filter((_, idx) => idx !== i));
-    // Remove orphaned transactions for this party; shift indices
     setTransactions((prev) =>
       prev
         .filter((t) => t.related_party_index !== i + 1)
@@ -1116,7 +1094,7 @@ export function Intake() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            STEP 3 — Related Party Details
+            STEP 3 — Additional Related Parties
         ══════════════════════════════════════════════════════════════════ */}
         {step === 3 && (
           <div>
@@ -1126,7 +1104,6 @@ export function Intake() {
               The primary owner (added in Step 2) is always included. Add any other foreign-related parties here.
             </p>
 
-            {/* Existing related parties list */}
             {relatedParties.length > 0 && (
               <section style={sectionStyle}>
                 <h3 style={sectionLabelStyle}>Additional related parties ({relatedParties.length})</h3>
@@ -1170,7 +1147,6 @@ export function Intake() {
               </section>
             )}
 
-            {/* Add / edit form */}
             {showRpForm ? (
               <section style={{ ...sectionStyle, background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem' }}>
                 <h3 style={sectionLabelStyle}>{editingRpIdx !== null ? 'Edit related party' : 'Add related party'}</h3>
@@ -1296,7 +1272,6 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>Add a transaction</h3>
               <div style={gridStyle}>
 
-                {/* Related party selector (owner + additional) */}
                 <Field label="Related party" style={{ gridColumn: '1 / -1' }}>
                   <select
                     value={txRelatedPartyIdx}
@@ -1311,12 +1286,8 @@ export function Intake() {
                 <Field label="Type">
                   <select
                     value={txType}
-                    onChange={(e) => {
-                      setTxType(e.target.value);
-                      setTxIsRoyalty(false);
-                    }}
+                    onChange={(e) => setTxType(e.target.value)}
                   >
-                    {/* Group by Part */}
                     {(['IV', 'V', 'VI'] as const).map((part) => (
                       <optgroup key={part} label={`Part ${part}`}>
                         {TX_TYPES.filter((t) => t.part === part).map((t) => (
@@ -1356,18 +1327,6 @@ export function Intake() {
                   <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
                 </Field>
 
-                {ROYALTY_TYPES.has(txType) && (
-                  <Field label="Subtype">
-                    <select
-                      value={txIsRoyalty ? 'royalty' : 'rent'}
-                      onChange={(e) => setTxIsRoyalty(e.target.value === 'royalty')}
-                    >
-                      <option value="rent">Rent</option>
-                      <option value="royalty">Royalty</option>
-                    </select>
-                  </Field>
-                )}
-
                 <Field label="Related-party NAICS" hint="Type of business of the related party" style={{ gridColumn: '1 / -1' }}>
                   <select value={txRpNaics} onChange={(e) => setTxRpNaics(e.target.value)}>
                     <option value="">— Select NAICS (optional) —</option>
@@ -1389,7 +1348,6 @@ export function Intake() {
                 </Field>
               </div>
 
-              {/* Category warning */}
               {txCategory === 2 && (
                 <div style={{ ...infoBoxStyle, borderColor: '#fbbf24', color: '#92400e', background: '#fffbeb', marginTop: '0.875rem' }}>
                   <strong>Heads up:</strong> This transaction type may require the owner to file a US personal tax return. A CPA review is recommended.
@@ -1411,7 +1369,6 @@ export function Intake() {
               </button>
             </section>
 
-            {/* Transaction list */}
             {transactions.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.5rem' }}>
                 {transactions.map((tx, i) => (
@@ -1439,9 +1396,6 @@ export function Intake() {
                         <span style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.75rem', alignSelf: 'center' }}>
                           {tx.direction === 'received' ? 'received' : 'paid'}
                         </span>
-                      )}
-                      {tx.is_royalty && (
-                        <span style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.75rem', alignSelf: 'center' }}>royalty</span>
                       )}
                       {tx.related_party_naics && tx.related_party_naics !== '__manual__' && (
                         <span style={{ fontSize: '0.72rem', color: '#0284c7', background: '#e0f2fe', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', alignSelf: 'center' }}>
@@ -1530,7 +1484,7 @@ export function Intake() {
               </div>
             )}
 
-            {/* ── LLC ────────────────────────────────────────────────────── */}
+            {/* ── LLC ──────────────────────────────────────────────────── */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>LLC</h3>
               <div style={reviewGridStyle}>
@@ -1551,7 +1505,7 @@ export function Intake() {
               </div>
             </section>
 
-            {/* ── Primary owner ───────────────────────────────────────────── */}
+            {/* ── Primary owner ─────────────────────────────────────────── */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Primary owner</h3>
               <div style={reviewGridStyle}>
@@ -1577,7 +1531,7 @@ export function Intake() {
               </div>
             </section>
 
-            {/* ── Additional related parties ───────────────────────────────── */}
+            {/* ── Additional related parties ────────────────────────────── */}
             {relatedParties.length > 0 && (
               <section style={sectionStyle}>
                 <h3 style={sectionLabelStyle}>Additional related parties ({relatedParties.length})</h3>
@@ -1608,7 +1562,7 @@ export function Intake() {
               </section>
             )}
 
-            {/* ── Transactions ─────────────────────────────────────────────── */}
+            {/* ── Transactions ─────────────────────────────────────────── */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Transactions ({transactions.length})</h3>
               {transactions.length === 0 ? (
@@ -1644,9 +1598,6 @@ export function Intake() {
                         )}
                         <SummaryRow label="Date" value={tx.transaction_date} />
                         <SummaryRow label="Description" value={tx.description} />
-                        {ROYALTY_TYPES.has(tx.transaction_type) && (
-                          <SummaryRow label="Subtype" value={tx.is_royalty ? 'Royalty' : 'Rent'} />
-                        )}
                         <SummaryRow
                           label="Related-party NAICS"
                           value={tx.related_party_naics === '__manual__' ? 'Manual entry' : tx.related_party_naics}
