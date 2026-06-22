@@ -82,6 +82,10 @@ function buildRelatedPartyRef(name: string, index: number): string {
   return prefix ? `${prefix}${suffix}` : '';
 }
 
+function isUSCountry(value?: string | null): boolean {
+  return ['US', 'USA', 'United States', 'United States of America'].includes(value ?? '');
+}
+
 export function Intake() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -1096,6 +1100,22 @@ export function Intake() {
                 <SummaryRow label="Tax year" value={taxYear} />
                 <SummaryRow label="Business activity" value={resolveBizActivityLabel(entityBizActivity)} />
                 <SummaryRow label="Activity code" value={entityBizCode} />
+                <SummaryRow label="Mailing street 1" value={mailing.line1} />
+                <SummaryRow label="Mailing street 2" value={mailing.line2} />
+                <SummaryRow label="Mailing city" value={mailing.city} />
+                <SummaryRow
+                  label="Mailing state / region"
+                  value={
+                    isUSCountry(mailing.country)
+                      ? US_STATES.find((s) => s.value === mailing.region)?.label ?? mailing.region
+                      : mailing.region
+                  }
+                />
+                <SummaryRow label="Mailing postal code" value={mailing.postal_code} />
+                <SummaryRow
+                  label="Mailing country"
+                  value={COUNTRIES.find((c) => c.value === mailing.country)?.label ?? mailing.country}
+                />
               </div>
             </section>
 
@@ -1108,7 +1128,7 @@ export function Intake() {
                   value={COUNTRIES.find((c) => c.value === ownerCountry)?.label ?? ownerCountry}
                 />
                 <SummaryRow
-                  label="Country of res."
+                  label="Country of residence"
                   value={COUNTRIES.find((c) => c.value === ownerCountryRes)?.label ?? ownerCountryRes}
                 />
                 <SummaryRow
@@ -1121,6 +1141,22 @@ export function Intake() {
                 <SummaryRow label="Signer title" value={signerTitle} />
                 <SummaryRow label="Business activity" value={resolveBizActivityLabel(ownerBizActivity)} />
                 <SummaryRow label="Activity code" value={ownerBizCode} />
+                <SummaryRow label="Owner street 1" value={ownerAddress.line1} />
+                <SummaryRow label="Owner street 2" value={ownerAddress.line2} />
+                <SummaryRow label="Owner city" value={ownerAddress.city} />
+                <SummaryRow
+                  label="Owner state / region"
+                  value={
+                    isUSCountry(ownerAddress.country)
+                      ? US_STATES.find((s) => s.value === ownerAddress.region)?.label ?? ownerAddress.region
+                      : ownerAddress.region
+                  }
+                />
+                <SummaryRow label="Owner postal code" value={ownerAddress.postal_code} />
+                <SummaryRow
+                  label="Owner address country"
+                  value={COUNTRIES.find((c) => c.value === ownerAddress.country)?.label ?? ownerAddress.country}
+                />
               </div>
             </section>
 
@@ -1131,38 +1167,59 @@ export function Intake() {
                   No transactions added yet.
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {transactions.map((tx, i) => (
                     <div
                       key={i}
                       style={{
-                        display: 'flex',
-                        gap: '0.75rem',
-                        alignItems: 'center',
-                        padding: '0.5rem 0.875rem',
                         background: 'var(--tf-surface, #fff)',
                         border: '1px solid var(--tf-border, #e5e7eb)',
                         borderRadius: '0.5rem',
-                        fontSize: '0.875rem',
+                        padding: '0.875rem 1rem',
                       }}
                     >
-                      <span style={{ flex: 1, fontWeight: 500 }}>
-                        {TX_TYPES.find((t) => t.value === tx.transaction_type)?.label ?? tx.transaction_type}
-                      </span>
-                      {tx.related_party_naics && tx.related_party_naics !== '__manual__' && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--tf-text-muted, #6b7280)' }}>
-                          NAICS {tx.related_party_naics}
-                        </span>
-                      )}
-                      <span
+                      <div
                         style={{
-                          fontWeight: 700,
-                          fontVariantNumeric: 'tabular-nums',
-                          color: '#0284c7',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          alignItems: 'center',
+                          marginBottom: '0.75rem',
                         }}
                       >
-                        ${Number(tx.amount_usd).toLocaleString()}
-                      </span>
+                        <span style={{ fontWeight: 700 }}>
+                          {TX_TYPES.find((t) => t.value === tx.transaction_type)?.label ?? tx.transaction_type}
+                        </span>
+
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: '#0284c7',
+                          }}
+                        >
+                          ${Number(tx.amount_usd || 0).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div style={reviewGridStyle}>
+                        {!LOAN_TYPES.has(tx.transaction_type) && (
+                          <SummaryRow
+                            label="Direction"
+                            value={tx.direction === 'received' ? 'LLC received' : 'LLC paid'}
+                          />
+                        )}
+                        <SummaryRow label="Date" value={tx.transaction_date} />
+                        <SummaryRow label="Description" value={tx.description} />
+                        <SummaryRow
+                          label="Subtype"
+                          value={ROYALTY_TYPES.has(tx.transaction_type) ? (tx.is_royalty ? 'Royalty' : 'Rent') : '—'}
+                        />
+                        <SummaryRow
+                          label="Related-party NAICS"
+                          value={tx.related_party_naics === '__manual__' ? 'Manual entry' : tx.related_party_naics}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1241,6 +1298,8 @@ function AddressFields({
 }) {
   const set = (k: keyof Address, v: string) => onChange({ ...value, [k]: v });
 
+  const isUSAddress = isUSCountry(value.country);
+
   return (
     <div
       style={{
@@ -1274,11 +1333,25 @@ function AddressFields({
       </Field>
 
       <Field label="State / Region">
-        <input
-          placeholder="State / Region"
-          value={value.region ?? ''}
-          onChange={(e) => set('region', e.target.value)}
-        />
+        {isUSAddress ? (
+          <select
+            value={value.region ?? ''}
+            onChange={(e) => set('region', e.target.value)}
+          >
+            <option value="">— Select state —</option>
+            {US_STATES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            placeholder="State / Region"
+            value={value.region ?? ''}
+            onChange={(e) => set('region', e.target.value)}
+          />
+        )}
       </Field>
 
       <Field label="Postal code">
@@ -1290,11 +1363,27 @@ function AddressFields({
       </Field>
 
       <Field label="Country">
-        <input
-          placeholder="Country"
+        <select
           value={value.country ?? ''}
-          onChange={(e) => set('country', e.target.value)}
-        />
+          onChange={(e) => {
+            const nextCountry = e.target.value;
+            const wasUS = isUSCountry(value.country);
+            const nextIsUS = isUSCountry(nextCountry);
+
+            onChange({
+              ...value,
+              country: nextCountry,
+              region: wasUS !== nextIsUS ? '' : value.region,
+            });
+          }}
+        >
+          <option value="">— Select country —</option>
+          {COUNTRIES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
       </Field>
     </div>
   );
