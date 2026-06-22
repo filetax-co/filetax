@@ -6,16 +6,22 @@ import type { Filing } from '../../lib/supabase';
 import {
   BIZ_ACTIVITIES,
   COUNTRIES,
+  DIRECTION_TYPES,
   FILING_DUE_DATES,
   LOAN_TYPES,
+  PART_V_TYPES,
   PART_VI_TYPES,
+  REASONABLE_CAUSE_REASONS,
   RP_NAICS,
   STEP_LABELS,
   TAX_YEARS,
+  TX_CATEGORIES,
   TX_TYPES,
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type Address = {
   line1?: string;
@@ -49,15 +55,7 @@ type TransactionRow = {
   related_party_naics?: string;
 };
 
-type TxUiGroup = {
-  label: string;
-  items: Array<{
-    value: string;
-    label: string;
-    category: number;
-    part?: string;
-  }>;
-};
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatEIN(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 9);
@@ -70,7 +68,7 @@ function isValidEIN(val: string): boolean {
 }
 
 function isUSCountry(value?: string | null): boolean {
-  return value === 'US';
+  return value === 'US' || value === 'United States';
 }
 
 function buildOwnerRef(name: string): string {
@@ -114,97 +112,24 @@ function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   return true;
 }
 
-function classifyTxLabel(label: string): number {
-  const text = label.toLowerCase();
-  if (
-    text.includes('cost sharing') ||
-    text.includes('platform contribution') ||
-    text.includes('intangible') ||
-    text.includes('insurance') ||
-    text.includes('reinsurance') ||
-    text.includes('guarantee') ||
-    text.includes('other amounts') ||
-    text.includes('other amount')
-  ) {
-    return 3;
-  }
-  if (
-    text.includes('service') ||
-    text.includes('technical') ||
-    text.includes('managerial') ||
-    text.includes('engineering') ||
-    text.includes('scientific') ||
-    text.includes('commission') ||
-    text.includes('rent') ||
-    text.includes('royalt') ||
-    text.includes('interest') ||
-    text.includes('loan') ||
-    text.includes('inventory') ||
-    text.includes('stock in trade') ||
-    text.includes('sale') ||
-    text.includes('borrowed') ||
-    text.includes('amounts loaned')
-  ) {
-    return 2;
-  }
-  return 1;
+// Build the human-readable sentence for a transaction card
+function buildTxSentence(sentence: string, partyName: string, amount: string): string {
+  const partyLabel = partyName || 'the related party';
+  const amtLabel = amount && Number(amount) > 0
+    ? `USD ${Number(amount).toLocaleString()}`
+    : '';
+  return sentence
+    .replace('{party}', partyLabel)
+    .replace('{amount}', amtLabel);
 }
 
-function groupLabelForTx(label: string): string {
-  const text = label.toLowerCase();
-  if (
-    text.includes('stock in trade') ||
-    text.includes('inventory') ||
-    text.includes('tangible property') ||
-    text.includes('property')
-  ) {
-    return 'Goods and property';
-  }
-  if (
-    text.includes('service') ||
-    text.includes('technical') ||
-    text.includes('managerial') ||
-    text.includes('engineering') ||
-    text.includes('scientific') ||
-    text.includes('commission')
-  ) {
-    return 'Services and commissions';
-  }
-  if (text.includes('rent') || text.includes('royalt') || text.includes('interest')) {
-    return 'Rent, royalty, and interest';
-  }
-  if (text.includes('loan') || text.includes('borrowed') || text.includes('amounts loaned')) {
-    return 'Loans';
-  }
-  return 'Special or complex items';
+// ── Ordered step list — 1b is conditional ─────────────────────────────────
+function getStepOrder(show1b: boolean): IntakeStep[] {
+  if (show1b) return [1, '1b', 2, 3, 4, 5];
+  return [1, 2, 3, 4, 5];
 }
 
-function getTxCategory(meta?: { category?: number; label?: string }): number {
-  if (typeof meta?.category === 'number') return meta.category;
-  return classifyTxLabel(meta?.label ?? '');
-}
-
-function getTxMessage(category: number): { tone: 'neutral' | 'warning' | 'error'; title: string; body: string } {
-  if (category === 1) {
-    return {
-      tone: 'neutral',
-      title: 'Usually workable for self-service',
-      body: 'This is generally a simpler transaction type. Complete the details carefully and continue.',
-    };
-  }
-  if (category === 2) {
-    return {
-      tone: 'warning',
-      title: 'May need personal tax review',
-      body: 'This transaction may require owner-level US tax review. CPA review is recommended before filing.',
-    };
-  }
-  return {
-    tone: 'error',
-    title: 'CPA referral required',
-    body: 'This transaction is too technical for DIY filing and should be referred to a CPA.',
-  };
-}
+// ── Sub-components ─────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -245,40 +170,28 @@ function AddressFields({
   const isUS = isUSCountry(effectiveCountry);
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-        gap: '0.75rem',
-      }}
-    >
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
       <Field label="Street address" style={{ gridColumn: '1 / -1' }} required>
         <input placeholder="Street address" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} />
       </Field>
-
       <Field label="City" required>
         <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
       </Field>
-
       <Field label="State / Region" required>
         {isUS ? (
           <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
             <option value="">— Select state —</option>
             {US_STATES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
+              <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
         ) : (
           <input placeholder="State / Region" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
         )}
       </Field>
-
       <Field label="Postal code" required>
         <input placeholder="Postal code" value={value.postal_code ?? ''} onChange={(e) => set('postal_code', e.target.value)} />
       </Field>
-
       {!forceUS && (
         <Field label="Country" required>
           <select
@@ -287,18 +200,12 @@ function AddressFields({
               const nextCountry = e.target.value;
               const wasUS = isUSCountry(value.country);
               const nextIsUS = isUSCountry(nextCountry);
-              onChange({
-                ...value,
-                country: nextCountry,
-                region: wasUS !== nextIsUS ? '' : value.region,
-              });
+              onChange({ ...value, country: nextCountry, region: wasUS !== nextIsUS ? '' : value.region });
             }}
           >
             <option value="">— Select country —</option>
             {COUNTRIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
+              <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
         </Field>
@@ -310,134 +217,32 @@ function AddressFields({
 function SummaryRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: '0.75rem',
-          color: 'var(--tf-text-muted, #6b7280)',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-        }}
-      >
+      <div style={{ fontSize: '0.75rem', color: 'var(--tf-text-muted, #6b7280)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
         {label}
       </div>
-      <div
-        style={{
-          fontSize: '0.95rem',
-          fontWeight: 500,
-          color: value ? 'var(--tf-text, #111)' : 'var(--tf-text-muted, #9ca3af)',
-        }}
-      >
+      <div style={{ fontSize: '0.95rem', fontWeight: 500, color: value ? 'var(--tf-text, #111)' : 'var(--tf-text-muted, #9ca3af)' }}>
         {value || '—'}
       </div>
     </div>
   );
 }
 
-const stepHeadingStyle: React.CSSProperties = {
-  fontSize: '1.25rem',
-  fontWeight: 700,
-  marginBottom: '1.5rem',
-};
+// ── Style constants ────────────────────────────────────────────────────────
 
+const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
+const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '1.75rem', lineHeight: 1.55 };
 const sectionStyle: React.CSSProperties = { marginBottom: '2rem' };
+const sectionLabelStyle: React.CSSProperties = { fontSize: '0.8rem', fontWeight: 700, color: 'var(--tf-text-muted, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.875rem' };
+const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' };
+const reviewGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1rem 1.25rem' };
+const primaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.5rem', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '0.5rem', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' };
+const secondaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.25rem', background: 'transparent', color: 'var(--tf-text, #111)', border: '1px solid var(--tf-border, #d1d5db)', borderRadius: '0.5rem', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' };
+const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'flex-start', padding: '0.4375rem 1rem', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '0.375rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' };
+const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset, #f9fafb)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.375rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.75rem' };
+const errorSummaryStyle: React.CSSProperties = { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
+const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', background: 'var(--tf-surface, #fff)', overflow: 'hidden' };
 
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: '0.8rem',
-  fontWeight: 700,
-  color: 'var(--tf-text-muted, #6b7280)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  marginBottom: '0.875rem',
-};
-
-const gridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-  gap: '1rem',
-};
-
-const reviewGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-  gap: '0.75rem',
-  background: 'var(--tf-surface, #fff)',
-  border: '1px solid var(--tf-border, #e5e7eb)',
-  borderRadius: '0.625rem',
-  padding: '1rem 1.25rem',
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '0.6rem 1.5rem',
-  background: '#0284c7',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '0.5rem',
-  fontWeight: 700,
-  fontSize: '0.95rem',
-  cursor: 'pointer',
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  padding: '0.6rem 1.25rem',
-  background: 'transparent',
-  color: 'var(--tf-text, #111)',
-  border: '1px solid var(--tf-border, #d1d5db)',
-  borderRadius: '0.5rem',
-  fontWeight: 600,
-  fontSize: '0.95rem',
-  cursor: 'pointer',
-};
-
-const addBtnStyle: React.CSSProperties = {
-  marginTop: '0.75rem',
-  alignSelf: 'flex-start',
-  padding: '0.4375rem 1rem',
-  background: '#0284c7',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '0.375rem',
-  fontWeight: 600,
-  fontSize: '0.875rem',
-  cursor: 'pointer',
-};
-
-const warningBoxStyle: React.CSSProperties = {
-  background: '#fffbeb',
-  border: '1px solid #fbbf24',
-  borderRadius: '0.5rem',
-  padding: '0.875rem 1rem',
-  fontSize: '0.875rem',
-  color: '#92400e',
-  marginBottom: '1.25rem',
-};
-
-const infoBoxStyle: React.CSSProperties = {
-  background: 'var(--tf-offset, #f9fafb)',
-  border: '1px solid var(--tf-border, #e5e7eb)',
-  borderRadius: '0.375rem',
-  padding: '0.625rem 0.875rem',
-  fontSize: '0.8125rem',
-  color: 'var(--tf-text-muted, #6b7280)',
-  marginTop: '0.75rem',
-};
-
-const errorSummaryStyle: React.CSSProperties = {
-  background: '#fef2f2',
-  color: '#991b1b',
-  border: '1px solid #fecaca',
-  borderRadius: '0.5rem',
-  padding: '0.875rem 1rem',
-  marginBottom: '1rem',
-  fontSize: '0.875rem',
-};
-
-const groupedCardStyle: React.CSSProperties = {
-  border: '1px solid var(--tf-border, #e5e7eb)',
-  borderRadius: '0.625rem',
-  background: 'var(--tf-surface, #fff)',
-  padding: '0.875rem',
-};
+// ── Main component ─────────────────────────────────────────────────────────
 
 export function Intake() {
   const navigate = useNavigate();
@@ -446,8 +251,18 @@ export function Intake() {
   const [localFilingId, setLocalFilingId] = useState<string | null>(params.get('filing_id'));
   const filingId = localFilingId ?? params.get('filing_id');
 
+  // ── Core form state ────────────────────────────────────────────────────
+
+  const [taxYear, setTaxYear] = useState('2024');
+  const today = new Date();
+  const filingTiming = getFilingTimingStatus(taxYear, today);
+  const show1b = filingTiming.originalPassed;
+  const stepOrder = getStepOrder(show1b);
+
   const [step, setStep] = useState<IntakeStep>(() => {
-    const s = Number(params.get('step'));
+    const raw = params.get('step');
+    if (raw === '1b') return '1b';
+    const s = Number(raw);
     return (s >= 1 && s <= 5 ? s : 1) as IntakeStep;
   });
 
@@ -459,10 +274,10 @@ export function Intake() {
   const [rpErrors, setRpErrors] = useState<string[]>([]);
   const [txErrors, setTxErrors] = useState<string[]>([]);
 
+  // Step 1 — LLC
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
   const [stateOfFormation, setStateOfFormation] = useState('');
-  const [taxYear, setTaxYear] = useState('2024');
   const [totalAssets, setTotalAssets] = useState('');
   const [entityDOI, setEntityDOI] = useState('');
   const [entityPrincipalCountry, setEntityPrincipalCountry] = useState('');
@@ -470,6 +285,12 @@ export function Intake() {
   const [entityBizActivity, setEntityBizActivity] = useState('');
   const [entityBizCode, setEntityBizCode] = useState('');
 
+  // Step 1b — Filing status & penalties
+  const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
+  const [includeReasonableCause, setIncludeReasonableCause] = useState(false);
+  const [reasonableCauseReasons, setReasonableCauseReasons] = useState<string[]>([]);
+
+  // Step 2 — Owner
   const [ownerName, setOwnerName] = useState('');
   const [ownerCountry, setOwnerCountry] = useState('');
   const [ownerCountryRes, setOwnerCountryRes] = useState('');
@@ -481,81 +302,76 @@ export function Intake() {
   const [ownerBizActivity, setOwnerBizActivity] = useState('');
   const [ownerBizCode, setOwnerBizCode] = useState('');
 
+  // Step 3 — Related parties
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
   const [rpDraft, setRpDraft] = useState<RelatedParty>({
-    name: '',
-    ref_number: '',
-    country: '',
-    country_residence: '',
-    country_citizenship: '',
-    foreign_tax_id: '',
-    address: {},
-    biz_activity: '',
-    biz_code: '',
+    name: '', ref_number: '', country: '', country_residence: '',
+    country_citizenship: '', foreign_tax_id: '', address: {}, biz_activity: '', biz_code: '',
   });
   const [showRpForm, setShowRpForm] = useState(false);
   const [editingRpIdx, setEditingRpIdx] = useState<number | null>(null);
 
+  // Step 4 — Transactions
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [noTransactionsConfirmed, setNoTransactionsConfirmed] = useState(false);
+
+  // Transaction add form state
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
-  const [txType, setTxType] = useState(() => TX_TYPES[0]?.value ?? '');
+  const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
   const [txAmt, setTxAmt] = useState('');
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState('');
   const [txRpNaics, setTxRpNaics] = useState('');
 
-  const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
-  const [includeReasonableCause, setIncludeReasonableCause] = useState(false);
-
-  const today = new Date();
-  const filingTiming = getFilingTimingStatus(taxYear, today);
+  // Accordion: which category is open
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const allPartyLabels = [
     ownerName || 'Primary owner',
     ...relatedParties.map((rp, i) => rp.name || `Related party ${i + 1}`),
   ];
 
-  const txTypeMeta = TX_TYPES.find((t: any) => t.value === txType);
-  const txCategory = getTxCategory(txTypeMeta as any);
-  const txMessage = getTxMessage(txCategory);
+  const selectedTxMeta = TX_TYPES.find((t) => t.value === txType);
 
-  const txUiGroups: TxUiGroup[] = useMemo(() => {
-    const buckets = new Map<string, TxUiGroup>();
-    TX_TYPES.forEach((t: any) => {
-      const label = groupLabelForTx(t.label ?? t.value ?? 'Transaction');
-      if (!buckets.has(label)) buckets.set(label, { label, items: [] });
-      buckets.get(label)!.items.push({
-        value: t.value,
-        label: t.label,
-        category: getTxCategory(t),
-        part: t.part,
-      });
-    });
-    return Array.from(buckets.values());
-  }, []);
+  // ── Step index helpers ─────────────────────────────────────────────────
 
-  useEffect(() => {
-    const currentStep = Number(params.get('step')) || 1;
-    if (currentStep !== step) {
+  const currentStepIdx = stepOrder.indexOf(step);
+
+  const goToStepByIndex = (idx: number) => {
+    const target = stepOrder[idx];
+    if (target !== undefined) {
+      setStep(target);
       const newParams = new URLSearchParams(params.toString());
-      newParams.set('step', String(step));
+      newParams.set('step', String(target));
+      if (filingId) newParams.set('filing_id', filingId);
       navigate(`?${newParams.toString()}`, { replace: true });
     }
-  }, [step, params, navigate]);
+  };
+
+  // Recalculate step order when taxYear changes (show1b may change)
+  useEffect(() => {
+    // If 1b was showing but now shouldn't be (e.g. user changed tax year to future),
+    // bump them back to step 1
+    if (step === '1b' && !show1b) {
+      setStep(1);
+    }
+  }, [show1b]);
 
   useEffect(() => {
-    if (!filingId) {
-      setLoadingFiling(false);
-      return;
-    }
+    const newParams = new URLSearchParams(params.toString());
+    newParams.set('step', String(step));
+    navigate(`?${newParams.toString()}`, { replace: true });
+  }, [step]);
+
+  // ── Load existing filing ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!filingId) { setLoadingFiling(false); return; }
     setLoadingFiling(true);
     (async () => {
       const { data: f, error: err } = await supabase.from('filings').select('*').eq('id', filingId).single();
-      if (err || !f) {
-        setLoadingFiling(false);
-        return;
-      }
+      if (err || !f) { setLoadingFiling(false); return; }
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -568,6 +384,10 @@ export function Intake() {
       setEntityBizActivity((f as any).entity_business_activity ?? '');
       setEntityBizCode((f as any).entity_business_code ?? '');
 
+      setExtensionFiled((f as any).extension_filed ?? null);
+      setIncludeReasonableCause((f as any).include_reasonable_cause ?? false);
+      setReasonableCauseReasons((f as any).reasonable_cause_reasons ?? []);
+
       setOwnerName(f.owner_full_name ?? '');
       setOwnerCountry((f as any).owner_country ?? '');
       setOwnerCountryRes(f.owner_country_residence ?? '');
@@ -579,9 +399,7 @@ export function Intake() {
       setOwnerBizActivity(f.owner_business_activity ?? '');
       setOwnerBizCode((f as any).owner_business_code ?? '');
 
-      if ((f as any).related_parties) {
-        setRelatedParties((f as any).related_parties as RelatedParty[]);
-      }
+      if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
 
       const { data: txns } = await supabase
         .from('reportable_transactions')
@@ -590,57 +408,59 @@ export function Intake() {
         .order('created_at', { ascending: true });
 
       if (txns) {
-        setTransactions(
-          txns.map((t: any) => ({
-            id: t.id,
-            related_party_index: t.related_party_index ?? 0,
-            transaction_type: t.transaction_type,
-            direction: t.direction,
-            amount_usd: String(t.amount_usd ?? ''),
-            description: t.description ?? '',
-            transaction_date: t.transaction_date ?? '',
-            related_party_naics: t.related_party_naics ?? '',
-          })),
-        );
+        setTransactions(txns.map((t: any) => ({
+          id: t.id,
+          related_party_index: t.related_party_index ?? 0,
+          transaction_type: t.transaction_type,
+          direction: t.direction,
+          amount_usd: String(t.amount_usd ?? ''),
+          description: t.description ?? '',
+          transaction_date: t.transaction_date ?? '',
+          related_party_naics: t.related_party_naics ?? '',
+        })));
       }
 
       setLoadingFiling(false);
     })();
   }, [filingId]);
 
+  // ── Patch helpers ──────────────────────────────────────────────────────
+
   function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
-    if (step === 1)
-      return {
-        llc_name: llcName.trim() || null,
-        ein: ein.trim() || null,
-        state_of_formation: stateOfFormation.trim() || null,
-        tax_year: taxYear,
-        total_assets: totalAssets ? Number(totalAssets) : null,
-        entity_date_of_incorporation: entityDOI.trim() || null,
-        entity_principal_country: entityPrincipalCountry.trim() || null,
-        mailing_address: mailing,
-        entity_business_activity: entityBizActivity.trim() || null,
-        entity_business_code: entityBizCode.trim() || null,
-      };
-    if (step === 2)
-      return {
-        owner_full_name: ownerName.trim() || null,
-        owner_country: ownerCountry.trim() || null,
-        owner_country_residence: ownerCountryRes.trim() || null,
-        owner_country_citizenship: ownerCountryCit.trim() || null,
-        owner_ssn: ownerSSN.trim() || null,
-        owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
-        owner_ref_number: ownerRefNumber.trim() || null,
-        owner_address: ownerAddress,
-        owner_business_activity: ownerBizActivity.trim() || null,
-        owner_business_code: ownerBizCode.trim() || null,
-      };
-    if (step === 3)
-      return {
-        related_parties: relatedParties,
-      };
+    if (step === 1) return {
+      llc_name: llcName.trim() || null,
+      ein: ein.trim() || null,
+      state_of_formation: stateOfFormation.trim() || null,
+      tax_year: taxYear,
+      total_assets: totalAssets ? Number(totalAssets) : null,
+      entity_date_of_incorporation: entityDOI.trim() || null,
+      entity_principal_country: entityPrincipalCountry.trim() || null,
+      mailing_address: mailing,
+      entity_business_activity: entityBizActivity.trim() || null,
+      entity_business_code: entityBizCode.trim() || null,
+    };
+    if (step === '1b') return {
+      extension_filed: extensionFiled,
+      include_reasonable_cause: includeReasonableCause,
+      reasonable_cause_reasons: reasonableCauseReasons,
+    };
+    if (step === 2) return {
+      owner_full_name: ownerName.trim() || null,
+      owner_country: ownerCountry.trim() || null,
+      owner_country_residence: ownerCountryRes.trim() || null,
+      owner_country_citizenship: ownerCountryCit.trim() || null,
+      owner_ssn: ownerSSN.trim() || null,
+      owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
+      owner_ref_number: ownerRefNumber.trim() || null,
+      owner_address: ownerAddress,
+      owner_business_activity: ownerBizActivity.trim() || null,
+      owner_business_code: ownerBizCode.trim() || null,
+    };
+    if (step === 3) return { related_parties: relatedParties };
     return {};
   }
+
+  // ── Validation ─────────────────────────────────────────────────────────
 
   const handleEinBlur = () => {
     if (ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
@@ -659,6 +479,15 @@ export function Intake() {
     if (!entityBizActivity) errs.push('Select the LLC principal business activity.');
     if (!entityBizCode.trim()) errs.push('Enter the LLC business activity code.');
     if (!isAddressComplete(mailing, true)) errs.push('Complete the LLC mailing address.');
+    return errs;
+  }
+
+  function validateStep1b(): string[] {
+    const errs: string[] = [];
+    if (extensionFiled === null) errs.push('Please confirm whether Form 7004 (extension) was filed.');
+    if (includeReasonableCause && reasonableCauseReasons.length === 0) {
+      errs.push('Select at least one reason for the reasonable cause letter.');
+    }
     return errs;
   }
 
@@ -692,10 +521,11 @@ export function Intake() {
 
   function validateTransactionDraft(): string[] {
     const errs: string[] = [];
-    if (txRelatedPartyIdx < 0 || txRelatedPartyIdx >= allPartyLabels.length) errs.push('Select a related party.');
     if (!txType) errs.push('Select a transaction type.');
-    if (!PART_VI_TYPES.has(txType)) {
-      if (!txAmt || Number(txAmt) <= 0) errs.push('Enter a valid transaction amount.');
+    const meta = TX_TYPES.find((t) => t.value === txType);
+    const isOptionalAmt = meta?.amountOptional || PART_V_TYPES.has(txType) || PART_VI_TYPES.has(txType);
+    if (!isOptionalAmt) {
+      if (!txAmt || Number(txAmt) <= 0) errs.push('Enter a valid amount in USD.');
     } else if (txAmt && Number(txAmt) < 0) {
       errs.push('Amount cannot be negative.');
     }
@@ -705,51 +535,39 @@ export function Intake() {
 
   function validateCurrentStep(): string[] {
     if (step === 1) return validateStep1();
+    if (step === '1b') return validateStep1b();
     if (step === 2) return validateStep2();
     if (step === 3) {
       if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
       return [];
     }
     if (step === 4) {
-      const errs: string[] = [];
-      if (showRpForm) errs.push('Finish or cancel the related party form before continuing.');
-      if (transactions.length === 0) errs.push('Add at least one reportable transaction before continuing.');
-      return errs;
-    }
-    if (step === 5) {
-      if (filingTiming.originalPassed && extensionFiled === null) return ['Please indicate whether Form 7004 was filed.'];
+      if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
+      if (transactions.length === 0 && !noTransactionsConfirmed) {
+        return ['Confirm that the LLC had no reportable transactions this year, or add at least one.'];
+      }
       return [];
     }
+    if (step === 5) return [];
     return [];
   }
+
+  // ── Save helpers ───────────────────────────────────────────────────────
 
   const saveStep = async (): Promise<string | null> => {
     setSaving(true);
     setError(null);
-
     try {
       const patch = patchFromCurrentStep();
-
       if (!filingId) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not signed in');
-
-        const { data, error: err } = await supabase
-          .from('filings')
-          .insert({ ...patch, user_id: user.id })
-          .select('id')
-          .single();
-
+        const { data, error: err } = await supabase.from('filings').insert({ ...patch, user_id: user.id }).select('id').single();
         if (err) throw err;
-
         const newId = data.id as string;
         setLocalFilingId(newId);
         return newId;
       }
-
       const { error: err } = await supabase.from('filings').update(patch).eq('id', filingId);
       if (err) throw err;
       return filingId;
@@ -766,47 +584,35 @@ export function Intake() {
     setError(null);
     try {
       const validTxns = transactions.filter(
-        (t) => PART_VI_TYPES.has(t.transaction_type) || (t.amount_usd && Number(t.amount_usd) > 0),
+        (t) => PART_V_TYPES.has(t.transaction_type) || PART_VI_TYPES.has(t.transaction_type) || (t.amount_usd && Number(t.amount_usd) > 0),
       );
       if (validTxns.length === 0) return true;
 
-      const toInsert = validTxns
-        .filter((t) => !t.id)
-        .map((t) => ({
-          filing_id: filingId,
-          related_party_index: t.related_party_index,
-          transaction_type: t.transaction_type,
-          direction: t.direction,
-          amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-          description: t.description || null,
-          transaction_date: t.transaction_date || null,
-          related_party_naics: t.related_party_naics || null,
-        }));
+      const toInsert = validTxns.filter((t) => !t.id).map((t) => ({
+        filing_id: filingId,
+        related_party_index: t.related_party_index,
+        transaction_type: t.transaction_type,
+        direction: t.direction,
+        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
+        description: t.description || null,
+        transaction_date: t.transaction_date || null,
+        related_party_naics: t.related_party_naics || null,
+      }));
 
-      const toUpsert = validTxns
-        .filter((t) => !!t.id)
-        .map((t) => ({
-          id: t.id!,
-          filing_id: filingId,
-          related_party_index: t.related_party_index,
-          transaction_type: t.transaction_type,
-          direction: t.direction,
-          amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-          description: t.description || null,
-          transaction_date: t.transaction_date || null,
-          related_party_naics: t.related_party_naics || null,
-        }));
+      const toUpsert = validTxns.filter((t) => !!t.id).map((t) => ({
+        id: t.id!,
+        filing_id: filingId,
+        related_party_index: t.related_party_index,
+        transaction_type: t.transaction_type,
+        direction: t.direction,
+        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
+        description: t.description || null,
+        transaction_date: t.transaction_date || null,
+        related_party_naics: t.related_party_naics || null,
+      }));
 
-      if (toInsert.length > 0) {
-        const { error: insErr } = await supabase.from('reportable_transactions').insert(toInsert);
-        if (insErr) throw insErr;
-      }
-      if (toUpsert.length > 0) {
-        const { error: upErr } = await supabase
-          .from('reportable_transactions')
-          .upsert(toUpsert, { onConflict: 'id' });
-        if (upErr) throw upErr;
-      }
+      if (toInsert.length > 0) { const { error: insErr } = await supabase.from('reportable_transactions').insert(toInsert); if (insErr) throw insErr; }
+      if (toUpsert.length > 0) { const { error: upErr } = await supabase.from('reportable_transactions').upsert(toUpsert, { onConflict: 'id' }); if (upErr) throw upErr; }
       return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save transactions');
@@ -814,89 +620,48 @@ export function Intake() {
     }
   };
 
+  // ── Navigation ─────────────────────────────────────────────────────────
+
   const handleNext = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
-    if (step === 1 && ein && !isValidEIN(ein)) {
-      setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
-    }
+    if (step === 1 && ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
     if (errs.length > 0) return;
 
-    if (step < 4) {
+    const nextIdx = currentStepIdx + 1;
+    if (nextIdx >= stepOrder.length) return;
+
+    if (step !== 4) {
       const id = await saveStep();
       if (id) {
-        const nextStep = (step + 1) as IntakeStep;
-        setStep(nextStep);
         const newParams = new URLSearchParams(params.toString());
         newParams.set('filing_id', id);
-        newParams.set('step', String(nextStep));
-        navigate(`?${newParams.toString()}`, { replace: true });
+        goToStepByIndex(nextIdx);
       }
-    } else if (step === 4) {
+    } else {
+      // Step 4: save filing + transactions
       const ensuredId = filingId ?? (await saveStep());
       if (!ensuredId) return;
       if (!filingId) setLocalFilingId(ensuredId);
       const saved = await saveTransactions();
-      if (saved) {
-        setStep(5);
-        const newParams = new URLSearchParams(params.toString());
-        newParams.set('filing_id', ensuredId);
-        newParams.set('step', '5');
-        navigate(`?${newParams.toString()}`, { replace: true });
-      }
+      if (saved) goToStepByIndex(nextIdx);
     }
   };
 
   const handleBack = () => {
     setStepErrors([]);
-    setStep((s) => Math.max(1, s - 1) as IntakeStep);
-  };
-
-  const addTransaction = () => {
-    const errs = validateTransactionDraft();
-    setTxErrors(errs);
-    if (errs.length > 0) return;
-
-    setTransactions((prev) => [
-      ...prev,
-      {
-        related_party_index: txRelatedPartyIdx,
-        transaction_type: txType,
-        direction: txDir,
-        amount_usd: txAmt,
-        description: txDesc,
-        transaction_date: txDate,
-        related_party_naics: txRpNaics,
-      },
-    ]);
-    setTxAmt('');
-    setTxDesc('');
-    setTxDate('');
-    setTxRpNaics('');
-    setTxErrors([]);
-    setStepErrors([]);
-  };
-
-  const removeTransaction = (i: number) => {
-    setTransactions((prev) => prev.filter((_, idx) => idx !== i));
+    const prevIdx = currentStepIdx - 1;
+    if (prevIdx >= 0) goToStepByIndex(prevIdx);
   };
 
   const handleSubmit = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
     if (errs.length > 0 || !filingId) return;
-
     setSaving(true);
     setError(null);
     try {
-      const { error: err } = await supabase
-        .from('filings')
-        .update({
-          status: 'in_progress',
-          extension_filed: extensionFiled,
-          include_reasonable_cause: includeReasonableCause,
-        })
-        .eq('id', filingId);
+      const { error: err } = await supabase.from('filings').update({ status: 'in_progress' }).eq('id', filingId);
       if (err) throw err;
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
@@ -906,23 +671,15 @@ export function Intake() {
     }
   };
 
+  // ── Related party form ─────────────────────────────────────────────────
+
   const openRpForm = (idx?: number) => {
     setRpErrors([]);
     if (idx !== undefined) {
       setRpDraft({ ...relatedParties[idx] });
       setEditingRpIdx(idx);
     } else {
-      setRpDraft({
-        name: '',
-        ref_number: '',
-        country: '',
-        country_residence: '',
-        country_citizenship: '',
-        foreign_tax_id: '',
-        address: {},
-        biz_activity: '',
-        biz_code: '',
-      });
+      setRpDraft({ name: '', ref_number: '', country: '', country_residence: '', country_citizenship: '', foreign_tax_id: '', address: {}, biz_activity: '', biz_code: '' });
       setEditingRpIdx(null);
     }
     setShowRpForm(true);
@@ -932,7 +689,6 @@ export function Intake() {
     const errs = validateRelatedPartyDraft(rpDraft);
     setRpErrors(errs);
     if (errs.length > 0) return;
-
     const updated = { ...rpDraft };
     if (editingRpIdx !== null) {
       setRelatedParties((prev) => prev.map((rp, i) => (i === editingRpIdx ? updated : rp)));
@@ -949,12 +705,41 @@ export function Intake() {
     setTransactions((prev) =>
       prev
         .filter((t) => t.related_party_index !== i + 1)
-        .map((t) => ({
-          ...t,
-          related_party_index: t.related_party_index > i + 1 ? t.related_party_index - 1 : t.related_party_index,
-        })),
+        .map((t) => ({ ...t, related_party_index: t.related_party_index > i + 1 ? t.related_party_index - 1 : t.related_party_index })),
     );
   };
+
+  // ── Transaction form ───────────────────────────────────────────────────
+
+  const addTransaction = () => {
+    const errs = validateTransactionDraft();
+    setTxErrors(errs);
+    if (errs.length > 0) return;
+    setTransactions((prev) => [...prev, {
+      related_party_index: txRelatedPartyIdx,
+      transaction_type: txType,
+      direction: txDir,
+      amount_usd: txAmt,
+      description: txDesc,
+      transaction_date: txDate,
+      related_party_naics: txRpNaics,
+    }]);
+    setTxAmt('');
+    setTxDesc('');
+    setTxDate('');
+    setTxRpNaics('');
+    setTxType('');
+    setOpenCategory(null);
+    setTxErrors([]);
+    setStepErrors([]);
+    setNoTransactionsConfirmed(false);
+  };
+
+  const removeTransaction = (i: number) => {
+    setTransactions((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  // ── Loading state ──────────────────────────────────────────────────────
 
   if (loadingFiling) {
     return (
@@ -963,6 +748,12 @@ export function Intake() {
       </div>
     );
   }
+
+  // ── Stepper ────────────────────────────────────────────────────────────
+
+  const visibleSteps = stepOrder;
+
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -990,76 +781,167 @@ export function Intake() {
         }
         .intake-form input::placeholder { color: var(--tf-text-muted, #9ca3af); opacity: 1; }
         .intake-form input[data-invalid="true"],
-        .intake-form select[data-invalid="true"],
-        .intake-form textarea[data-invalid="true"] {
+        .intake-form select[data-invalid="true"] {
           border-color: #dc2626;
           box-shadow: 0 0 0 3px rgba(220,38,38,0.15);
         }
         .intake-form .field-error { font-size: 0.78rem; color: #dc2626; margin-top: 0.25rem; }
         .intake-form select option { background: var(--tf-surface, #fff); color: var(--tf-text, #111); }
-        .stepper-track { display: inline-flex; align-items: center; background: #f1f5f9; border-radius: 2rem; padding: 0.25rem; gap: 0; margin-bottom: 2rem; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
-        .stepper-pill { display: flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.9rem; border-radius: 2rem; font-size: 0.8125rem; font-weight: 500; white-space: nowrap; border: none; background: transparent; transition: background 0.15s, color 0.15s; line-height: 1; }
+
+        /* Stepper */
+        .stepper-track {
+          display: inline-flex; align-items: center;
+          background: #f1f5f9; border-radius: 2rem;
+          padding: 0.25rem; gap: 0; margin-bottom: 2rem;
+          flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
+        }
+        .stepper-pill {
+          display: flex; align-items: center; gap: 0.35rem;
+          padding: 0.35rem 0.9rem; border-radius: 2rem;
+          font-size: 0.8125rem; font-weight: 500;
+          white-space: nowrap; border: none; background: transparent;
+          transition: background 0.15s, color 0.15s; line-height: 1;
+        }
         .stepper-pill--active { background: #0284c7; color: #fff; font-weight: 700; cursor: default; box-shadow: 0 1px 4px rgba(2,132,199,0.25); }
         .stepper-pill--done { background: #e0f2fe; color: #0369a1; font-weight: 600; cursor: pointer; }
         .stepper-pill--done:hover { background: #bae6fd; }
         .stepper-pill--pending { color: #94a3b8; cursor: default; opacity: 0.6; }
         .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: #0369a1; color: #fff; font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
-        .tx-choice { text-align: left; border: 1px solid var(--tf-border, #d1d5db); border-radius: 0.5rem; padding: 0.65rem 0.75rem; background: var(--tf-surface, #fff); cursor: pointer; width: 100%; }
-        .tx-choice.active { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.12); background: #f0f9ff; }
-        .tx-choice small { display: block; margin-top: 0.2rem; color: var(--tf-text-muted, #6b7280); }
+
+        /* Accordion categories */
+        .tx-cat-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0.875rem 1rem; cursor: pointer; user-select: none;
+          background: var(--tf-surface, #fff);
+          transition: background 0.12s;
+        }
+        .tx-cat-header:hover { background: #f8fafc; }
+        .tx-cat-header.is-open { background: #f0f9ff; }
+        .tx-cat-chevron {
+          width: 1.25rem; height: 1.25rem; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          color: var(--tf-text-muted, #6b7280);
+          transition: transform 0.2s;
+        }
+        .tx-cat-chevron.is-open { transform: rotate(180deg); }
+        .tx-cat-body {
+          border-top: 1px solid var(--tf-border, #e5e7eb);
+          padding: 0.875rem; background: #fafbfc;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 0.5rem;
+        }
+
+        /* Transaction type cards */
+        .tx-type-card {
+          text-align: left; border: 1px solid var(--tf-border, #d1d5db);
+          border-radius: 0.5rem; padding: 0.75rem 0.875rem;
+          background: var(--tf-surface, #fff); cursor: pointer; width: 100%;
+          transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+        }
+        .tx-type-card:hover { border-color: #93c5fd; background: #f8fafc; }
+        .tx-type-card.is-selected {
+          border-color: #0284c7;
+          box-shadow: 0 0 0 3px rgba(2,132,199,0.12);
+          background: #eff6ff;
+        }
+        .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
+        .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-text-muted, #6b7280); line-height: 1.45; }
+
+        /* Reasonable cause checkboxes */
+        .rc-reason {
+          display: flex; gap: 0.75rem; align-items: flex-start;
+          padding: 0.75rem 1rem;
+          border: 1px solid var(--tf-border, #e5e7eb);
+          border-radius: 0.5rem; cursor: pointer;
+          background: var(--tf-surface, #fff);
+          transition: border-color 0.12s, background 0.12s;
+        }
+        .rc-reason:hover { border-color: #93c5fd; background: #f8fafc; }
+        .rc-reason.is-checked { border-color: #0284c7; background: #eff6ff; }
+        .rc-reason input[type="checkbox"] {
+          width: 1.1rem !important; height: 1.1rem !important;
+          flex-shrink: 0; margin-top: 0.15rem;
+          accent-color: #0284c7;
+          padding: 0 !important; border: none !important;
+          box-shadow: none !important;
+        }
+        .rc-reason-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
+        .rc-reason-hint { font-size: 0.8rem; color: var(--tf-text-muted, #6b7280); margin-top: 0.15rem; line-height: 1.4; }
+
+        /* Confirm checkbox for zero transactions */
+        .confirm-check-row {
+          display: flex; gap: 0.75rem; align-items: flex-start;
+          padding: 1rem 1.25rem;
+          background: #fffbeb; border: 1px solid #fbbf24; border-radius: 0.5rem;
+          margin-top: 1.25rem;
+        }
+        .confirm-check-row input[type="checkbox"] {
+          width: 1.1rem !important; height: 1.1rem !important;
+          flex-shrink: 0; margin-top: 0.15rem;
+          accent-color: #d97706;
+          padding: 0 !important; border: none !important;
+          box-shadow: none !important;
+        }
+
         @media (prefers-color-scheme: dark) {
           .stepper-track { background: rgba(255,255,255,0.10); }
           .stepper-pill--done { background: rgba(255,255,255,0.12); color: #7dd3fc; }
           .stepper-pill--done:hover { background: rgba(255,255,255,0.18); }
           .stepper-check { background: #0ea5e9; }
-          .tx-choice.active { background: rgba(2,132,199,0.12); }
+          .tx-cat-header.is-open { background: rgba(2,132,199,0.12); }
+          .tx-type-card.is-selected { background: rgba(2,132,199,0.12); }
+          .rc-reason.is-checked { background: rgba(2,132,199,0.12); }
         }
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
+
+        {/* Stepper */}
         <nav aria-label="Form steps">
           <div className="stepper-track">
-            {([1, 2, 3, 4, 5] as IntakeStep[]).map((s) => {
-              const isDone = s < step;
+            {visibleSteps.map((s, idx) => {
+              const isDone = idx < currentStepIdx;
               const isActive = s === step;
-              const isPending = s > step;
+              const isPending = idx > currentStepIdx;
+              const label = STEP_LABELS[String(s)];
+              const shortLabel = s === '1b' ? 'Filing Status' : label;
               return (
                 <button
-                  key={s}
+                  key={String(s)}
                   type="button"
-                  className={[
-                    'stepper-pill',
-                    isActive ? 'stepper-pill--active' : '',
-                    isDone ? 'stepper-pill--done' : '',
-                    isPending ? 'stepper-pill--pending' : '',
-                  ].join(' ')}
-                  onClick={() => { if (isDone) setStep(s); }}
+                  className={['stepper-pill', isActive ? 'stepper-pill--active' : '', isDone ? 'stepper-pill--done' : '', isPending ? 'stepper-pill--pending' : ''].join(' ')}
+                  onClick={() => { if (isDone) goToStepByIndex(idx); }}
                   aria-current={isActive ? 'step' : undefined}
                   tabIndex={isDone ? 0 : -1}
                 >
                   {isDone && <span className="stepper-check" aria-hidden="true">✓</span>}
-                  {s}. {STEP_LABELS[s]}
+                  {typeof s === 'number' ? `${s}. ` : ''}{shortLabel}
                 </button>
               );
             })}
           </div>
         </nav>
 
-        {error && <div style={errorSummaryStyle}>{error}</div>}
+        {/* Errors */}
+        {error && (
+          <div style={errorSummaryStyle}>{error}</div>
+        )}
         {stepErrors.length > 0 && (
           <div style={errorSummaryStyle}>
             <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following before continuing:</div>
             <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
-              {stepErrors.map((msg, i) => (
-                <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>
-              ))}
+              {stepErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
             </ul>
           </div>
         )}
 
+        {/* ── Step 1: LLC Details ──────────────────────────────────────── */}
         {step === 1 && (
           <div>
-            <h2 style={stepHeadingStyle}>Step 1 — LLC Details</h2>
+            <h2 style={stepHeadingStyle}>Your LLC details</h2>
+            <p style={stepSubheadStyle}>Basic information about the US company. This goes on the pro forma 1120 and all Form 5472 filings.</p>
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
@@ -1067,7 +949,15 @@ export function Intake() {
                   <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" />
                 </Field>
                 <Field label="EIN" hint="Employer Identification Number" required>
-                  <input value={ein} onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }} onBlur={handleEinBlur} placeholder="XX-XXXXXXX" data-invalid={einErr ? 'true' : undefined} inputMode="numeric" maxLength={10} />
+                  <input
+                    value={ein}
+                    onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
+                    onBlur={handleEinBlur}
+                    placeholder="XX-XXXXXXX"
+                    data-invalid={einErr ? 'true' : undefined}
+                    inputMode="numeric"
+                    maxLength={10}
+                  />
                   {einErr && <span className="field-error">{einErr}</span>}
                 </Field>
                 <Field label="State of formation" required>
@@ -1081,13 +971,13 @@ export function Intake() {
                     {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
-                <Field label="Total assets at year end" hint="USD, as of last day of tax year">
+                <Field label="Total assets at year-end" hint="USD">
                   <input type="number" min="0" value={totalAssets} onChange={(e) => setTotalAssets(e.target.value)} placeholder="0" />
                 </Field>
                 <Field label="Date of incorporation" required>
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} />
                 </Field>
-                <Field label="Principal country where business is conducted" required>
+                <Field label="Country where business is primarily conducted" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
                     <option value="">— Select country —</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1095,21 +985,28 @@ export function Intake() {
                 </Field>
               </div>
             </section>
+
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Principal business activity</h3>
+              <h3 style={sectionLabelStyle}>What does the LLC do?</h3>
               <div style={gridStyle}>
-                <Field label="Activity" hint="What does the LLC primarily do?" required>
-                  <select value={entityBizActivity} onChange={(e) => { const value = e.target.value; const sel = BIZ_ACTIVITIES.find((a) => a.label === value); setEntityBizActivity(value); setEntityBizCode(sel ? sel.code : ''); }}>
+                <Field label="Primary business activity" required>
+                  <select value={entityBizActivity} onChange={(e) => {
+                    const value = e.target.value;
+                    const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                    setEntityBizActivity(value);
+                    setEntityBizCode(sel ? sel.code : '');
+                  }}>
                     <option value="">— Select activity —</option>
                     {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                     <option value="other">Other — enter manually below</option>
                   </select>
                 </Field>
-                <Field label="Business activity code" hint="Auto-filled or enter manually" required>
+                <Field label="Business activity code" hint="Auto-filled or enter 6-digit code" required>
                   <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="e.g. 541511" inputMode="numeric" maxLength={6} />
                 </Field>
               </div>
             </section>
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>LLC mailing address (US)</h3>
               <AddressFields value={mailing} onChange={setMailing} forceUS />
@@ -1117,16 +1014,132 @@ export function Intake() {
           </div>
         )}
 
+        {/* ── Step 1b: Filing Status & Penalties ──────────────────────── */}
+        {step === '1b' && (
+          <div>
+            <h2 style={stepHeadingStyle}>Filing status &amp; late penalties</h2>
+            <p style={stepSubheadStyle}>
+              The original due date for the {taxYear} tax year has passed.
+              {filingTiming.extendedPassed
+                ? ' Both the original and extended deadlines have now passed — this return will be filed late.'
+                : ' Answer a few quick questions so we can handle this correctly.'}
+            </p>
+
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Was an extension filed?</h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.5 }}>
+                Form 7004 is an extension request that gives the LLC an extra 6 months to file.
+                If one was filed on time, the extended deadline applies.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {[
+                  { val: true, label: 'Yes — Form 7004 was filed on time', sub: filingTiming.extendedPassed ? 'The extended deadline has also passed.' : 'The extended deadline applies.' },
+                  { val: false, label: 'No — no extension was filed', sub: 'The original deadline applied. This return is late.' },
+                ].map(({ val, label, sub }) => (
+                  <label
+                    key={String(val)}
+                    style={{
+                      display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+                      padding: '0.875rem 1rem',
+                      border: `1px solid ${extensionFiled === val ? '#0284c7' : 'var(--tf-border, #e5e7eb)'}`,
+                      borderRadius: '0.5rem', cursor: 'pointer',
+                      background: extensionFiled === val ? '#eff6ff' : 'var(--tf-surface, #fff)',
+                      transition: 'border-color 0.12s, background 0.12s',
+                    }}
+                  >
+                    <input
+                      type="radio" name="extensionFiled"
+                      checked={extensionFiled === val}
+                      onChange={() => setExtensionFiled(val)}
+                      style={{ marginTop: '0.15rem', accentColor: '#0284c7', width: '1.1rem', height: '1.1rem', flexShrink: 0, padding: 0, border: 'none', boxShadow: 'none' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{label}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.15rem' }}>{sub}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            {(extensionFiled === false || filingTiming.extendedPassed) && (
+              <section style={sectionStyle}>
+                <h3 style={sectionLabelStyle}>Penalty relief — reasonable cause letter</h3>
+                <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '1rem', lineHeight: 1.55 }}>
+                  The IRS charges a <strong>$25,000 penalty per year</strong> for late Form 5472 filings. A reasonable cause letter explains why the filing was late and asks the IRS to reduce or waive the penalty. It does not guarantee relief, but is strongly recommended for late returns.
+                </p>
+
+                <label
+                  style={{
+                    display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+                    padding: '0.875rem 1rem', marginBottom: '1.25rem',
+                    border: `1px solid ${includeReasonableCause ? '#0284c7' : 'var(--tf-border, #e5e7eb)'}`,
+                    borderRadius: '0.5rem', cursor: 'pointer',
+                    background: includeReasonableCause ? '#eff6ff' : 'var(--tf-surface, #fff)',
+                    transition: 'border-color 0.12s, background 0.12s',
+                  }}
+                >
+                  <input
+                    type="checkbox" checked={includeReasonableCause}
+                    onChange={(e) => { setIncludeReasonableCause(e.target.checked); if (!e.target.checked) setReasonableCauseReasons([]); }}
+                    style={{ marginTop: '0.15rem', accentColor: '#0284c7', width: '1.1rem', height: '1.1rem', flexShrink: 0, padding: 0, border: 'none', boxShadow: 'none' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Include a reasonable cause letter (+$200)</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.15rem' }}>Drafted by a CPA and submitted with your filing. Recommended for all late returns.</div>
+                  </div>
+                </label>
+
+                {includeReasonableCause && (
+                  <div>
+                    <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--tf-text, #111)' }}>
+                      Which of these apply to your situation? <span style={{ fontWeight: 400, color: 'var(--tf-text-muted, #6b7280)' }}>Select all that are true.</span>
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {REASONABLE_CAUSE_REASONS.map((reason) => {
+                        const isChecked = reasonableCauseReasons.includes(reason.value);
+                        return (
+                          <label
+                            key={reason.value}
+                            className={`rc-reason${isChecked ? ' is-checked' : ''}`}
+                            onClick={() => {
+                              setReasonableCauseReasons((prev) =>
+                                isChecked ? prev.filter((r) => r !== reason.value) : [...prev, reason.value],
+                              );
+                            }}
+                          >
+                            <input
+                              type="checkbox" checked={isChecked}
+                              onChange={() => {}}
+                            />
+                            <div>
+                              <div className="rc-reason-label">{reason.label}</div>
+                              <div className="rc-reason-hint">{reason.hint}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 2: Owner Details ────────────────────────────────────── */}
         {step === 2 && (
           <div>
-            <h2 style={stepHeadingStyle}>Step 2 — Foreign Owner Details</h2>
+            <h2 style={stepHeadingStyle}>Foreign owner details</h2>
+            <p style={stepSubheadStyle}>The individual or entity that owns 25% or more of this LLC. This information goes on Form 5472, Part II.</p>
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Identity</h3>
               <div style={gridStyle}>
                 <Field label="Full legal name" hint="As shown on government ID" style={{ gridColumn: '1 / -1' }} required>
                   <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="As shown on government ID" />
                 </Field>
-                <Field label="Principal country of business" hint="Country where owner primarily operates" required>
+                <Field label="Country where owner primarily does business" required>
                   <select value={ownerCountry} onChange={(e) => setOwnerCountry(e.target.value)}>
                     <option value="">— Select country —</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1144,13 +1157,13 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="US SSN" hint="If applicable">
+                <Field label="US SSN or ITIN" hint="If you have one">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX" inputMode="numeric" />
                 </Field>
-                <Field label="Foreign tax ID" hint="PAN, TIN, etc. — required" required>
+                <Field label="Foreign tax ID" hint="e.g. PAN, TIN, passport number" required>
                   <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="e.g. ABCDE1234F" />
                 </Field>
-                <Field label="Owner reference number" hint="Manually editable" required>
+                <Field label="Reference number" hint="Used internally on Form 5472" required>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. CHI001" />
                     <button type="button" style={{ ...secondaryBtnStyle, padding: '0.5rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }} onClick={() => setOwnerRefNumber(buildOwnerRef(ownerName))}>Auto-fill</button>
@@ -1158,15 +1171,22 @@ export function Intake() {
                 </Field>
               </div>
             </section>
+
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Owner address</h3>
+              <h3 style={sectionLabelStyle}>Owner's address</h3>
               <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
             </section>
+
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Principal business activity</h3>
+              <h3 style={sectionLabelStyle}>Owner's primary business activity</h3>
               <div style={gridStyle}>
-                <Field label="Activity" hint="Owner's primary business" required>
-                  <select value={ownerBizActivity} onChange={(e) => { const value = e.target.value; const sel = BIZ_ACTIVITIES.find((a) => a.label === value); setOwnerBizActivity(value); setOwnerBizCode(sel ? sel.code : ''); }}>
+                <Field label="Activity" required>
+                  <select value={ownerBizActivity} onChange={(e) => {
+                    const value = e.target.value;
+                    const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                    setOwnerBizActivity(value);
+                    setOwnerBizCode(sel ? sel.code : '');
+                  }}>
                     <option value="">— Select activity —</option>
                     {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                     <option value="other">Other — enter manually below</option>
@@ -1180,15 +1200,17 @@ export function Intake() {
           </div>
         )}
 
+        {/* ── Step 3: Related Parties ──────────────────────────────────── */}
         {step === 3 && (
           <div>
-            <h2 style={stepHeadingStyle}>Step 3 — Additional Related Parties</h2>
-            <p style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.55 }}>
-              Each additional related party that had reportable transactions with the LLC requires a separate Form 5472. The primary owner is already included from Step 2.
+            <h2 style={stepHeadingStyle}>Additional related parties</h2>
+            <p style={stepSubheadStyle}>
+              If the LLC had transactions with other related foreign entities or individuals (besides the primary owner), add them here. Each one requires a separate Form 5472. Most single-owner LLCs can skip this step.
             </p>
+
             {relatedParties.length > 0 && (
               <section style={sectionStyle}>
-                <h3 style={sectionLabelStyle}>Additional related parties ({relatedParties.length})</h3>
+                <h3 style={sectionLabelStyle}>Added so far ({relatedParties.length})</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {relatedParties.map((rp, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.5rem', fontSize: '0.875rem' }}>
@@ -1198,12 +1220,13 @@ export function Intake() {
                         {rp.ref_number && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '0.1rem 0.35rem', borderRadius: '0.25rem' }}>{rp.ref_number}</span>}
                       </div>
                       <button type="button" onClick={() => openRpForm(i)} style={{ ...secondaryBtnStyle, padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>Edit</button>
-                      <button type="button" onClick={() => removeRp(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '1.125rem', cursor: 'pointer', padding: '0 0.25rem', lineHeight: 1 }} aria-label="Remove related party">×</button>
+                      <button type="button" onClick={() => removeRp(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '1.125rem', cursor: 'pointer', padding: '0 0.25rem', lineHeight: 1 }} aria-label="Remove">×</button>
                     </div>
                   ))}
                 </div>
               </section>
             )}
+
             {showRpForm ? (
               <section style={{ ...sectionStyle, background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem' }}>
                 <h3 style={sectionLabelStyle}>{editingRpIdx !== null ? 'Edit related party' : 'Add related party'}</h3>
@@ -1217,7 +1240,7 @@ export function Intake() {
                   <Field label="Full legal name" style={{ gridColumn: '1 / -1' }} required>
                     <input value={rpDraft.name} onChange={(e) => setRpDraft((p) => ({ ...p, name: e.target.value }))} placeholder="As shown on government ID" />
                   </Field>
-                  <Field label="Principal country of business" required>
+                  <Field label="Country of business" required>
                     <select value={rpDraft.country} onChange={(e) => setRpDraft((p) => ({ ...p, country: e.target.value }))}>
                       <option value="">— Select country —</option>
                       {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1235,10 +1258,10 @@ export function Intake() {
                       {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </select>
                   </Field>
-                  <Field label="Foreign tax ID" hint="Required" required>
+                  <Field label="Foreign tax ID" required>
                     <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="e.g. ABCDE1234F" />
                   </Field>
-                  <Field label="Reference number" hint="Manually editable" required>
+                  <Field label="Reference number" required>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
                       <button type="button" style={{ ...secondaryBtnStyle, padding: '0.5rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }} onClick={() => setRpDraft((p) => ({ ...p, ref_number: buildRelatedPartyRef(p.name, editingRpIdx ?? relatedParties.length) }))}>Auto-fill</button>
@@ -1250,8 +1273,12 @@ export function Intake() {
                   <AddressFields value={rpDraft.address} onChange={(a) => setRpDraft((p) => ({ ...p, address: a }))} />
                 </div>
                 <div style={{ ...gridStyle, marginTop: '1rem' }}>
-                  <Field label="Principal business activity" required>
-                    <select value={rpDraft.biz_activity} onChange={(e) => { const value = e.target.value; const sel = BIZ_ACTIVITIES.find((a) => a.label === value); setRpDraft((p) => ({ ...p, biz_activity: value, biz_code: sel ? sel.code : p.biz_code })); }}>
+                  <Field label="Primary business activity" required>
+                    <select value={rpDraft.biz_activity} onChange={(e) => {
+                      const value = e.target.value;
+                      const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                      setRpDraft((p) => ({ ...p, biz_activity: value, biz_code: sel ? sel.code : p.biz_code }));
+                    }}>
                       <option value="">— Select activity —</option>
                       {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                       <option value="other">Other — enter manually below</option>
@@ -1262,7 +1289,7 @@ export function Intake() {
                   </Field>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                  <button type="button" onClick={saveRpDraft} style={primaryBtnStyle}>{editingRpIdx !== null ? 'Update party' : 'Add party'}</button>
+                  <button type="button" onClick={saveRpDraft} style={primaryBtnStyle}>{editingRpIdx !== null ? 'Update' : 'Add party'}</button>
                   <button type="button" onClick={() => { setShowRpForm(false); setEditingRpIdx(null); setRpErrors([]); }} style={secondaryBtnStyle}>Cancel</button>
                 </div>
               </section>
@@ -1272,119 +1299,227 @@ export function Intake() {
           </div>
         )}
 
+        {/* ── Step 4: Transactions ─────────────────────────────────────── */}
         {step === 4 && (
           <div>
-            <h2 style={stepHeadingStyle}>Step 4 — Reportable Transactions</h2>
-            <p style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.875rem', marginBottom: '1.5rem', lineHeight: 1.55 }}>
-              Select the transaction from a plain-language list first. We will then show any review note and ask for the remaining details.
+            <h2 style={stepHeadingStyle}>Reportable transactions</h2>
+            <p style={stepSubheadStyle}>
+              List every money flow between the LLC and its related parties during {taxYear}. Pick a category, then choose the specific type.
             </p>
+
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Add a transaction</h3>
-              {txErrors.length > 0 && (
-                <div style={errorSummaryStyle}>
-                  <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following:</div>
-                  <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>{txErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}</ul>
-                </div>
-              )}
-              <div style={{ ...gridStyle, marginBottom: '1rem' }}>
-                <Field label="Related party" style={{ gridColumn: '1 / -1' }} required>
-                  <select value={txRelatedPartyIdx} onChange={(e) => setTxRelatedPartyIdx(Number(e.target.value))}>
-                    {allPartyLabels.map((label, i) => <option key={i} value={i}>{label}</option>)}
-                  </select>
-                </Field>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {txUiGroups.map((group) => (
-                  <div key={group.label} style={groupedCardStyle}>
-                    <div style={{ ...sectionLabelStyle, marginBottom: '0.75rem' }}>{group.label}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.6rem' }}>
-                      {group.items.map((item) => {
-                        const msg = getTxMessage(item.category);
-                        return (
-                          <button key={item.value} type="button" className={`tx-choice ${txType === item.value ? 'active' : ''}`} onClick={() => { setTxType(item.value); setTxErrors([]); }}>
-                            <span style={{ fontWeight: 600 }}>{item.label}</span>
-                            <small>{msg.title}{item.part ? ` · Part ${item.part}` : ''}</small>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ ...infoBoxStyle, marginTop: '1rem', borderColor: txMessage.tone === 'warning' ? '#fbbf24' : txMessage.tone === 'error' ? '#fca5a5' : '#bfdbfe', background: txMessage.tone === 'warning' ? '#fffbeb' : txMessage.tone === 'error' ? '#fef2f2' : '#eff6ff', color: txMessage.tone === 'warning' ? '#92400e' : txMessage.tone === 'error' ? '#991b1b' : '#1d4ed8' }}>
-                <strong>{txMessage.title}:</strong> {txMessage.body}
-              </div>
-              <div style={{ ...gridStyle, marginTop: '1rem' }}>
-                {!LOAN_TYPES.has(txType) && (
-                  <Field label="Direction" required>
-                    <select value={txDir} onChange={(e) => setTxDir(e.target.value as 'paid' | 'received')}>
-                      <option value="received">LLC received</option>
-                      <option value="paid">LLC paid</option>
-                    </select>
-                  </Field>
-                )}
-                <Field label={LOAN_TYPES.has(txType) ? 'Closing balance (USD)' : 'Amount (USD)'} hint={PART_VI_TYPES.has(txType) ? 'Optional for Part VI' : undefined} required={!PART_VI_TYPES.has(txType)}>
-                  <input type="number" min="0" value={txAmt} onChange={(e) => setTxAmt(e.target.value)} placeholder="0" />
-                </Field>
-                <Field label="Date" hint="Optional">
-                  <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
-                </Field>
-                <Field label="Related-party NAICS" hint="Type of business of the related party" style={{ gridColumn: '1 / -1' }}>
-                  <select value={txRpNaics} onChange={(e) => setTxRpNaics(e.target.value)}>
-                    <option value="">— Select NAICS (optional) —</option>
-                    {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.code} — {n.label} ({n.hint})</option>)}
-                    <option value="__manual__">Other — enter code manually</option>
-                  </select>
-                </Field>
-                <Field label="Description" hint="Optional" style={{ gridColumn: '1 / -1' }}>
-                  <input value={txDesc} onChange={(e) => setTxDesc(e.target.value)} placeholder="Brief description" />
-                </Field>
-              </div>
-              {PART_VI_TYPES.has(txType) && <p style={infoBoxStyle}>Disclosed in <strong>Part VI statement</strong> — nonmonetary or less-than-fair-market-value transaction. Amount can be left blank if not applicable.</p>}
-              <button type="button" onClick={addTransaction} style={addBtnStyle}>Add transaction</button>
+              <h3 style={sectionLabelStyle}>Who was this transaction with?</h3>
+              <Field label="Related party" required>
+                <select value={txRelatedPartyIdx} onChange={(e) => setTxRelatedPartyIdx(Number(e.target.value))}>
+                  {allPartyLabels.map((label, i) => <option key={i} value={i}>{label}</option>)}
+                </select>
+              </Field>
             </section>
-            {transactions.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.5rem' }}>
-                {transactions.map((tx, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 0.875rem', background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.5rem', fontSize: '0.875rem' }}>
-                    <div style={{ flex: 1, display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600 }}>{TX_TYPES.find((t: any) => t.value === tx.transaction_type)?.label ?? tx.transaction_type}</span>
-                      <span style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.75rem', alignSelf: 'center' }}>{allPartyLabels[tx.related_party_index] ?? `Party ${tx.related_party_index}`}</span>
-                      {!LOAN_TYPES.has(tx.transaction_type) && <span style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.75rem', alignSelf: 'center' }}>{tx.direction === 'received' ? 'received' : 'paid'}</span>}
-                      {tx.related_party_naics && tx.related_party_naics !== '__manual__' && <span style={{ fontSize: '0.72rem', color: '#0284c7', background: '#e0f2fe', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', alignSelf: 'center' }}>NAICS {tx.related_party_naics}</span>}
-                      {tx.description && <span style={{ color: 'var(--tf-text-muted, #6b7280)' }}>{tx.description}</span>}
+
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>What kind of transaction was it?</h3>
+              {txErrors.some((e) => e.includes('transaction type')) && (
+                <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Select a transaction type below.</div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {TX_CATEGORIES.map((cat) => {
+                  const isOpen = openCategory === cat.key;
+                  const typesInCat = TX_TYPES.filter((t) => cat.values.includes(t.value));
+                  const hasSelection = typesInCat.some((t) => t.value === txType);
+
+                  return (
+                    <div key={cat.key} style={{ ...groupedCardStyle, borderColor: hasSelection ? '#0284c7' : 'var(--tf-border, #e5e7eb)' }}>
+                      <div
+                        className={`tx-cat-header${isOpen ? ' is-open' : ''}`}
+                        onClick={() => setOpenCategory(isOpen ? null : cat.key)}
+                        role="button"
+                        aria-expanded={isOpen}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text, #111)' }}>{cat.label}</span>
+                            {hasSelection && (
+                              <span style={{ fontSize: '0.72rem', background: '#0284c7', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>
+                            )}
+                            {(cat.key === 'structural' || cat.key === 'nonmonetary') && (
+                              <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 600 }}>CPA review recommended</span>
+                            )}
+                            {cat.key === 'complex' && (
+                              <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 600 }}>CPA review recommended</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{cat.description}</div>
+                        </div>
+                        <svg className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`} viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+                      </div>
+
+                      {isOpen && (
+                        <div className="tx-cat-body">
+                          {typesInCat.map((item) => {
+                            const partyName = allPartyLabels[txRelatedPartyIdx] || 'the related party';
+                            const previewSentence = item.sentence.replace('{party}', partyName).replace('{amount}', txAmt ? `USD ${Number(txAmt).toLocaleString()}` : '…');
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                                className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
+                                onClick={() => {
+                                  setTxType(item.value);
+                                  setTxErrors([]);
+                                  // Reset direction for types that don't use it
+                                  if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
+                                }}
+                              >
+                                <span className="tx-type-label">{item.label}</span>
+                                <span className="tx-type-sentence">{previewSentence}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7' }}>{tx.amount_usd ? `$${Number(tx.amount_usd).toLocaleString()}` : '—'}</span>
-                    <button type="button" onClick={() => removeTransaction(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '1.125rem', cursor: 'pointer', padding: '0 0.25rem', lineHeight: 1 }} aria-label="Remove transaction">×</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+            </section>
+
+            {/* Transaction details — shown when a type is selected */}
+            {txType && (
+              <section style={{ ...sectionStyle, background: '#f8fafc', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem' }}>
+                <h3 style={{ ...sectionLabelStyle, marginBottom: '0.75rem' }}>Transaction details</h3>
+
+                {txErrors.length > 0 && (
+                  <div style={{ ...errorSummaryStyle, marginBottom: '0.875rem' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Fix the following:</div>
+                    <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>{txErrors.map((msg, i) => <li key={i}>{msg}</li>)}</ul>
+                  </div>
+                )}
+
+                {/* Live sentence preview */}
+                {selectedTxMeta && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.9rem', color: '#1e40af', lineHeight: 1.55 }}>
+                    <strong>Summary:</strong> {buildTxSentence(selectedTxMeta.sentence, allPartyLabels[txRelatedPartyIdx] || '', txAmt)}
+                    {txAmt && Number(txAmt) > 0 && ` — USD ${Number(txAmt).toLocaleString()}`}
+                    {selectedTxMeta.showDirection && txAmt && ` (${txDir === 'received' ? 'received by LLC' : 'paid by LLC'})`}
+                  </div>
+                )}
+
+                <div style={gridStyle}>
+                  {/* Direction — only for types that need it */}
+                  {selectedTxMeta?.showDirection && (
+                    <Field label="Who paid?" required>
+                      <select value={txDir} onChange={(e) => setTxDir(e.target.value as 'paid' | 'received')}>
+                        <option value="received">LLC received the money</option>
+                        <option value="paid">LLC paid the money</option>
+                      </select>
+                    </Field>
+                  )}
+
+                  {/* Amount */}
+                  <Field
+                    label={selectedTxMeta?.amountLabel ?? 'Amount (USD)'}
+                    hint={selectedTxMeta?.amountOptional ? 'Optional' : selectedTxMeta?.amountHint}
+                    required={!selectedTxMeta?.amountOptional && !PART_V_TYPES.has(txType) && !PART_VI_TYPES.has(txType)}
+                  >
+                    <input
+                      type="number" min="0"
+                      value={txAmt}
+                      onChange={(e) => setTxAmt(e.target.value)}
+                      placeholder="0"
+                    />
+                    {selectedTxMeta?.amountHint && <span style={{ fontSize: '0.78rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{selectedTxMeta.amountHint}</span>}
+                  </Field>
+
+                  {/* Date */}
+                  <Field label="Date" hint="Optional">
+                    <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
+                  </Field>
+
+                  {/* NAICS — not shown for Part V */}
+                  {!PART_V_TYPES.has(txType) && (
+                    <Field label="What type of business is the related party?" hint="Optional" style={{ gridColumn: '1 / -1' }}>
+                      <select value={txRpNaics} onChange={(e) => setTxRpNaics(e.target.value)}>
+                        <option value="">— Select (optional) —</option>
+                        {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.label} — {n.hint}</option>)}
+                        <option value="__manual__">Other</option>
+                      </select>
+                    </Field>
+                  )}
+
+                  {/* Description */}
+                  <Field label="Notes" hint="Optional" style={{ gridColumn: '1 / -1' }}>
+                    <input value={txDesc} onChange={(e) => setTxDesc(e.target.value)} placeholder="Brief description or reference" />
+                  </Field>
+                </div>
+
+                {PART_VI_TYPES.has(txType) && (
+                  <div style={{ ...infoBoxStyle, marginTop: '0.75rem', background: '#fefce8', borderColor: '#fde68a', color: '#92400e' }}>
+                    This is a <strong>Part VI</strong> disclosure — a non-cash or below-market-value transaction. The amount is optional.
+                  </div>
+                )}
+
+                <button type="button" onClick={addTransaction} style={{ ...addBtnStyle, marginTop: '1.25rem' }}>
+                  Add this transaction
+                </button>
+              </section>
+            )}
+
+            {/* Added transactions list */}
+            {transactions.length > 0 && (
+              <section style={{ marginTop: '1.5rem' }}>
+                <h3 style={sectionLabelStyle}>Transactions added ({transactions.length})</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                  {transactions.map((tx, i) => {
+                    const meta = TX_TYPES.find((t) => t.value === tx.transaction_type);
+                    const partyName = allPartyLabels[tx.related_party_index] ?? `Party ${tx.related_party_index}`;
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.5rem', fontSize: '0.875rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600 }}>{meta?.label ?? tx.transaction_type}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.1rem' }}>
+                            {meta ? meta.sentence.replace('{party}', partyName).replace('{amount}', tx.amount_usd ? `USD ${Number(tx.amount_usd).toLocaleString()}` : '') : partyName}
+                            {tx.description ? ` · ${tx.description}` : ''}
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7', flexShrink: 0 }}>
+                          {tx.amount_usd ? `$${Number(tx.amount_usd).toLocaleString()}` : '—'}
+                        </span>
+                        <button type="button" onClick={() => removeTransaction(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '1.125rem', cursor: 'pointer', padding: '0 0.25rem', lineHeight: 1 }} aria-label="Remove">×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Zero-transaction confirmation */}
+            {transactions.length === 0 && (
+              <label className="confirm-check-row">
+                <input
+                  type="checkbox"
+                  checked={noTransactionsConfirmed}
+                  onChange={(e) => setNoTransactionsConfirmed(e.target.checked)}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#92400e' }}>
+                    The LLC had no reportable transactions with any related party in {taxYear}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#a16207', marginTop: '0.2rem', lineHeight: 1.45 }}>
+                    This typically applies to dormant LLCs. Form 5472 is still required even with no transactions — only the header information is filed.
+                  </div>
+                </div>
+              </label>
             )}
           </div>
         )}
 
+        {/* ── Step 5: Review & Submit ──────────────────────────────────── */}
         {step === 5 && (
           <div>
-            <h2 style={stepHeadingStyle}>Step 5 — Review &amp; Submit</h2>
-            {filingTiming.originalPassed && (
-              <div style={warningBoxStyle}>
-                {filingTiming.extendedPassed ? (
-                  <><strong>Filing appears delayed.</strong> The original due date and the extended deadline for tax year {taxYear} have both passed. This return will be filed late.</>
-                ) : (
-                  <><strong>Original due date has passed.</strong> Was Form 7004 (extension) filed for tax year {taxYear}?</>
-                )}
-                <div style={{ marginTop: '0.75rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 500, cursor: 'pointer' }}><input type="radio" name="extensionFiled" checked={extensionFiled === true} onChange={() => setExtensionFiled(true)} />Yes, Form 7004 was filed</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 500, cursor: 'pointer' }}><input type="radio" name="extensionFiled" checked={extensionFiled === false} onChange={() => setExtensionFiled(false)} />No extension was filed</label>
-                </div>
-                {(extensionFiled === false || filingTiming.extendedPassed) && (
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500, cursor: 'pointer' }}><input type="checkbox" checked={includeReasonableCause} onChange={(e) => setIncludeReasonableCause(e.target.checked)} />Include a reasonable cause letter with the filing</label>
-                    <p style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: '#92400e' }}>A reasonable cause statement may help reduce penalties for late filing. Recommended for delayed returns.</p>
-                  </div>
-                )}
-              </div>
-            )}
+            <h2 style={stepHeadingStyle}>Review &amp; submit</h2>
+            <p style={stepSubheadStyle}>Check everything below before submitting. You can go back to any step using the navigation above.</p>
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>LLC</h3>
               <div style={reviewGridStyle}>
@@ -1401,17 +1536,27 @@ export function Intake() {
                 <SummaryRow label="Mailing city" value={mailing.city} />
                 <SummaryRow label="Mailing state" value={US_STATES.find((s) => s.value === mailing.region)?.label ?? mailing.region} />
                 <SummaryRow label="Mailing postal code" value={mailing.postal_code} />
-                <SummaryRow label="Mailing country" value="United States" />
               </div>
             </section>
+
+            {show1b && (
+              <section style={sectionStyle}>
+                <h3 style={sectionLabelStyle}>Filing status</h3>
+                <div style={reviewGridStyle}>
+                  <SummaryRow label="Form 7004 filed?" value={extensionFiled === true ? 'Yes' : extensionFiled === false ? 'No' : '—'} />
+                  <SummaryRow label="Reasonable cause letter?" value={includeReasonableCause ? `Yes — ${reasonableCauseReasons.length} reason(s) selected` : 'No'} />
+                </div>
+              </section>
+            )}
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Primary owner</h3>
               <div style={reviewGridStyle}>
                 <SummaryRow label="Full name" value={ownerName} />
-                <SummaryRow label="Principal country of business" value={COUNTRIES.find((c) => c.value === ownerCountry)?.label ?? ownerCountry} />
+                <SummaryRow label="Country of business" value={COUNTRIES.find((c) => c.value === ownerCountry)?.label ?? ownerCountry} />
                 <SummaryRow label="Country of tax residence" value={COUNTRIES.find((c) => c.value === ownerCountryRes)?.label ?? ownerCountryRes} />
                 <SummaryRow label="Citizenship" value={COUNTRIES.find((c) => c.value === ownerCountryCit)?.label ?? ownerCountryCit} />
-                <SummaryRow label="US SSN" value={ownerSSN} />
+                <SummaryRow label="US SSN / ITIN" value={ownerSSN} />
                 <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
                 <SummaryRow label="Reference number" value={ownerRefNumber} />
                 <SummaryRow label="Business activity" value={resolveBizActivityLabel(ownerBizActivity)} />
@@ -1423,6 +1568,7 @@ export function Intake() {
                 <SummaryRow label="Country" value={COUNTRIES.find((c) => c.value === ownerAddress.country)?.label ?? ownerAddress.country} />
               </div>
             </section>
+
             {relatedParties.length > 0 && (
               <section style={sectionStyle}>
                 <h3 style={sectionLabelStyle}>Additional related parties ({relatedParties.length})</h3>
@@ -1431,59 +1577,75 @@ export function Intake() {
                     <div key={i} style={reviewGridStyle}>
                       <SummaryRow label="Name" value={rp.name} />
                       <SummaryRow label="Reference" value={rp.ref_number} />
-                      <SummaryRow label="Principal country" value={COUNTRIES.find((c) => c.value === rp.country)?.label ?? rp.country} />
-                      <SummaryRow label="Country of residence" value={COUNTRIES.find((c) => c.value === rp.country_residence)?.label ?? rp.country_residence} />
+                      <SummaryRow label="Country" value={COUNTRIES.find((c) => c.value === rp.country)?.label ?? rp.country} />
+                      <SummaryRow label="Tax residence" value={COUNTRIES.find((c) => c.value === rp.country_residence)?.label ?? rp.country_residence} />
                       <SummaryRow label="Citizenship" value={COUNTRIES.find((c) => c.value === rp.country_citizenship)?.label ?? rp.country_citizenship} />
                       <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
                       <SummaryRow label="Business activity" value={resolveBizActivityLabel(rp.biz_activity)} />
                       <SummaryRow label="Activity code" value={rp.biz_code} />
-                      <SummaryRow label="Street" value={rp.address.line1} />
-                      <SummaryRow label="City" value={rp.address.city} />
-                      <SummaryRow label="State / Region" value={isUSCountry(rp.address.country) ? US_STATES.find((s) => s.value === rp.address.region)?.label ?? rp.address.region : rp.address.region} />
-                      <SummaryRow label="Postal code" value={rp.address.postal_code} />
-                      <SummaryRow label="Country" value={COUNTRIES.find((c) => c.value === rp.address.country)?.label ?? rp.address.country} />
                     </div>
                   ))}
                 </div>
               </section>
             )}
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Transactions ({transactions.length})</h3>
               {transactions.length === 0 ? (
-                <p style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.875rem' }}>No transactions added yet.</p>
+                <div style={{ ...infoBoxStyle, background: '#fffbeb', borderColor: '#fbbf24', color: '#92400e' }}>
+                  No reportable transactions — confirmed by you. The filing will include only header information.
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {transactions.map((tx, i) => (
-                    <div key={i} style={{ background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.5rem', padding: '0.875rem 1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <div>
-                          <span style={{ fontWeight: 700 }}>{TX_TYPES.find((t: any) => t.value === tx.transaction_type)?.label ?? tx.transaction_type}</span>
-                          <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)' }}>→ {allPartyLabels[tx.related_party_index] ?? `Party ${tx.related_party_index}`}</span>
+                  {transactions.map((tx, i) => {
+                    const meta = TX_TYPES.find((t) => t.value === tx.transaction_type);
+                    const partyName = allPartyLabels[tx.related_party_index] ?? `Party ${tx.related_party_index}`;
+                    return (
+                      <div key={i} style={{ background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.5rem', padding: '0.875rem 1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{meta?.label ?? tx.transaction_type}</div>
+                            <div style={{ fontSize: '0.825rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>
+                              {meta ? meta.sentence.replace('{party}', partyName).replace('{amount}', tx.amount_usd ? `USD ${Number(tx.amount_usd).toLocaleString()}` : '') : ''}
+                            </div>
+                          </div>
+                          <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7', flexShrink: 0 }}>
+                            {tx.amount_usd ? `$${Number(tx.amount_usd || 0).toLocaleString()}` : '—'}
+                          </span>
                         </div>
-                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7' }}>{tx.amount_usd ? `$${Number(tx.amount_usd || 0).toLocaleString()}` : '—'}</span>
+                        <div style={reviewGridStyle}>
+                          {meta?.showDirection && <SummaryRow label="Direction" value={tx.direction === 'received' ? 'LLC received' : 'LLC paid'} />}
+                          <SummaryRow label="Date" value={tx.transaction_date} />
+                          <SummaryRow label="Notes" value={tx.description} />
+                          {tx.related_party_naics && tx.related_party_naics !== '__manual__' && (
+                            <SummaryRow label="Related party NAICS" value={tx.related_party_naics} />
+                          )}
+                        </div>
                       </div>
-                      <div style={reviewGridStyle}>
-                        {!LOAN_TYPES.has(tx.transaction_type) && <SummaryRow label="Direction" value={tx.direction === 'received' ? 'LLC received' : 'LLC paid'} />}
-                        <SummaryRow label="Date" value={tx.transaction_date} />
-                        <SummaryRow label="Description" value={tx.description} />
-                        <SummaryRow label="Related-party NAICS" value={tx.related_party_naics === '__manual__' ? 'Manual entry' : tx.related_party_naics} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
           </div>
         )}
 
+        {/* ── Nav buttons ───────────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '1.5rem', borderTop: '1px solid var(--tf-border, #e5e7eb)', marginTop: '1.5rem' }}>
-          {step > 1 && <button type="button" onClick={handleBack} disabled={saving} style={secondaryBtnStyle}>Back</button>}
-          {step < 5 ? (
-            <button type="button" onClick={handleNext} disabled={saving} style={primaryBtnStyle}>{saving ? 'Saving…' : step === 4 ? 'Save & Review' : 'Save & Continue'}</button>
+          {currentStepIdx > 0 && (
+            <button type="button" onClick={handleBack} disabled={saving} style={secondaryBtnStyle}>Back</button>
+          )}
+          {step !== 5 ? (
+            <button type="button" onClick={handleNext} disabled={saving} style={primaryBtnStyle}>
+              {saving ? 'Saving…' : step === 4 ? 'Save & Review' : 'Save & Continue'}
+            </button>
           ) : (
-            <button type="button" onClick={handleSubmit} disabled={saving} style={primaryBtnStyle}>{saving ? 'Submitting…' : 'Submit Intake'}</button>
+            <button type="button" onClick={handleSubmit} disabled={saving} style={primaryBtnStyle}>
+              {saving ? 'Submitting…' : 'Submit intake'}
+            </button>
           )}
         </div>
+
       </div>
     </>
   );
