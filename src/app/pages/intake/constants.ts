@@ -1,11 +1,14 @@
 // src/app/pages/intake/constants.ts
 
-export type IntakeStep = 1 | 2 | 3 | 4 | 5;
+// Step 1b is a conditional sub-step that only appears when the original
+// filing deadline has already passed.
+export type IntakeStep = 1 | '1b' | 2 | 3 | 4 | 5;
 
 export const TAX_YEARS = [2025, 2024, 2023, 2022, 2021, 2020, 2019];
 
-export const STEP_LABELS: Record<IntakeStep, string> = {
+export const STEP_LABELS: Record<string, string> = {
   1: 'LLC Details',
+  '1b': 'Filing Status',
   2: 'Owner Details',
   3: 'Related Parties',
   4: 'Transactions',
@@ -27,165 +30,359 @@ export const FILING_DUE_DATES: Record<
 
 export type FilingTimingStatus = 'on_time' | 'within_extension' | 'delayed';
 
-// TX_TYPES: category 1 = DIY-safe, 2 = may need CPA review, 3 = refer to CPA
-// part: 'IV' | 'V' | 'VI'
+// ── Reasonable cause reasons ──────────────────────────────────────────────
+// These appear in Step 1b when filing is late.
+export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: string }[] = [
+  {
+    value: 'first_time_filing',
+    label: 'This is my first time filing in the US',
+    hint: 'No prior US tax compliance experience as a foreign-owned LLC.',
+  },
+  {
+    value: 'relied_on_non_us_advisor',
+    label: 'I relied on a non-US accountant or formation service',
+    hint: 'Was guided by someone unfamiliar with US filing requirements.',
+  },
+  {
+    value: 'not_informed',
+    label: 'Nobody told me Form 5472 was required',
+    hint: 'Formation agent, bank, or advisor did not mention this filing.',
+  },
+  {
+    value: 'no_tax_liability',
+    label: 'I thought no US tax meant no filing needed',
+    hint: 'Believed that zero US tax liability meant no forms were due.',
+  },
+  {
+    value: 'minimal_activity',
+    label: 'The LLC had little or no activity during the year',
+    hint: 'Business was dormant or had very limited transactions.',
+  },
+  {
+    value: 'incomplete_records',
+    label: 'Records or information were delayed or incomplete',
+    hint: 'Could not file on time due to missing or late documentation.',
+  },
+  {
+    value: 'language_barrier',
+    label: 'Language barrier or unfamiliarity with US tax rules',
+    hint: 'English is not my first language; US tax system was unfamiliar.',
+  },
+  {
+    value: 'discovered_late',
+    label: 'I only found out about this requirement recently',
+    hint: 'Discovered the obligation through a professional review or self-research after the deadline.',
+  },
+  {
+    value: 'voluntary_filing',
+    label: 'I am filing voluntarily as soon as I found out',
+    hint: 'Coming forward proactively rather than waiting for IRS contact.',
+  },
+  {
+    value: 'new_procedures',
+    label: 'I have set up procedures to stay compliant going forward',
+    hint: 'New internal controls or professional relationships in place for future years.',
+  },
+];
+
+// ── TX_TYPES ──────────────────────────────────────────────────────────────
+// Each entry has:
+//   value       — internal key stored in DB
+//   label       — short tab label shown on the card
+//   sentence    — plain-English sentence shown as the card subtitle
+//                 uses {party} as placeholder for the related party name
+//                 uses {amount} as placeholder for the formatted amount
+//   category    — 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
+//   part        — 'IV' | 'V' | 'VI'
+//   showDirection — whether to show the paid/received dropdown (only true for Part IV monetary flows)
+//   amountLabel — custom label for the amount field
+//   amountHint  — optional hint shown under amount
+//   amountOptional — true if amount can be omitted
+
 export const TX_TYPES: {
   value: string;
   label: string;
+  sentence: string;
   category: 1 | 2 | 3;
   part: 'IV' | 'V' | 'VI';
+  showDirection: boolean;
+  amountLabel?: string;
+  amountHint?: string;
+  amountOptional?: boolean;
 }[] = [
-  // ── Part IV — Monetary transactions ──────────────────────────────────────
+  // ── Part IV — Goods & property ─────────────────────────────────────────
   {
     value: 'tangible_purchase',
-    label: 'Purchase of tangible property',
+    label: 'Purchase of goods or inventory',
+    sentence: 'The LLC bought physical goods or inventory from {party}',
     category: 1,
     part: 'IV',
-  },
-  {
-    value: 'sales',
-    label: 'Sales of goods / stock in trade',
-    category: 2,
-    part: 'IV',
+    showDirection: false,
   },
   {
     value: 'tangible_sale',
-    label: 'Sale of tangible property',
+    label: 'Sale of goods or inventory',
+    sentence: 'The LLC sold physical goods or inventory to {party}',
     category: 2,
     part: 'IV',
+    showDirection: false,
   },
   {
-    value: 'service_payment',
-    label: 'Consideration for services',
+    value: 'sales',
+    label: 'Sale of stock in trade',
+    sentence: 'The LLC sold stock in trade to {party}',
     category: 2,
     part: 'IV',
+    showDirection: false,
+  },
+
+  // ── Part IV — Services ─────────────────────────────────────────────────
+  {
+    value: 'service_payment',
+    label: 'Payment for services',
+    sentence: 'The LLC paid {party} for services rendered',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
   },
   {
     value: 'tech_services',
-    label: 'Technical / managerial / scientific services',
+    label: 'Technical or management services',
+    sentence: 'The LLC paid {party} for technical, management, or scientific work',
     category: 2,
     part: 'IV',
+    showDirection: true,
   },
-  { value: 'commission', label: 'Commission', category: 2, part: 'IV' },
-  { value: 'rent', label: 'Rent', category: 2, part: 'IV' },
-  { value: 'royalty', label: 'Royalty', category: 2, part: 'IV' },
-  { value: 'interest', label: 'Interest', category: 2, part: 'IV' },
+  {
+    value: 'commission',
+    label: 'Commission paid or received',
+    sentence: 'The LLC paid or received a commission with {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
+  },
+
+  // ── Part IV — Rent, royalty, interest ─────────────────────────────────
+  {
+    value: 'rent',
+    label: 'Rent paid or received',
+    sentence: 'The LLC paid or received rent involving {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
+  },
+  {
+    value: 'royalty',
+    label: 'Royalty paid or received',
+    sentence: 'The LLC paid or received royalties involving {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
+  },
+  {
+    value: 'interest',
+    label: 'Interest paid or received',
+    sentence: 'The LLC paid or received interest involving {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
+  },
+
+  // ── Part IV — Loans ───────────────────────────────────────────────────
   {
     value: 'loan_to_llc',
-    label: 'Loan to LLC (closing balance)',
+    label: 'Loan to the LLC',
+    sentence: '{party} lent money to the LLC — enter the year-end closing balance',
     category: 2,
     part: 'IV',
+    showDirection: false,
+    amountLabel: 'Closing balance (USD)',
+    amountHint: 'The outstanding loan balance at the end of the tax year',
   },
   {
     value: 'loan_from_llc',
-    label: 'Loan from LLC (closing balance)',
+    label: 'Loan from the LLC',
+    sentence: 'The LLC lent money to {party} — enter the year-end closing balance',
     category: 2,
     part: 'IV',
+    showDirection: false,
+    amountLabel: 'Closing balance (USD)',
+    amountHint: 'The outstanding loan balance at the end of the tax year',
   },
+
+  // ── Part IV — Capital & distributions ────────────────────────────────
   {
     value: 'capital_contribution',
-    label: 'Capital contribution',
+    label: 'Capital contribution by owner',
+    sentence: '{party} put money or assets into the LLC as a capital contribution',
     category: 2,
     part: 'IV',
+    showDirection: false,
   },
-  { value: 'distribution', label: 'Distribution', category: 2, part: 'IV' },
-  { value: 'dividend', label: 'Dividend', category: 2, part: 'IV' },
+  {
+    value: 'distribution',
+    label: 'Distribution to owner',
+    sentence: 'The LLC distributed money or assets to {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: false,
+  },
+  {
+    value: 'dividend',
+    label: 'Dividend paid',
+    sentence: 'The LLC paid a dividend to {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: false,
+  },
   {
     value: 'formation_costs',
-    label: 'Formation costs (paid by owner)',
+    label: 'Formation costs paid by owner',
+    sentence: '{party} paid the LLC\'s formation costs (e.g. state filing fees, registered agent)',
     category: 1,
     part: 'IV',
+    showDirection: false,
   },
+
+  // ── Part IV — Complex / CPA-level ────────────────────────────────────
   {
     value: 'intangible',
-    label: 'Sale / lease / license of intangible property',
+    label: 'Sale or license of intellectual property',
+    sentence: 'The LLC transferred or licensed IP (patents, trademarks, software) with {party}',
     category: 3,
     part: 'IV',
+    showDirection: true,
   },
   {
     value: 'platform_contribution',
     label: 'Platform contribution transaction (PCT)',
+    sentence: 'A platform contribution transaction (PCT) occurred between the LLC and {party}',
     category: 3,
     part: 'IV',
+    showDirection: false,
   },
   {
     value: 'cost_sharing',
-    label: 'Cost sharing transaction',
+    label: 'Cost-sharing arrangement',
+    sentence: 'The LLC and {party} shared costs for developing intangible assets together',
     category: 3,
     part: 'IV',
+    showDirection: false,
   },
   {
     value: 'insurance',
-    label: 'Insurance / reinsurance premium',
+    label: 'Insurance or reinsurance premium',
+    sentence: 'The LLC paid or received an insurance or reinsurance premium with {party}',
     category: 3,
     part: 'IV',
+    showDirection: true,
   },
   {
     value: 'loan_guarantee_fee',
     label: 'Loan guarantee fee',
+    sentence: 'The LLC paid or received a fee for a loan guarantee involving {party}',
     category: 3,
     part: 'IV',
+    showDirection: true,
   },
-  { value: 'other', label: 'Other amount', category: 3, part: 'IV' },
+  {
+    value: 'other',
+    label: 'Other amount',
+    sentence: 'Another type of monetary amount was exchanged between the LLC and {party}',
+    category: 3,
+    part: 'IV',
+    showDirection: true,
+  },
 
-  // ── Part V — Non-monetary / structural ───────────────────────────────────
+  // ── Part V — Structural transactions ─────────────────────────────────
+  // Direction is hidden entirely for Part V; these are always LLC-centric.
   {
     value: 'formation_tx',
-    label: 'Formation transaction',
+    label: 'LLC formation',
+    sentence: 'The LLC was formed — this records the structural transaction with {party}',
     category: 1,
     part: 'V',
+    showDirection: false,
+    amountHint: 'Amount contributed at formation (optional)',
+    amountOptional: true,
   },
   {
     value: 'dissolution_tx',
-    label: 'Dissolution transaction',
+    label: 'LLC dissolution or liquidation',
+    sentence: 'The LLC was dissolved or wound down, involving {party}',
     category: 2,
     part: 'V',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'acquisition_tx',
-    label: 'Acquisition transaction',
+    label: 'Acquisition of another entity',
+    sentence: 'The LLC acquired or took over another company, involving {party}',
     category: 3,
     part: 'V',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'disposition_tx',
-    label: 'Disposition transaction',
+    label: 'Sale or disposal of the LLC',
+    sentence: 'The LLC was sold, transferred, or disposed of, involving {party}',
     category: 3,
     part: 'V',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'other_part_v',
-    label: 'Other Part V transaction',
+    label: 'Other structural transaction',
+    sentence: 'Another structural event occurred between the LLC and {party}',
     category: 3,
     part: 'V',
+    showDirection: false,
+    amountOptional: true,
   },
 
-  // ── Part VI — Nonmonetary / less-than-FMV ────────────────────────────────
+  // ── Part VI — Nonmonetary / less-than-FMV ────────────────────────────
   {
     value: 'nonmonetary_transfer',
-    label: 'Nonmonetary transfer',
+    label: 'Transfer of assets without cash',
+    sentence: 'The LLC transferred assets to or from {party} without a cash payment',
     category: 3,
     part: 'VI',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'less_than_fmv',
-    label: 'Less-than-full-consideration transaction',
+    label: 'Transaction below fair market value',
+    sentence: 'The LLC or {party} received something worth less than its fair market value',
     category: 3,
     part: 'VI',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'property_transfer_fmv',
-    label: 'Property transfer below FMV',
+    label: 'Property transferred below fair market value',
+    sentence: 'Property was transferred between the LLC and {party} below its actual market price',
     category: 3,
     part: 'VI',
+    showDirection: false,
+    amountOptional: true,
   },
   {
     value: 'other_part_vi',
-    label: 'Other Part VI transaction',
+    label: 'Other non-cash or below-value transaction',
+    sentence: 'Another non-cash or below-market transaction occurred between the LLC and {party}',
     category: 3,
     part: 'VI',
+    showDirection: false,
+    amountOptional: true,
   },
 ];
+
+// ── Sets for special-case UI logic ────────────────────────────────────────
 
 export const LOAN_TYPES = new Set([
   'loan_to_llc',
@@ -210,6 +407,70 @@ export const PART_VI_TYPES = new Set([
   'property_transfer_fmv',
   'other_part_vi',
 ]);
+
+// Transaction types that show the direction dropdown (Part IV monetary flows)
+export const DIRECTION_TYPES = new Set(
+  TX_TYPES.filter((t) => t.showDirection).map((t) => t.value),
+);
+
+// ── Transaction categories (for accordion grouping in Step 4) ─────────────
+export const TX_CATEGORIES: {
+  key: string;
+  label: string;
+  description: string;
+  parts: Array<'IV' | 'V' | 'VI'>;
+  values: string[];
+}[] = [
+  {
+    key: 'goods',
+    label: 'Goods & inventory',
+    description: 'Physical products, stock-in-trade, tangible items bought or sold',
+    parts: ['IV'],
+    values: ['tangible_purchase', 'tangible_sale', 'sales'],
+  },
+  {
+    key: 'services',
+    label: 'Services & commissions',
+    description: 'Work performed, management, technical help, commissions',
+    parts: ['IV'],
+    values: ['service_payment', 'tech_services', 'commission'],
+  },
+  {
+    key: 'rent_royalty',
+    label: 'Rent, royalties & interest',
+    description: 'Rental payments, IP royalties, interest on money',
+    parts: ['IV'],
+    values: ['rent', 'royalty', 'interest'],
+  },
+  {
+    key: 'loans',
+    label: 'Loans & financing',
+    description: 'Money lent or borrowed, capital put into or taken out of the LLC',
+    parts: ['IV'],
+    values: ['loan_to_llc', 'loan_from_llc', 'capital_contribution', 'distribution', 'dividend', 'formation_costs'],
+  },
+  {
+    key: 'complex',
+    label: 'IP, insurance & other',
+    description: 'Intellectual property transfers, insurance, cost-sharing, and other complex items — CPA review recommended',
+    parts: ['IV'],
+    values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'other'],
+  },
+  {
+    key: 'structural',
+    label: 'Structural transactions (Part V)',
+    description: 'Formation, dissolution, acquisitions — events that changed the LLC\'s legal structure',
+    parts: ['V'],
+    values: ['formation_tx', 'dissolution_tx', 'acquisition_tx', 'disposition_tx', 'other_part_v'],
+  },
+  {
+    key: 'nonmonetary',
+    label: 'Non-cash or below-value transactions (Part VI)',
+    description: 'Assets transferred without payment, or deals done below fair market value',
+    parts: ['VI'],
+    values: ['nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi'],
+  },
+];
 
 // ── rest of existing constants below (unchanged) ─────────────────────────
 
