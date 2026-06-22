@@ -549,34 +549,65 @@ export function Intake() {
 
   // ── Save / navigation ─────────────────────────────────────────────────────
   const saveStep = async (): Promise<string | null> => {
-    setSaving(true);
-    setError(null);
-    try {
-      const patch = patchFromCurrentStep();
-      if (!filingId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not signed in');
-        const { data, error: err } = await supabase
-          .from('filings')
-          .insert({ ...patch, user_id: user.id })
-          .select('id')
-          .single();
-        if (err) throw err;
-        const newId = data.id as string;
-        setLocalFilingId(newId);
-        navigate(`?filing_id=${newId}&step=${step + 1}`, { replace: true });
-        return newId;
+  setSaving(true);
+  setError(null);
+
+  try {
+    const patch = patchFromCurrentStep();
+    console.log('saveStep:start', { step, filingId, patch });
+
+    if (!filingId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error('Not signed in');
+
+      const { data, error: err } = await supabase
+        .from('filings')
+        .insert({ ...patch, user_id: user.id })
+        .select('id')
+        .single();
+
+      if (err) {
+        console.error('saveStep:insert error', err, patch);
+        throw err;
       }
-      const { error: err } = await supabase.from('filings').update(patch).eq('id', filingId);
-      if (err) throw err;
-      return filingId;
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Save failed');
-      return null;
-    } finally {
-      setSaving(false);
+
+      const newId = data.id as string;
+      console.log('saveStep:insert success', { newId });
+
+      setLocalFilingId(newId);
+      navigate(`?filing_id=${newId}&step=${step + 1}`, { replace: true });
+      return newId;
     }
-  };
+
+    const { error: err } = await supabase
+      .from('filings')
+      .update(patch)
+      .eq('id', filingId);
+
+    if (err) {
+      console.error('saveStep:update error', err, patch);
+      throw err;
+    }
+
+    console.log('saveStep:update success', { filingId, patch });
+    return filingId;
+  } catch (e: unknown) {
+    console.error('saveStep failed', e);
+    setError(
+      e instanceof Error
+        ? e.message
+        : typeof e === 'string'
+          ? e
+          : JSON.stringify(e)
+    );
+    return null;
+  } finally {
+    setSaving(false);
+  }
+};
 
   const saveTransactions = async (): Promise<boolean> => {
     if (!filingId) return false;
