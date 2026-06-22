@@ -405,7 +405,17 @@ export function Intake() {
   // Derived: prefer local state, fall back to URL param (handles direct-link / reload)
   const filingId = localFilingId ?? params.get('filing_id');
 
-  const [step, setStep]     = useState<IntakeStep>(1);
+  // FIX (refresh on step 2/3): Read initial step from the URL ?step= param so
+  // that refreshing on any step keeps the user on that step.
+  const [step, setStep] = useState<IntakeStep>(() => {
+    const s = Number(params.get('step'));
+    return (s >= 1 && s <= 4 ? s : 1) as IntakeStep;
+  });
+
+  // FIX: Loading guard prevents the Review step from rendering with empty
+  // values while the async Supabase fetch is still in flight on refresh.
+  const [loadingFiling, setLoadingFiling] = useState(!!params.get('filing_id'));
+
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [einErr, setEinErr] = useState<string | null>(null);
@@ -452,13 +462,28 @@ export function Intake() {
     setOwnerRefNumber(derived);
   }, [ownerName]);
 
+  // FIX: Sync step changes back into the URL so refresh lands on the same step.
+  // Use replace:true to avoid bloating browser history.
+  useEffect(() => {
+    const currentStep = Number(params.get('step')) || 1;
+    if (currentStep !== step) {
+      const newParams = new URLSearchParams(params.toString());
+      newParams.set('step', String(step));
+      navigate(`?${newParams.toString()}`, { replace: true });
+    }
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── load existing filing ──────────────────────────────────────────────────
   useEffect(() => {
     if (!filingId) return;
+    setLoadingFiling(true);
     (async () => {
       const { data: f, error: err } = await supabase
         .from('filings').select('*').eq('id', filingId).single();
-      if (err || !f) return;
+      if (err || !f) {
+        setLoadingFiling(false);
+        return;
+      }
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -496,6 +521,8 @@ export function Intake() {
           related_party_naics: '',
         })));
       }
+
+      setLoadingFiling(false);
     })();
   }, [filingId]);
 
@@ -554,7 +581,7 @@ export function Intake() {
         const newId = data.id as string;
         // FIX: store in local state immediately so subsequent steps see the id
         setLocalFilingId(newId);
-        navigate(`?filing_id=${newId}`, { replace: true });
+        navigate(`?filing_id=${newId}&step=${step + 1}`, { replace: true });
         return newId;
       } else {
         const { error: err } = await supabase
@@ -684,7 +711,29 @@ export function Intake() {
     }
   };
 
+  // ── helpers for Review display ────────────────────────────────────────────
+
+  /** Resolve a biz activity label for display in the Review step.
+   *  The value stored in state is the label string itself (the select
+   *  option value === label). If it is '__other__' we fall back to the
+   *  manually typed code string. */
+  function resolveBizActivityLabel(activity: string): string {
+    if (!activity || activity === '__other__') return '';
+    return activity;
+  }
+
   // ─── render ───────────────────────────────────────────────────────────────
+
+  // FIX: While the filing is loading from Supabase (e.g. after a refresh on
+  // Step 2/3/4) show a minimal loading state so the Review page does not
+  // flash blank values before the fetch completes.
+  if (loadingFiling) {
+    return (
+      <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center', color: 'var(--tf-text-muted, #6b7280)' }}>
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1268,7 +1317,7 @@ export function Intake() {
                 <SummaryRow label="EIN"               value={ein} />
                 <SummaryRow label="State"             value={US_STATES.find((s) => s.value === stateOfFormation)?.label ?? stateOfFormation} />
                 <SummaryRow label="Tax year"          value={taxYear} />
-                <SummaryRow label="Business activity" value={entityBizActivity !== '__other__' ? entityBizActivity : ''} />
+                <SummaryRow label="Business activity" value={resolveBizActivityLabel(entityBizActivity)} />
                 <SummaryRow label="Activity code"     value={entityBizCode} />
               </div>
             </section>
@@ -1284,7 +1333,7 @@ export function Intake() {
                 <SummaryRow label="Date of incorp."   value={ownerDOI} />
                 <SummaryRow label="Owner ref"         value={ownerRefNumber} />
                 <SummaryRow label="Signer title"      value={signerTitle} />
-                <SummaryRow label="Business activity" value={ownerBizActivity !== '__other__' ? ownerBizActivity : ''} />
+                <SummaryRow label="Business activity" value={resolveBizActivityLabel(ownerBizActivity)} />
                 <SummaryRow label="Activity code"     value={ownerBizCode} />
               </div>
             </section>
