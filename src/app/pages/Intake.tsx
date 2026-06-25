@@ -1,5 +1,5 @@
 // src/app/pages/Intake.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
@@ -20,8 +20,6 @@ import {
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 type Address = {
   line1?: string;
@@ -54,8 +52,6 @@ type TransactionRow = {
   transaction_date: string;
   related_party_naics?: string;
 };
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatEIN(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 9);
@@ -112,24 +108,16 @@ function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   return true;
 }
 
-// Build the human-readable sentence for a transaction card
 function buildTxSentence(sentence: string, partyName: string, amount: string): string {
   const partyLabel = partyName || 'the related party';
-  const amtLabel = amount && Number(amount) > 0
-    ? `USD ${Number(amount).toLocaleString()}`
-    : '';
-  return sentence
-    .replace('{party}', partyLabel)
-    .replace('{amount}', amtLabel);
+  const amtLabel = amount && Number(amount) > 0 ? `USD ${Number(amount).toLocaleString()}` : '';
+  return sentence.replace('{party}', partyLabel).replace('{amount}', amtLabel);
 }
 
-// ── Ordered step list — 1b is conditional ─────────────────────────────────
 function getStepOrder(show1b: boolean): IntakeStep[] {
   if (show1b) return [1, '1b', 2, 3, 4, 5];
   return [1, 2, 3, 4, 5];
 }
-
-// ── Sub-components ─────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -227,8 +215,6 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
   );
 }
 
-// ── Style constants ────────────────────────────────────────────────────────
-
 const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
 const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '1.75rem', lineHeight: 1.55 };
 const sectionStyle: React.CSSProperties = { marginBottom: '2rem' };
@@ -242,16 +228,12 @@ const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset, #f9faf
 const errorSummaryStyle: React.CSSProperties = { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
 const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', background: 'var(--tf-surface, #fff)', overflow: 'hidden' };
 
-// ── Main component ─────────────────────────────────────────────────────────
-
 export function Intake() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
   const [localFilingId, setLocalFilingId] = useState<string | null>(params.get('filing_id'));
   const filingId = localFilingId ?? params.get('filing_id');
-
-  // ── Core form state ────────────────────────────────────────────────────
 
   const [taxYear, setTaxYear] = useState('2024');
   const today = new Date();
@@ -274,7 +256,6 @@ export function Intake() {
   const [rpErrors, setRpErrors] = useState<string[]>([]);
   const [txErrors, setTxErrors] = useState<string[]>([]);
 
-  // Step 1 — LLC
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
   const [stateOfFormation, setStateOfFormation] = useState('');
@@ -285,12 +266,10 @@ export function Intake() {
   const [entityBizActivity, setEntityBizActivity] = useState('');
   const [entityBizCode, setEntityBizCode] = useState('');
 
-  // Step 1b — Filing status & penalties
   const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
   const [includeReasonableCause, setIncludeReasonableCause] = useState(false);
   const [reasonableCauseReasons, setReasonableCauseReasons] = useState<string[]>([]);
 
-  // Step 2 — Owner
   const [ownerName, setOwnerName] = useState('');
   const [ownerCountry, setOwnerCountry] = useState('');
   const [ownerCountryRes, setOwnerCountryRes] = useState('');
@@ -302,20 +281,24 @@ export function Intake() {
   const [ownerBizActivity, setOwnerBizActivity] = useState('');
   const [ownerBizCode, setOwnerBizCode] = useState('');
 
-  // Step 3 — Related parties
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
   const [rpDraft, setRpDraft] = useState<RelatedParty>({
-    name: '', ref_number: '', country: '', country_residence: '',
-    country_citizenship: '', foreign_tax_id: '', address: {}, biz_activity: '', biz_code: '',
+    name: '',
+    ref_number: '',
+    country: '',
+    country_residence: '',
+    country_citizenship: '',
+    foreign_tax_id: '',
+    address: {},
+    biz_activity: '',
+    biz_code: '',
   });
   const [showRpForm, setShowRpForm] = useState(false);
   const [editingRpIdx, setEditingRpIdx] = useState<number | null>(null);
 
-  // Step 4 — Transactions
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [noTransactionsConfirmed, setNoTransactionsConfirmed] = useState(false);
 
-  // Transaction add form state
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
@@ -324,7 +307,6 @@ export function Intake() {
   const [txDate, setTxDate] = useState('');
   const [txRpNaics, setTxRpNaics] = useState('');
 
-  // Accordion: which category is open
   const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const allPartyLabels = [
@@ -333,45 +315,54 @@ export function Intake() {
   ];
 
   const selectedTxMeta = TX_TYPES.find((t) => t.value === txType);
-
-  // ── Step index helpers ─────────────────────────────────────────────────
-
   const currentStepIdx = stepOrder.indexOf(step);
 
-  const goToStepByIndex = (idx: number) => {
+  const goToStepByIndex = (idx: number, nextFilingId?: string) => {
     const target = stepOrder[idx];
-    if (target !== undefined) {
-      setStep(target);
-      const newParams = new URLSearchParams(params.toString());
-      newParams.set('step', String(target));
-      if (filingId) newParams.set('filing_id', filingId);
-      navigate(`?${newParams.toString()}`, { replace: true });
+    if (target === undefined) return;
+
+    setStep(target);
+
+    const resolvedFilingId = nextFilingId ?? localFilingId ?? params.get('filing_id');
+    const newParams = new URLSearchParams(params.toString());
+    newParams.set('step', String(target));
+
+    if (resolvedFilingId) {
+      newParams.set('filing_id', resolvedFilingId);
     }
+
+    navigate(`?${newParams.toString()}`, { replace: true });
   };
 
-  // Recalculate step order when taxYear changes (show1b may change)
   useEffect(() => {
-    // If 1b was showing but now shouldn't be (e.g. user changed tax year to future),
-    // bump them back to step 1
     if (step === '1b' && !show1b) {
       setStep(1);
     }
-  }, [show1b]);
+  }, [show1b, step]);
 
   useEffect(() => {
     const newParams = new URLSearchParams(params.toString());
     newParams.set('step', String(step));
+    if (filingId) {
+      newParams.set('filing_id', filingId);
+    }
     navigate(`?${newParams.toString()}`, { replace: true });
-  }, [step]);
-
-  // ── Load existing filing ──────────────────────────────────────────────
+  }, [step, filingId, navigate, params]);
 
   useEffect(() => {
-    if (!filingId) { setLoadingFiling(false); return; }
+    if (!filingId) {
+      setLoadingFiling(false);
+      return;
+    }
+
     setLoadingFiling(true);
+
     (async () => {
       const { data: f, error: err } = await supabase.from('filings').select('*').eq('id', filingId).single();
-      if (err || !f) { setLoadingFiling(false); return; }
+      if (err || !f) {
+        setLoadingFiling(false);
+        return;
+      }
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -399,7 +390,11 @@ export function Intake() {
       setOwnerBizActivity(f.owner_business_activity ?? '');
       setOwnerBizCode((f as any).owner_business_code ?? '');
 
-      if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
+      if ((f as any).related_parties) {
+        setRelatedParties((f as any).related_parties as RelatedParty[]);
+      }
+
+      setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
 
       const { data: txns } = await supabase
         .from('reportable_transactions')
@@ -408,63 +403,84 @@ export function Intake() {
         .order('created_at', { ascending: true });
 
       if (txns) {
-        setTransactions(txns.map((t: any) => ({
-          id: t.id,
-          related_party_index: t.related_party_index ?? 0,
-          transaction_type: t.transaction_type,
-          direction: t.direction,
-          amount_usd: String(t.amount_usd ?? ''),
-          description: t.description ?? '',
-          transaction_date: t.transaction_date ?? '',
-          related_party_naics: t.related_party_naics ?? '',
-        })));
+        setTransactions(
+          txns.map((t: any) => ({
+            id: t.id,
+            related_party_index: t.related_party_index ?? 0,
+            transaction_type: t.transaction_type,
+            direction: t.direction,
+            amount_usd: String(t.amount_usd ?? ''),
+            description: t.description ?? '',
+            transaction_date: t.transaction_date ?? '',
+            related_party_naics: t.related_party_naics ?? '',
+          })),
+        );
       }
 
       setLoadingFiling(false);
     })();
   }, [filingId]);
 
-  // ── Patch helpers ──────────────────────────────────────────────────────
-
   function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
-    if (step === 1) return {
-      llc_name: llcName.trim() || null,
-      ein: ein.trim() || null,
-      state_of_formation: stateOfFormation.trim() || null,
-      tax_year: taxYear,
-      total_assets: totalAssets ? Number(totalAssets) : null,
-      entity_date_of_incorporation: entityDOI.trim() || null,
-      entity_principal_country: entityPrincipalCountry.trim() || null,
-      mailing_address: mailing,
-      entity_business_activity: entityBizActivity.trim() || null,
-      entity_business_code: entityBizCode.trim() || null,
-    };
-    if (step === '1b') return {
-      extension_filed: extensionFiled,
-      include_reasonable_cause: includeReasonableCause,
-      reasonable_cause_reasons: reasonableCauseReasons,
-    };
-    if (step === 2) return {
-      owner_full_name: ownerName.trim() || null,
-      owner_country: ownerCountry.trim() || null,
-      owner_country_residence: ownerCountryRes.trim() || null,
-      owner_country_citizenship: ownerCountryCit.trim() || null,
-      owner_ssn: ownerSSN.trim() || null,
-      owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
-      owner_ref_number: ownerRefNumber.trim() || null,
-      owner_address: ownerAddress,
-      owner_business_activity: ownerBizActivity.trim() || null,
-      owner_business_code: ownerBizCode.trim() || null,
-    };
-    if (step === 3) return { related_parties: relatedParties };
+    if (step === 1) {
+      return {
+        llc_name: llcName.trim() || null,
+        ein: ein.trim() || null,
+        state_of_formation: stateOfFormation.trim() || null,
+        tax_year: taxYear,
+        total_assets: totalAssets ? Number(totalAssets) : null,
+        entity_date_of_incorporation: entityDOI.trim() || null,
+        entity_principal_country: entityPrincipalCountry.trim() || null,
+        mailing_address: mailing,
+        entity_business_activity: entityBizActivity.trim() || null,
+        entity_business_code: entityBizCode.trim() || null,
+      };
+    }
+
+    if (step === '1b') {
+      return {
+        extension_filed: extensionFiled,
+        include_reasonable_cause: includeReasonableCause,
+        reasonable_cause_reasons: reasonableCauseReasons,
+      };
+    }
+
+    if (step === 2) {
+      return {
+        owner_full_name: ownerName.trim() || null,
+        owner_country: ownerCountry.trim() || null,
+        owner_country_residence: ownerCountryRes.trim() || null,
+        owner_country_citizenship: ownerCountryCit.trim() || null,
+        owner_ssn: ownerSSN.trim() || null,
+        owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
+        owner_ref_number: ownerRefNumber.trim() || null,
+        owner_address: ownerAddress,
+        owner_business_activity: ownerBizActivity.trim() || null,
+        owner_business_code: ownerBizCode.trim() || null,
+      };
+    }
+
+    if (step === 3) {
+      return {
+        related_parties: relatedParties,
+      };
+    }
+
+    if (step === 4) {
+      return {
+        no_transactions_confirmed: noTransactionsConfirmed,
+      };
+    }
+
     return {};
   }
 
-  // ── Validation ─────────────────────────────────────────────────────────
-
   const handleEinBlur = () => {
-    if (ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
-    else setEinErr(null);
+    if (ein && !isValidEIN(ein)) {
+      setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
+    } else {
+      setEinErr(null);
+    }
   };
 
   function validateStep1(): string[] {
@@ -548,28 +564,36 @@ export function Intake() {
       }
       return [];
     }
-    if (step === 5) return [];
     return [];
   }
-
-  // ── Save helpers ───────────────────────────────────────────────────────
 
   const saveStep = async (): Promise<string | null> => {
     setSaving(true);
     setError(null);
+
     try {
       const patch = patchFromCurrentStep();
+
       if (!filingId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not signed in');
-        const { data, error: err } = await supabase.from('filings').insert({ ...patch, user_id: user.id }).select('id').single();
+
+        const { data, error: err } = await supabase
+          .from('filings')
+          .insert({ ...patch, user_id: user.id })
+          .select('id')
+          .single();
+
         if (err) throw err;
+
         const newId = data.id as string;
         setLocalFilingId(newId);
         return newId;
       }
+
       const { error: err } = await supabase.from('filings').update(patch).eq('id', filingId);
       if (err) throw err;
+
       return filingId;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e));
@@ -579,40 +603,61 @@ export function Intake() {
     }
   };
 
-  const saveTransactions = async (): Promise<boolean> => {
-    if (!filingId) return false;
+  const saveTransactions = async (idOverride?: string): Promise<boolean> => {
+    const activeFilingId = idOverride ?? filingId;
+    if (!activeFilingId) return false;
+
     setError(null);
+
     try {
       const validTxns = transactions.filter(
-        (t) => PART_V_TYPES.has(t.transaction_type) || PART_VI_TYPES.has(t.transaction_type) || (t.amount_usd && Number(t.amount_usd) > 0),
+        (t) =>
+          PART_V_TYPES.has(t.transaction_type) ||
+          PART_VI_TYPES.has(t.transaction_type) ||
+          (t.amount_usd && Number(t.amount_usd) > 0),
       );
+
       if (validTxns.length === 0) return true;
 
-      const toInsert = validTxns.filter((t) => !t.id).map((t) => ({
-        filing_id: filingId,
-        related_party_index: t.related_party_index,
-        transaction_type: t.transaction_type,
-        direction: t.direction,
-        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-        description: t.description || null,
-        transaction_date: t.transaction_date || null,
-        related_party_naics: t.related_party_naics || null,
-      }));
+      const toInsert = validTxns
+        .filter((t) => !t.id)
+        .map((t) => ({
+          filing_id: activeFilingId,
+          related_party_index: t.related_party_index,
+          transaction_type: t.transaction_type,
+          direction: t.direction,
+          amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
+          description: t.description || null,
+          transaction_date: t.transaction_date || null,
+          related_party_naics: t.related_party_naics || null,
+        }));
 
-      const toUpsert = validTxns.filter((t) => !!t.id).map((t) => ({
-        id: t.id!,
-        filing_id: filingId,
-        related_party_index: t.related_party_index,
-        transaction_type: t.transaction_type,
-        direction: t.direction,
-        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-        description: t.description || null,
-        transaction_date: t.transaction_date || null,
-        related_party_naics: t.related_party_naics || null,
-      }));
+      const toUpsert = validTxns
+        .filter((t) => !!t.id)
+        .map((t) => ({
+          id: t.id!,
+          filing_id: activeFilingId,
+          related_party_index: t.related_party_index,
+          transaction_type: t.transaction_type,
+          direction: t.direction,
+          amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
+          description: t.description || null,
+          transaction_date: t.transaction_date || null,
+          related_party_naics: t.related_party_naics || null,
+        }));
 
-      if (toInsert.length > 0) { const { error: insErr } = await supabase.from('reportable_transactions').insert(toInsert); if (insErr) throw insErr; }
-      if (toUpsert.length > 0) { const { error: upErr } = await supabase.from('reportable_transactions').upsert(toUpsert, { onConflict: 'id' }); if (upErr) throw upErr; }
+      if (toInsert.length > 0) {
+        const { error: insErr } = await supabase.from('reportable_transactions').insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      if (toUpsert.length > 0) {
+        const { error: upErr } = await supabase
+          .from('reportable_transactions')
+          .upsert(toUpsert, { onConflict: 'id' });
+        if (upErr) throw upErr;
+      }
+
       return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save transactions');
@@ -620,12 +665,14 @@ export function Intake() {
     }
   };
 
-  // ── Navigation ─────────────────────────────────────────────────────────
-
   const handleNext = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
-    if (step === 1 && ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
+
+    if (step === 1 && ein && !isValidEIN(ein)) {
+      setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
+    }
+
     if (errs.length > 0) return;
 
     const nextIdx = currentStepIdx + 1;
@@ -633,19 +680,27 @@ export function Intake() {
 
     if (step !== 4) {
       const id = await saveStep();
-      if (id) {
-        const newParams = new URLSearchParams(params.toString());
-        newParams.set('filing_id', id);
-        goToStepByIndex(nextIdx);
+      if (!id) return;
+
+      if (!filingId) {
+        setLocalFilingId(id);
       }
-    } else {
-      // Step 4: save filing + transactions
-      const ensuredId = filingId ?? (await saveStep());
-      if (!ensuredId) return;
-      if (!filingId) setLocalFilingId(ensuredId);
-      const saved = await saveTransactions();
-      if (saved) goToStepByIndex(nextIdx);
+
+      goToStepByIndex(nextIdx, id);
+      return;
     }
+
+    const ensuredId = filingId ?? (await saveStep());
+    if (!ensuredId) return;
+
+    if (!filingId) {
+      setLocalFilingId(ensuredId);
+    }
+
+    const saved = await saveTransactions(ensuredId);
+    if (!saved) return;
+
+    goToStepByIndex(nextIdx, ensuredId);
   };
 
   const handleBack = () => {
@@ -657,11 +712,23 @@ export function Intake() {
   const handleSubmit = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
-    if (errs.length > 0 || !filingId) return;
+
+    if (errs.length > 0) return;
+
+    if (!filingId) {
+      setError('Missing filing ID. Please go back one step and save again.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
+
     try {
-      const { error: err } = await supabase.from('filings').update({ status: 'in_progress' }).eq('id', filingId);
+      const { error: err } = await supabase
+        .from('filings')
+        .update({ status: 'in_progress' })
+        .eq('id', filingId);
+
       if (err) throw err;
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
@@ -671,15 +738,23 @@ export function Intake() {
     }
   };
 
-  // ── Related party form ─────────────────────────────────────────────────
-
   const openRpForm = (idx?: number) => {
     setRpErrors([]);
     if (idx !== undefined) {
       setRpDraft({ ...relatedParties[idx] });
       setEditingRpIdx(idx);
     } else {
-      setRpDraft({ name: '', ref_number: '', country: '', country_residence: '', country_citizenship: '', foreign_tax_id: '', address: {}, biz_activity: '', biz_code: '' });
+      setRpDraft({
+        name: '',
+        ref_number: '',
+        country: '',
+        country_residence: '',
+        country_citizenship: '',
+        foreign_tax_id: '',
+        address: {},
+        biz_activity: '',
+        biz_code: '',
+      });
       setEditingRpIdx(null);
     }
     setShowRpForm(true);
@@ -689,12 +764,14 @@ export function Intake() {
     const errs = validateRelatedPartyDraft(rpDraft);
     setRpErrors(errs);
     if (errs.length > 0) return;
+
     const updated = { ...rpDraft };
     if (editingRpIdx !== null) {
       setRelatedParties((prev) => prev.map((rp, i) => (i === editingRpIdx ? updated : rp)));
     } else {
       setRelatedParties((prev) => [...prev, updated]);
     }
+
     setShowRpForm(false);
     setEditingRpIdx(null);
     setRpErrors([]);
@@ -705,25 +782,31 @@ export function Intake() {
     setTransactions((prev) =>
       prev
         .filter((t) => t.related_party_index !== i + 1)
-        .map((t) => ({ ...t, related_party_index: t.related_party_index > i + 1 ? t.related_party_index - 1 : t.related_party_index })),
+        .map((t) => ({
+          ...t,
+          related_party_index: t.related_party_index > i + 1 ? t.related_party_index - 1 : t.related_party_index,
+        })),
     );
   };
-
-  // ── Transaction form ───────────────────────────────────────────────────
 
   const addTransaction = () => {
     const errs = validateTransactionDraft();
     setTxErrors(errs);
     if (errs.length > 0) return;
-    setTransactions((prev) => [...prev, {
-      related_party_index: txRelatedPartyIdx,
-      transaction_type: txType,
-      direction: txDir,
-      amount_usd: txAmt,
-      description: txDesc,
-      transaction_date: txDate,
-      related_party_naics: txRpNaics,
-    }]);
+
+    setTransactions((prev) => [
+      ...prev,
+      {
+        related_party_index: txRelatedPartyIdx,
+        transaction_type: txType,
+        direction: txDir,
+        amount_usd: txAmt,
+        description: txDesc,
+        transaction_date: txDate,
+        related_party_naics: txRpNaics,
+      },
+    ]);
+
     setTxAmt('');
     setTxDesc('');
     setTxDate('');
@@ -739,8 +822,6 @@ export function Intake() {
     setTransactions((prev) => prev.filter((_, idx) => idx !== i));
   };
 
-  // ── Loading state ──────────────────────────────────────────────────────
-
   if (loadingFiling) {
     return (
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center', color: 'var(--tf-text-muted, #6b7280)' }}>
@@ -749,11 +830,7 @@ export function Intake() {
     );
   }
 
-  // ── Stepper ────────────────────────────────────────────────────────────
-
   const visibleSteps = stepOrder;
-
-  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -787,8 +864,6 @@ export function Intake() {
         }
         .intake-form .field-error { font-size: 0.78rem; color: #dc2626; margin-top: 0.25rem; }
         .intake-form select option { background: var(--tf-surface, #fff); color: var(--tf-text, #111); }
-
-        /* Stepper */
         .stepper-track {
           display: inline-flex; align-items: center;
           background: #f1f5f9; border-radius: 2rem;
@@ -807,8 +882,6 @@ export function Intake() {
         .stepper-pill--done:hover { background: #bae6fd; }
         .stepper-pill--pending { color: #94a3b8; cursor: default; opacity: 0.6; }
         .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: #0369a1; color: #fff; font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
-
-        /* Accordion categories */
         .tx-cat-header {
           display: flex; align-items: center; justify-content: space-between;
           padding: 0.875rem 1rem; cursor: pointer; user-select: none;
@@ -831,8 +904,6 @@ export function Intake() {
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 0.5rem;
         }
-
-        /* Transaction type cards */
         .tx-type-card {
           text-align: left; border: 1px solid var(--tf-border, #d1d5db);
           border-radius: 0.5rem; padding: 0.75rem 0.875rem;
@@ -847,8 +918,6 @@ export function Intake() {
         }
         .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
         .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-text-muted, #6b7280); line-height: 1.45; }
-
-        /* Reasonable cause checkboxes */
         .rc-reason {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 0.75rem 1rem;
@@ -868,8 +937,6 @@ export function Intake() {
         }
         .rc-reason-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
         .rc-reason-hint { font-size: 0.8rem; color: var(--tf-text-muted, #6b7280); margin-top: 0.15rem; line-height: 1.4; }
-
-        /* Confirm checkbox for zero transactions */
         .confirm-check-row {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 1rem 1.25rem;
@@ -883,7 +950,6 @@ export function Intake() {
           padding: 0 !important; border: none !important;
           box-shadow: none !important;
         }
-
         @media (prefers-color-scheme: dark) {
           .stepper-track { background: rgba(255,255,255,0.10); }
           .stepper-pill--done { background: rgba(255,255,255,0.12); color: #7dd3fc; }
@@ -896,8 +962,6 @@ export function Intake() {
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
-
-        {/* Stepper */}
         <nav aria-label="Form steps">
           <div className="stepper-track">
             {visibleSteps.map((s, idx) => {
@@ -910,33 +974,40 @@ export function Intake() {
                 <button
                   key={String(s)}
                   type="button"
-                  className={['stepper-pill', isActive ? 'stepper-pill--active' : '', isDone ? 'stepper-pill--done' : '', isPending ? 'stepper-pill--pending' : ''].join(' ')}
-                  onClick={() => { if (isDone) goToStepByIndex(idx); }}
+                  className={[
+                    'stepper-pill',
+                    isActive ? 'stepper-pill--active' : '',
+                    isDone ? 'stepper-pill--done' : '',
+                    isPending ? 'stepper-pill--pending' : '',
+                  ].join(' ')}
+                  onClick={() => {
+                    if (isDone) goToStepByIndex(idx);
+                  }}
                   aria-current={isActive ? 'step' : undefined}
                   tabIndex={isDone ? 0 : -1}
                 >
                   {isDone && <span className="stepper-check" aria-hidden="true">✓</span>}
-                  {typeof s === 'number' ? `${s}. ` : ''}{shortLabel}
+                  {typeof s === 'number' ? `${s}. ` : ''}
+                  {shortLabel}
                 </button>
               );
             })}
           </div>
         </nav>
 
-        {/* Errors */}
-        {error && (
-          <div style={errorSummaryStyle}>{error}</div>
-        )}
+        {error && <div style={errorSummaryStyle}>{error}</div>}
+
         {stepErrors.length > 0 && (
           <div style={errorSummaryStyle}>
             <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following before continuing:</div>
             <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
-              {stepErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
+              {stepErrors.map((msg, i) => (
+                <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>
+              ))}
             </ul>
           </div>
         )}
 
-        {/* ── Step 1: LLC Details ──────────────────────────────────────── */}
         {step === 1 && (
           <div>
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
@@ -951,7 +1022,10 @@ export function Intake() {
                 <Field label="EIN" hint="Employer Identification Number" required>
                   <input
                     value={ein}
-                    onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
+                    onChange={(e) => {
+                      setEin(formatEIN(e.target.value));
+                      setEinErr(null);
+                    }}
                     onBlur={handleEinBlur}
                     placeholder="XX-XXXXXXX"
                     data-invalid={einErr ? 'true' : undefined}
@@ -990,19 +1064,28 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>What does the LLC do?</h3>
               <div style={gridStyle}>
                 <Field label="Primary business activity" required>
-                  <select value={entityBizActivity} onChange={(e) => {
-                    const value = e.target.value;
-                    const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
-                    setEntityBizActivity(value);
-                    setEntityBizCode(sel ? sel.code : '');
-                  }}>
+                  <select
+                    value={entityBizActivity}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                      setEntityBizActivity(value);
+                      setEntityBizCode(sel ? sel.code : '');
+                    }}
+                  >
                     <option value="">— Select activity —</option>
                     {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                     <option value="other">Other — enter manually below</option>
                   </select>
                 </Field>
                 <Field label="Business activity code" hint="Auto-filled or enter 6-digit code" required>
-                  <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="e.g. 541511" inputMode="numeric" maxLength={6} />
+                  <input
+                    value={entityBizCode}
+                    onChange={(e) => setEntityBizCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="e.g. 541511"
+                    inputMode="numeric"
+                    maxLength={6}
+                  />
                 </Field>
               </div>
             </section>
@@ -1014,7 +1097,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Step 1b: Filing Status & Penalties ──────────────────────── */}
         {step === '1b' && (
           <div>
             <h2 style={stepHeadingStyle}>Filing status &amp; late penalties</h2>
@@ -1033,22 +1115,34 @@ export function Intake() {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {[
-                  { val: true, label: 'Yes — Form 7004 was filed on time', sub: filingTiming.extendedPassed ? 'The extended deadline has also passed.' : 'The extended deadline applies.' },
-                  { val: false, label: 'No — no extension was filed', sub: 'The original deadline applied. This return is late.' },
+                  {
+                    val: true,
+                    label: 'Yes — Form 7004 was filed on time',
+                    sub: filingTiming.extendedPassed ? 'The extended deadline has also passed.' : 'The extended deadline applies.',
+                  },
+                  {
+                    val: false,
+                    label: 'No — no extension was filed',
+                    sub: 'The original deadline applied. This return is late.',
+                  },
                 ].map(({ val, label, sub }) => (
                   <label
                     key={String(val)}
                     style={{
-                      display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      alignItems: 'flex-start',
                       padding: '0.875rem 1rem',
                       border: `1px solid ${extensionFiled === val ? '#0284c7' : 'var(--tf-border, #e5e7eb)'}`,
-                      borderRadius: '0.5rem', cursor: 'pointer',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
                       background: extensionFiled === val ? '#eff6ff' : 'var(--tf-surface, #fff)',
                       transition: 'border-color 0.12s, background 0.12s',
                     }}
                   >
                     <input
-                      type="radio" name="extensionFiled"
+                      type="radio"
+                      name="extensionFiled"
                       checked={extensionFiled === val}
                       onChange={() => setExtensionFiled(val)}
                       style={{ marginTop: '0.15rem', accentColor: '#0284c7', width: '1.1rem', height: '1.1rem', flexShrink: 0, padding: 0, border: 'none', boxShadow: 'none' }}
@@ -1071,17 +1165,25 @@ export function Intake() {
 
                 <label
                   style={{
-                    display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
-                    padding: '0.875rem 1rem', marginBottom: '1.25rem',
+                    display: 'flex',
+                    gap: '0.75rem',
+                    alignItems: 'flex-start',
+                    padding: '0.875rem 1rem',
+                    marginBottom: '1.25rem',
                     border: `1px solid ${includeReasonableCause ? '#0284c7' : 'var(--tf-border, #e5e7eb)'}`,
-                    borderRadius: '0.5rem', cursor: 'pointer',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
                     background: includeReasonableCause ? '#eff6ff' : 'var(--tf-surface, #fff)',
                     transition: 'border-color 0.12s, background 0.12s',
                   }}
                 >
                   <input
-                    type="checkbox" checked={includeReasonableCause}
-                    onChange={(e) => { setIncludeReasonableCause(e.target.checked); if (!e.target.checked) setReasonableCauseReasons([]); }}
+                    type="checkbox"
+                    checked={includeReasonableCause}
+                    onChange={(e) => {
+                      setIncludeReasonableCause(e.target.checked);
+                      if (!e.target.checked) setReasonableCauseReasons([]);
+                    }}
                     style={{ marginTop: '0.15rem', accentColor: '#0284c7', width: '1.1rem', height: '1.1rem', flexShrink: 0, padding: 0, border: 'none', boxShadow: 'none' }}
                   />
                   <div>
@@ -1108,10 +1210,7 @@ export function Intake() {
                               );
                             }}
                           >
-                            <input
-                              type="checkbox" checked={isChecked}
-                              onChange={() => {}}
-                            />
+                            <input type="checkbox" checked={isChecked} onChange={() => {}} />
                             <div>
                               <div className="rc-reason-label">{reason.label}</div>
                               <div className="rc-reason-hint">{reason.hint}</div>
@@ -1127,7 +1226,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Step 2: Owner Details ────────────────────────────────────── */}
         {step === 2 && (
           <div>
             <h2 style={stepHeadingStyle}>Foreign owner details</h2>
@@ -1173,20 +1271,23 @@ export function Intake() {
             </section>
 
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Owner's address</h3>
+              <h3 style={sectionLabelStyle}>Owner&apos;s address</h3>
               <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
             </section>
 
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Owner's primary business activity</h3>
+              <h3 style={sectionLabelStyle}>Owner&apos;s primary business activity</h3>
               <div style={gridStyle}>
                 <Field label="Activity" required>
-                  <select value={ownerBizActivity} onChange={(e) => {
-                    const value = e.target.value;
-                    const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
-                    setOwnerBizActivity(value);
-                    setOwnerBizCode(sel ? sel.code : '');
-                  }}>
+                  <select
+                    value={ownerBizActivity}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                      setOwnerBizActivity(value);
+                      setOwnerBizCode(sel ? sel.code : '');
+                    }}
+                  >
                     <option value="">— Select activity —</option>
                     {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                     <option value="other">Other — enter manually below</option>
@@ -1200,7 +1301,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Step 3: Related Parties ──────────────────────────────────── */}
         {step === 3 && (
           <div>
             <h2 style={stepHeadingStyle}>Additional related parties</h2>
@@ -1230,12 +1330,16 @@ export function Intake() {
             {showRpForm ? (
               <section style={{ ...sectionStyle, background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem' }}>
                 <h3 style={sectionLabelStyle}>{editingRpIdx !== null ? 'Edit related party' : 'Add related party'}</h3>
+
                 {rpErrors.length > 0 && (
                   <div style={errorSummaryStyle}>
                     <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following:</div>
-                    <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>{rpErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}</ul>
+                    <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                      {rpErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
+                    </ul>
                   </div>
                 )}
+
                 <div style={gridStyle}>
                   <Field label="Full legal name" style={{ gridColumn: '1 / -1' }} required>
                     <input value={rpDraft.name} onChange={(e) => setRpDraft((p) => ({ ...p, name: e.target.value }))} placeholder="As shown on government ID" />
@@ -1268,17 +1372,22 @@ export function Intake() {
                     </div>
                   </Field>
                 </div>
+
                 <div style={{ marginTop: '1rem' }}>
                   <h4 style={{ ...sectionLabelStyle, marginBottom: '0.625rem' }}>Address</h4>
                   <AddressFields value={rpDraft.address} onChange={(a) => setRpDraft((p) => ({ ...p, address: a }))} />
                 </div>
+
                 <div style={{ ...gridStyle, marginTop: '1rem' }}>
                   <Field label="Primary business activity" required>
-                    <select value={rpDraft.biz_activity} onChange={(e) => {
-                      const value = e.target.value;
-                      const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
-                      setRpDraft((p) => ({ ...p, biz_activity: value, biz_code: sel ? sel.code : p.biz_code }));
-                    }}>
+                    <select
+                      value={rpDraft.biz_activity}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const sel = BIZ_ACTIVITIES.find((a) => a.label === value);
+                        setRpDraft((p) => ({ ...p, biz_activity: value, biz_code: sel ? sel.code : p.biz_code }));
+                      }}
+                    >
                       <option value="">— Select activity —</option>
                       {BIZ_ACTIVITIES.map((a) => <option key={`${a.code}-${a.label}`} value={a.label}>{a.label}</option>)}
                       <option value="other">Other — enter manually below</option>
@@ -1288,6 +1397,7 @@ export function Intake() {
                     <input value={rpDraft.biz_code} onChange={(e) => setRpDraft((p) => ({ ...p, biz_code: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="e.g. 541511" inputMode="numeric" maxLength={6} />
                   </Field>
                 </div>
+
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
                   <button type="button" onClick={saveRpDraft} style={primaryBtnStyle}>{editingRpIdx !== null ? 'Update' : 'Add party'}</button>
                   <button type="button" onClick={() => { setShowRpForm(false); setEditingRpIdx(null); setRpErrors([]); }} style={secondaryBtnStyle}>Cancel</button>
@@ -1299,7 +1409,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Step 4: Transactions ─────────────────────────────────────── */}
         {step === 4 && (
           <div>
             <h2 style={stepHeadingStyle}>Reportable transactions</h2>
@@ -1342,23 +1451,25 @@ export function Intake() {
                             {hasSelection && (
                               <span style={{ fontSize: '0.72rem', background: '#0284c7', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>
                             )}
-                            {(cat.key === 'structural' || cat.key === 'nonmonetary') && (
-                              <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 600 }}>CPA review recommended</span>
-                            )}
-                            {cat.key === 'complex' && (
+                            {(cat.key === 'structural' || cat.key === 'nonmonetary' || cat.key === 'complex') && (
                               <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 600 }}>CPA review recommended</span>
                             )}
                           </div>
                           <div style={{ fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{cat.description}</div>
                         </div>
-                        <svg className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`} viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+                        <svg className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`} viewBox="0 0 20 20" fill="currentColor" width="20" height="20">
+                          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                        </svg>
                       </div>
 
                       {isOpen && (
                         <div className="tx-cat-body">
                           {typesInCat.map((item) => {
                             const partyName = allPartyLabels[txRelatedPartyIdx] || 'the related party';
-                            const previewSentence = item.sentence.replace('{party}', partyName).replace('{amount}', txAmt ? `USD ${Number(txAmt).toLocaleString()}` : '…');
+                            const previewSentence = item.sentence
+                              .replace('{party}', partyName)
+                              .replace('{amount}', txAmt ? `USD ${Number(txAmt).toLocaleString()}` : '…');
+
                             return (
                               <button
                                 key={item.value}
@@ -1367,7 +1478,6 @@ export function Intake() {
                                 onClick={() => {
                                   setTxType(item.value);
                                   setTxErrors([]);
-                                  // Reset direction for types that don't use it
                                   if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
                                 }}
                               >
@@ -1384,7 +1494,6 @@ export function Intake() {
               </div>
             </section>
 
-            {/* Transaction details — shown when a type is selected */}
             {txType && (
               <section style={{ ...sectionStyle, background: '#f8fafc', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem' }}>
                 <h3 style={{ ...sectionLabelStyle, marginBottom: '0.75rem' }}>Transaction details</h3>
@@ -1392,11 +1501,12 @@ export function Intake() {
                 {txErrors.length > 0 && (
                   <div style={{ ...errorSummaryStyle, marginBottom: '0.875rem' }}>
                     <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Fix the following:</div>
-                    <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>{txErrors.map((msg, i) => <li key={i}>{msg}</li>)}</ul>
+                    <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                      {txErrors.map((msg, i) => <li key={i}>{msg}</li>)}
+                    </ul>
                   </div>
                 )}
 
-                {/* Live sentence preview */}
                 {selectedTxMeta && (
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.9rem', color: '#1e40af', lineHeight: 1.55 }}>
                     <strong>Summary:</strong> {buildTxSentence(selectedTxMeta.sentence, allPartyLabels[txRelatedPartyIdx] || '', txAmt)}
@@ -1406,7 +1516,6 @@ export function Intake() {
                 )}
 
                 <div style={gridStyle}>
-                  {/* Direction — only for types that need it */}
                   {selectedTxMeta?.showDirection && (
                     <Field label="Who paid?" required>
                       <select value={txDir} onChange={(e) => setTxDir(e.target.value as 'paid' | 'received')}>
@@ -1416,27 +1525,19 @@ export function Intake() {
                     </Field>
                   )}
 
-                  {/* Amount */}
                   <Field
                     label={selectedTxMeta?.amountLabel ?? 'Amount (USD)'}
                     hint={selectedTxMeta?.amountOptional ? 'Optional' : selectedTxMeta?.amountHint}
                     required={!selectedTxMeta?.amountOptional && !PART_V_TYPES.has(txType) && !PART_VI_TYPES.has(txType)}
                   >
-                    <input
-                      type="number" min="0"
-                      value={txAmt}
-                      onChange={(e) => setTxAmt(e.target.value)}
-                      placeholder="0"
-                    />
+                    <input type="number" min="0" value={txAmt} onChange={(e) => setTxAmt(e.target.value)} placeholder="0" />
                     {selectedTxMeta?.amountHint && <span style={{ fontSize: '0.78rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{selectedTxMeta.amountHint}</span>}
                   </Field>
 
-                  {/* Date */}
                   <Field label="Date" hint="Optional">
                     <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
                   </Field>
 
-                  {/* NAICS — not shown for Part V */}
                   {!PART_V_TYPES.has(txType) && (
                     <Field label="What type of business is the related party?" hint="Optional" style={{ gridColumn: '1 / -1' }}>
                       <select value={txRpNaics} onChange={(e) => setTxRpNaics(e.target.value)}>
@@ -1447,7 +1548,6 @@ export function Intake() {
                     </Field>
                   )}
 
-                  {/* Description */}
                   <Field label="Notes" hint="Optional" style={{ gridColumn: '1 / -1' }}>
                     <input value={txDesc} onChange={(e) => setTxDesc(e.target.value)} placeholder="Brief description or reference" />
                   </Field>
@@ -1465,7 +1565,6 @@ export function Intake() {
               </section>
             )}
 
-            {/* Added transactions list */}
             {transactions.length > 0 && (
               <section style={{ marginTop: '1.5rem' }}>
                 <h3 style={sectionLabelStyle}>Transactions added ({transactions.length})</h3>
@@ -1478,7 +1577,7 @@ export function Intake() {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600 }}>{meta?.label ?? tx.transaction_type}</div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.1rem' }}>
-                            {meta ? meta.sentence.replace('{party}', partyName).replace('{amount}', tx.amount_usd ? `USD ${Number(tx.amount_usd).toLocaleString()}` : '') : partyName}
+                            {meta ? buildTxSentence(meta.sentence, partyName, tx.amount_usd) : partyName}
                             {tx.description ? ` · ${tx.description}` : ''}
                           </div>
                         </div>
@@ -1493,14 +1592,9 @@ export function Intake() {
               </section>
             )}
 
-            {/* Zero-transaction confirmation */}
             {transactions.length === 0 && (
               <label className="confirm-check-row">
-                <input
-                  type="checkbox"
-                  checked={noTransactionsConfirmed}
-                  onChange={(e) => setNoTransactionsConfirmed(e.target.checked)}
-                />
+                <input type="checkbox" checked={noTransactionsConfirmed} onChange={(e) => setNoTransactionsConfirmed(e.target.checked)} />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#92400e' }}>
                     The LLC had no reportable transactions with any related party in {taxYear}
@@ -1514,7 +1608,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Step 5: Review & Submit ──────────────────────────────────── */}
         {step === 5 && (
           <div>
             <h2 style={stepHeadingStyle}>Review &amp; submit</h2>
@@ -1606,7 +1699,7 @@ export function Intake() {
                           <div>
                             <div style={{ fontWeight: 700 }}>{meta?.label ?? tx.transaction_type}</div>
                             <div style={{ fontSize: '0.825rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>
-                              {meta ? meta.sentence.replace('{party}', partyName).replace('{amount}', tx.amount_usd ? `USD ${Number(tx.amount_usd).toLocaleString()}` : '') : ''}
+                              {meta ? buildTxSentence(meta.sentence, partyName, tx.amount_usd) : ''}
                             </div>
                           </div>
                           <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#0284c7', flexShrink: 0 }}>
@@ -1630,7 +1723,6 @@ export function Intake() {
           </div>
         )}
 
-        {/* ── Nav buttons ───────────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '1.5rem', borderTop: '1px solid var(--tf-border, #e5e7eb)', marginTop: '1.5rem' }}>
           {currentStepIdx > 0 && (
             <button type="button" onClick={handleBack} disabled={saving} style={secondaryBtnStyle}>Back</button>
@@ -1645,7 +1737,6 @@ export function Intake() {
             </button>
           )}
         </div>
-
       </div>
     </>
   );
