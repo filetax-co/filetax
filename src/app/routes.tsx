@@ -12,6 +12,7 @@ import { Resources } from './pages/Resources';
 import { Article } from './pages/Article';
 import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
+import { AuthConfirm } from './pages/AuthConfirm';
 import { Dashboard } from './pages/Dashboard';
 import { Intake } from './pages/Intake';
 import FilingWizard from './pages/FilingWizard';
@@ -45,6 +46,7 @@ export const router = createBrowserRouter(
         { path: 'resources/:slug', Component: Article },
         { path: 'faq', Component: FAQ },
         { path: 'auth', Component: Auth },
+        { path: 'auth/confirm', Component: AuthConfirm },
         { path: 'waitlist', Component: Waitlist },
         { path: 'terms', Component: Terms },
         { path: 'privacy', Component: Privacy },
