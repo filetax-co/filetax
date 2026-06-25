@@ -87,16 +87,14 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
 
 // ── TX_TYPES ──────────────────────────────────────────────────────────────
 // Each entry has:
-//   value       — internal key stored in DB
-//   label       — short tab label shown on the card
-//   sentence    — plain-English sentence shown as the card subtitle
-//                 uses {party} as placeholder for the related party name
-//                 uses {amount} as placeholder for the formatted amount
-//   category    — 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
-//   part        — 'IV' | 'V' | 'VI'
-//   showDirection — whether to show the paid/received dropdown (only true for Part IV monetary flows)
-//   amountLabel — custom label for the amount field
-//   amountHint  — optional hint shown under amount
+//   value          — internal key stored in DB
+//   label          — short label shown on the card
+//   sentence       — plain-English sentence; uses {party} and {amount} as placeholders
+//   category       — 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
+//   part           — 'IV' | 'V' | 'VI'
+//   showDirection  — whether to show the paid/received dropdown (Part IV monetary flows only)
+//   amountLabel    — custom label for the amount field
+//   amountHint     — optional hint shown under amount
 //   amountOptional — true if amount can be omitted
 
 export const TX_TYPES: {
@@ -110,6 +108,7 @@ export const TX_TYPES: {
   amountHint?: string;
   amountOptional?: boolean;
 }[] = [
+
   // ── Part IV — Goods & property ─────────────────────────────────────────
   {
     value: 'tangible_purchase',
@@ -188,7 +187,7 @@ export const TX_TYPES: {
     showDirection: true,
   },
 
-  // ── Part IV — Loans ───────────────────────────────────────────────────
+  // ── Part IV — Loans ────────────────────────────────────────────────────
   {
     value: 'loan_to_llc',
     label: 'Loan to the LLC',
@@ -210,41 +209,7 @@ export const TX_TYPES: {
     amountHint: 'The outstanding loan balance at the end of the tax year',
   },
 
-  // ── Part IV — Capital & distributions ────────────────────────────────
-  {
-    value: 'capital_contribution',
-    label: 'Capital contribution by owner',
-    sentence: '{party} put money or assets into the LLC as a capital contribution',
-    category: 2,
-    part: 'IV',
-    showDirection: false,
-  },
-  {
-    value: 'distribution',
-    label: 'Distribution to owner',
-    sentence: 'The LLC distributed money or assets to {party}',
-    category: 2,
-    part: 'IV',
-    showDirection: false,
-  },
-  {
-    value: 'dividend',
-    label: 'Dividend paid',
-    sentence: 'The LLC paid a dividend to {party}',
-    category: 2,
-    part: 'IV',
-    showDirection: false,
-  },
-  {
-    value: 'formation_costs',
-    label: 'Formation costs paid by owner',
-    sentence: '{party} paid the LLC\'s formation costs (e.g. state filing fees, registered agent)',
-    category: 1,
-    part: 'IV',
-    showDirection: false,
-  },
-
-  // ── Part IV — Complex / CPA-level ────────────────────────────────────
+  // ── Part IV — Complex / CPA-level ─────────────────────────────────────
   {
     value: 'intangible',
     label: 'Sale or license of intellectual property',
@@ -294,8 +259,45 @@ export const TX_TYPES: {
     showDirection: true,
   },
 
-  // ── Part V — Structural transactions ─────────────────────────────────
-  // Direction is hidden entirely for Part V; these are always LLC-centric.
+  // ── Part V — Contributions, distributions & entity events ─────────────
+  // Most common items first (contributions/distributions), rare structural events last.
+  // Direction is hidden entirely for Part V.
+  {
+    value: 'capital_contribution',
+    label: 'Capital contribution by owner',
+    sentence: 'You put money or assets into the LLC as a capital contribution',
+    category: 1,
+    part: 'V',
+    showDirection: false,
+    amountOptional: false,
+  },
+  {
+    value: 'distribution',
+    label: 'Distribution to owner',
+    sentence: 'The LLC paid money or assets out to you',
+    category: 1,
+    part: 'V',
+    showDirection: false,
+    amountOptional: false,
+  },
+  {
+    value: 'dividend',
+    label: 'Dividend paid',
+    sentence: 'The LLC paid a dividend to you',
+    category: 1,
+    part: 'V',
+    showDirection: false,
+    amountOptional: false,
+  },
+  {
+    value: 'formation_costs',
+    label: 'Formation costs paid by owner',
+    sentence: "You paid the LLC's setup costs (state filing fees, registered agent, etc.)",
+    category: 1,
+    part: 'V',
+    showDirection: false,
+    amountOptional: false,
+  },
   {
     value: 'formation_tx',
     label: 'LLC formation',
@@ -343,7 +345,7 @@ export const TX_TYPES: {
     amountOptional: true,
   },
 
-  // ── Part VI — Nonmonetary / less-than-FMV ────────────────────────────
+  // ── Part VI — Nonmonetary / less-than-FMV ─────────────────────────────
   {
     value: 'nonmonetary_transfer',
     label: 'Transfer of assets without cash',
@@ -384,16 +386,19 @@ export const TX_TYPES: {
 
 // ── Sets for special-case UI logic ────────────────────────────────────────
 
+// Only pure loan types now (capital_contribution / distribution moved to Part V)
 export const LOAN_TYPES = new Set([
   'loan_to_llc',
   'loan_from_llc',
-  'capital_contribution',
-  'distribution',
 ]);
 
 export const ROYALTY_TYPES = new Set(['rent', 'royalty']);
 
 export const PART_V_TYPES = new Set([
+  'capital_contribution',
+  'distribution',
+  'dividend',
+  'formation_costs',
   'formation_tx',
   'dissolution_tx',
   'acquisition_tx',
@@ -408,12 +413,12 @@ export const PART_VI_TYPES = new Set([
   'other_part_vi',
 ]);
 
-// Transaction types that show the direction dropdown (Part IV monetary flows)
+// Transaction types that show the direction dropdown (Part IV monetary flows only)
 export const DIRECTION_TYPES = new Set(
   TX_TYPES.filter((t) => t.showDirection).map((t) => t.value),
 );
 
-// ── Transaction categories (for accordion grouping in Step 4) ─────────────
+// ── Transaction categories (accordion grouping in Step 4) ─────────────────
 export const TX_CATEGORIES: {
   key: string;
   label: string;
@@ -445,9 +450,9 @@ export const TX_CATEGORIES: {
   {
     key: 'loans',
     label: 'Loans & financing',
-    description: 'Money lent or borrowed, capital put into or taken out of the LLC',
+    description: 'Money lent or borrowed between the LLC and its related parties',
     parts: ['IV'],
-    values: ['loan_to_llc', 'loan_from_llc', 'capital_contribution', 'distribution', 'dividend', 'formation_costs'],
+    values: ['loan_to_llc', 'loan_from_llc'],
   },
   {
     key: 'complex',
@@ -458,10 +463,20 @@ export const TX_CATEGORIES: {
   },
   {
     key: 'structural',
-    label: 'Structural transactions (Part V)',
-    description: 'Formation, dissolution, acquisitions — events that changed the LLC\'s legal structure',
+    label: 'Contributions, distributions & entity events',
+    description: 'Money put into or taken out of the LLC, plus formation, dissolution, or ownership changes',
     parts: ['V'],
-    values: ['formation_tx', 'dissolution_tx', 'acquisition_tx', 'disposition_tx', 'other_part_v'],
+    values: [
+      'capital_contribution',
+      'distribution',
+      'dividend',
+      'formation_costs',
+      'formation_tx',
+      'dissolution_tx',
+      'acquisition_tx',
+      'disposition_tx',
+      'other_part_v',
+    ],
   },
   {
     key: 'nonmonetary',
@@ -472,8 +487,7 @@ export const TX_CATEGORIES: {
   },
 ];
 
-// ── rest of existing constants below (unchanged) ─────────────────────────
-
+// ── US States ─────────────────────────────────────────────────────────────
 export const US_STATES: { value: string; label: string }[] = [
   { value: 'AL', label: 'Alabama' },
   { value: 'AK', label: 'Alaska' },
@@ -529,6 +543,7 @@ export const US_STATES: { value: string; label: string }[] = [
   { value: 'WY', label: 'Wyoming' },
 ];
 
+// ── Countries ─────────────────────────────────────────────────────────────
 export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'United States', label: 'United States' },
   { value: 'Afghanistan', label: 'Afghanistan' },
@@ -721,6 +736,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Zimbabwe', label: 'Zimbabwe' },
 ];
 
+// ── LLC Business Activities (Step 1 — entity's own activity) ─────────────
 export const BIZ_ACTIVITIES: { code: string; label: string }[] = [
   { code: '541511', label: 'Software Development' },
   { code: '513210', label: 'SaaS / Software Publisher' },
@@ -747,6 +763,7 @@ export const BIZ_ACTIVITIES: { code: string; label: string }[] = [
   { code: '541990', label: 'Other Professional Services' },
 ];
 
+// ── RP_NAICS (Steps 2 & 3 — owner and related party business type) ────────
 export const RP_NAICS: { code: string; label: string; hint: string }[] = [
   {
     code: '541511',
