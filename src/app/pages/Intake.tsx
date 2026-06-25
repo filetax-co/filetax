@@ -1537,4 +1537,317 @@ export function Intake() {
                   </select>
                 </Field>
 
-                <div style={{ ...sectionLabelStyle, marginBottom: '0.5
+                <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>Select transaction type</div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }}>
+                  {TX_CATEGORIES.map((cat) => {
+                    const isOpen = openCategory === cat.key;
+                    const isSelected = cat.values.includes(txType);
+                    return (
+                      <div key={cat.key} style={{ ...groupedCardStyle, border: isSelected ? '1px solid #0284c7' : '1px solid var(--tf-border, #e5e7eb)' }}>
+                        <div
+                          className={`tx-cat-header${isOpen ? ' is-open' : ''}`}
+                          onClick={() => setOpenCategory(isOpen ? null : cat.key)}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: isSelected ? '#0284c7' : 'var(--tf-text, #111)' }}>
+                              {cat.label}
+                              {isSelected && (
+                                <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '0.1rem 0.5rem', fontWeight: 600 }}>
+                                  {TX_TYPES.find((t) => t.value === txType)?.label}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.15rem' }}>{cat.description}</div>
+                          </div>
+                          <div className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`}>▼</div>
+                        </div>
+                        {isOpen && (
+                          <div className="tx-cat-body">
+                            {cat.values.map((val) => {
+                              const meta = TX_TYPES.find((t) => t.value === val);
+                              if (!meta) return null;
+                              const isThisSelected = txType === val;
+                              return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  className={`tx-type-card${isThisSelected ? ' is-selected' : ''}`}
+                                  onClick={() => {
+                                    setTxType(val);
+                                    setCat3Acknowledged(false);
+                                    setOpenCategory(null);
+                                  }}
+                                >
+                                  <div className="tx-type-label">{meta.label}</div>
+                                  <span className="tx-type-sentence">
+                                    {buildTxSentence(meta.sentence, allPartyLabels[txRelatedPartyIdx] ?? '', '')}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Category banner */}
+                {txCategory === 1 && (
+                  <div className="cat-banner-green">
+                    ✓ This usually does not create a separate US personal tax filing issue for the owner.
+                  </div>
+                )}
+                {txCategory === 2 && (
+                  <div className="cat-banner-amber">
+                    ⚠ This transaction may require a US personal tax filing review for the owner. CPA review is recommended.
+                  </div>
+                )}
+                {txCategory === 3 && (
+                  <div className="cat-banner-red">
+                    ✕ This is a complex transaction that may have significant US tax implications.
+                    <div className="cat3-ack-row">
+                      <input
+                        type="checkbox"
+                        id="cat3-ack"
+                        checked={cat3Acknowledged}
+                        onChange={(e) => setCat3Acknowledged(e.target.checked)}
+                      />
+                      <label htmlFor="cat3-ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>
+                        I understand this is a complex transaction — I still want to proceed
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Transaction details */}
+                {txType && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                    {DIRECTION_TYPES.has(txType) && (
+                      <Field label="Direction" required>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          {(['paid', 'received'] as const).map((d) => (
+                            <label
+                              key={d}
+                              style={{
+                                flex: 1, display: 'flex', gap: '0.5rem', alignItems: 'center',
+                                padding: '0.5rem 0.75rem',
+                                border: `1px solid ${txDir === d ? '#0284c7' : 'var(--tf-border, #e5e7eb)'}`,
+                                borderRadius: '0.375rem', cursor: 'pointer',
+                                background: txDir === d ? '#eff6ff' : 'var(--tf-surface, #fff)',
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name="txDir"
+                                checked={txDir === d}
+                                onChange={() => setTxDir(d)}
+                                style={{ accentColor: '#0284c7' }}
+                              />
+                              <span style={{ fontWeight: 500, fontSize: '0.9rem', textTransform: 'capitalize' }}>{d}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </Field>
+                    )}
+
+                    <Field
+                      label={selectedTxMeta?.amountLabel ?? 'Amount (USD)'}
+                      hint={selectedTxMeta?.amountOptional ? '(optional)' : undefined}
+                      required={!selectedTxMeta?.amountOptional}
+                    >
+                      <input
+                        type="number"
+                        value={txAmt}
+                        onChange={(e) => setTxAmt(e.target.value)}
+                        placeholder="e.g. 5000"
+                      />
+                      {selectedTxMeta?.amountHint && (
+                        <div style={infoBoxStyle}>{selectedTxMeta.amountHint}</div>
+                      )}
+                    </Field>
+
+                    <Field label="Description" hint="(optional)">
+                      <textarea
+                        value={txDesc}
+                        onChange={(e) => setTxDesc(e.target.value)}
+                        placeholder="Brief description of this transaction"
+                        rows={2}
+                        style={{ resize: 'vertical' }}
+                      />
+                    </Field>
+
+                    <Field label="Transaction date" hint="(optional)">
+                      <input
+                        type="date"
+                        value={txDate}
+                        onChange={(e) => setTxDate(e.target.value)}
+                      />
+                    </Field>
+
+                    {txErrors.length > 0 && (
+                      <div style={{ ...errorSummaryStyle, marginBottom: 0 }}>
+                        <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                          {txErrors.map((msg, i) => <li key={i}>{msg}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      style={{ ...addBtnStyle, marginTop: 0, opacity: (txCategory === 3 && !cat3Acknowledged) ? 0.45 : 1 }}
+                      onClick={addTransaction}
+                      disabled={txCategory === 3 && !cat3Acknowledged}
+                    >
+                      + Add transaction
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {transactions.length === 0 && (
+              <label className="confirm-check-row" style={{ cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={noTransactionsConfirmed}
+                  onChange={(e) => setNoTransactionsConfirmed(e.target.checked)}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>This LLC had no reportable transactions this tax year</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>
+                    Tick this only if there were genuinely zero transactions between the LLC and any foreign related party.
+                  </div>
+                </div>
+              </label>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
+              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
+              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>
+                {saving ? 'Saving…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 5: Review ──────────────────────────────────────────────── */}
+        {step === 5 && (
+          <div>
+            <h2 style={stepHeadingStyle}>Review your filing</h2>
+            <p style={stepSubheadStyle}>Check everything below before submitting. Go back to any step to make changes.</p>
+
+            {/* LLC */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>LLC details</h3>
+              <div style={reviewGridStyle}>
+                <SummaryRow label="LLC name" value={llcName} />
+                <SummaryRow label="EIN" value={ein} />
+                <SummaryRow label="State of formation" value={stateOfFormation} />
+                <SummaryRow label="Tax year" value={taxYear} />
+                <SummaryRow label="Total assets" value={totalAssets ? `USD ${Number(totalAssets).toLocaleString()}` : null} />
+                <SummaryRow label="Date of incorporation" value={entityDOI} />
+                <SummaryRow label="Principal country" value={entityPrincipalCountry} />
+                <SummaryRow label="Type of business" value={entityBizActivity} />
+                <SummaryRow label="Business code" value={entityBizCode} />
+                <SummaryRow label="Mailing address" value={[mailing.line1, mailing.city, mailing.region, mailing.postal_code].filter(Boolean).join(', ')} />
+              </div>
+            </section>
+
+            {/* Filing status (1b) */}
+            {show1b && (
+              <section style={sectionStyle}>
+                <h3 style={sectionLabelStyle}>Filing status</h3>
+                <div style={reviewGridStyle}>
+                  <SummaryRow label="Extension filed" value={extensionFiled === true ? 'Yes' : extensionFiled === false ? 'No' : null} />
+                  <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
+                  {includeReasonableCause && reasonableCauseReasons.length > 0 && (
+                    <SummaryRow
+                      label="Reasons"
+                      value={reasonableCauseReasons
+                        .map((r) => REASONABLE_CAUSE_REASONS.find((x) => x.value === r)?.label)
+                        .filter(Boolean)
+                        .join(', ')}
+                    />
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Owner */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Foreign owner</h3>
+              <div style={reviewGridStyle}>
+                <SummaryRow label="Full name" value={ownerName} />
+                <SummaryRow label="Country (business)" value={ownerCountry} />
+                <SummaryRow label="Country (tax)" value={ownerCountryRes} />
+                <SummaryRow label="Tax ID (their country)" value={ownerForeignTaxId} />
+                <SummaryRow label="US tax ID" value={ownerSSN} />
+                <SummaryRow label="Reference code" value={ownerRefNumber} />
+                <SummaryRow label="Type of business" value={ownerBizActivity} />
+                <SummaryRow label="Business code" value={ownerBizCode} />
+                <SummaryRow label="Address" value={[ownerAddress.line1, ownerAddress.city, ownerAddress.region, ownerAddress.country].filter(Boolean).join(', ')} />
+              </div>
+            </section>
+
+            {/* Related parties */}
+            {relatedParties.length > 0 && (
+              <section style={sectionStyle}>
+                <h3 style={sectionLabelStyle}>Related parties</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {relatedParties.map((rp, i) => (
+                    <div key={i} style={reviewGridStyle}>
+                      <SummaryRow label="Full name" value={rp.name} />
+                      <SummaryRow label="Country (business)" value={rp.country} />
+                      <SummaryRow label="Country (tax)" value={rp.country_residence} />
+                      <SummaryRow label="US TIN" value={rp.us_tin} />
+                      <SummaryRow label="Tax ID (their country)" value={rp.foreign_tax_id} />
+                      <SummaryRow label="Reference code" value={rp.ref_number} />
+                      <SummaryRow label="Type of business" value={rp.biz_activity} />
+                      <SummaryRow label="Business code" value={rp.biz_code} />
+                      <SummaryRow label="Address" value={[rp.address.line1, rp.address.city, rp.address.region, rp.address.country].filter(Boolean).join(', ')} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Transactions */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Transactions</h3>
+              {transactions.length === 0 ? (
+                <div style={infoBoxStyle}>No reportable transactions recorded.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {transactions.map((t, i) => {
+                    const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
+                    const partyLabel = allPartyLabels[t.related_party_index] || 'Unknown';
+                    return (
+                      <div key={i} style={reviewGridStyle}>
+                        <SummaryRow label="Type" value={meta?.label ?? t.transaction_type} />
+                        <SummaryRow label="Party" value={partyLabel} />
+                        <SummaryRow label="Amount" value={t.amount_usd && Number(t.amount_usd) > 0 ? `USD ${Number(t.amount_usd).toLocaleString()}` : null} />
+                        {DIRECTION_TYPES.has(t.transaction_type) && <SummaryRow label="Direction" value={t.direction} />}
+                        {t.description && <SummaryRow label="Description" value={t.description} />}
+                        {t.transaction_date && <SummaryRow label="Date" value={t.transaction_date} />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
+              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving}>
+                {saving ? 'Submitting…' : 'Submit filing'}
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </>
+  );
+}
