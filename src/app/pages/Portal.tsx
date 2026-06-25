@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router';
+import { validatePassword } from '../../lib/passwordSecurity';
 
 const FILING_YEARS_DISPLAY: Record<string, string> = {
   '1': '1 year (current)',
@@ -137,7 +138,16 @@ export function Portal() {
       if (!name.trim()) { setError('Please enter your full name.'); return; }
       if (!email.trim()) { setError('Please enter your email address.'); return; }
       if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+
+      // ── Password security checks (zxcvbn strength + HIBP breach) ──────────
       setSubmitting(true);
+      const pwCheck = await validatePassword(password);
+      if (!pwCheck.ok) {
+        setError(pwCheck.error);
+        setSubmitting(false);
+        return;
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
