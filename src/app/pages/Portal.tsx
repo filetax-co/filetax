@@ -154,11 +154,9 @@ export function Portal() {
         password,
         options: {
           data: { full_name: name.trim() },
-          // After the user clicks the confirmation link in their email, redirect
-          // them straight to /dashboard so they land already signed in and ready
-          // to start their filing — not on the homepage where they'd need to
-          // navigate again.
-          emailRedirectTo: window.location.origin + BASE + '/dashboard',
+          // After the user clicks the confirmation link in their email,
+          // /auth/confirm verifies the token then redirects to /dashboard.
+          emailRedirectTo: window.location.origin + BASE + '/auth/confirm',
         },
       });
 
@@ -236,7 +234,7 @@ export function Portal() {
       const { error: resendError } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
-        options: { emailRedirectTo: window.location.origin + BASE + '/dashboard' },
+        options: { emailRedirectTo: window.location.origin + BASE + '/auth/confirm' },
       });
       setResending(false);
       if (resendError) { setError(friendlyError(resendError.message)); return; }
