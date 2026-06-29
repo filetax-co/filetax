@@ -618,10 +618,14 @@ export function Intake() {
     const errs = validateCurrentStep();
     setStepErrors(errs);
     if (errs.length > 0) return;
-    if (!filingId) { setError('Missing filing ID. Please go back one step and save again.'); return; }
+    if (!filingId) { setError('Missing filing ID.'); return; }
     setSaving(true);
     setError(null);
     try {
+      // ✅ ADD THIS — save transactions before navigating
+      const saved = await saveTransactions(filingId);
+      if (!saved) return;
+  
       const { error: err } = await supabase.from('filings').update({ status: 'in_progress' }).eq('id', filingId);
       if (err) throw err;
       navigate(`/filing/${filingId}`);
