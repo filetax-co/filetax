@@ -920,11 +920,11 @@ export const buildInstructionsPage = async (
     `This package contains your Form 5472${opts.formCount > 1 ? `s (${opts.formCount} total, one per related party)` : ''} ` +
       `and the accompanying pro forma Form 1120 for the tax period ${period.beginText} through ${period.endText}.`,
     opts.hasRCL
-      ? 'A Reasonable Cause Statement is included (it covers every late year you are filing). It is enclosed once for the whole submission, not per year.'
+      ? 'A Reasonable Cause Statement is included. It is enclosed once for the whole submission.'
       : '',
     'How to file:',
     '1. Print the entire package.',
-    '2. Write "Foreign-owned U.S. DE" across the top of the pro forma Form 1120 (already printed for you).',
+    '2. The "Foreign-owned U.S. DE" label is already printed across the top of the pro forma Form 1120, so you do not need to add it.',
     '3. Sign and date the Form 1120 where indicated.',
     '4. Mail OR fax the package to the IRS unit for foreign-owned disregarded entities (Ogden, UT). Re-verify the current address/fax on irs.gov before sending.',
     '5. Keep a copy and proof of mailing (USPS Certified Mail). The IRS does not send a receipt.',
@@ -1132,9 +1132,20 @@ const fill1120 = async (
   setText(doc, F.CORP_ZIP,     addr?.zip   ?? '');
   setText(doc, F.CORP_COUNTRY, addr?.country || 'United States');
 
-  // ── Tax period (human format per spec §0) ───────────────────────────────────────────
-  setText(doc, F.BEGINNING_DATE, period.beginText);
-  setText(doc, F.ENDING_DATE,    period.endText);
+  // ── Tax period ───────────────────────────────────────────────────────────────────────
+  // The 1120 header reads "For calendar year YYYY, or tax year beginning ____,
+  // ending ____, 20__". For a plain calendar-year filer the beginning/ending
+  // blanks stay EMPTY (the printed "calendar year" + the year box cover it).
+  // For a short or fiscal year we fill the blanks with month + day only (the
+  // year lives in the separate year box), e.g. "September 10" / "December 31".
+  const isCalendarYear =
+    !filing.is_fiscal_year && period.beginISO === `${period.year}-01-01` && period.endISO === `${period.year}-12-31`;
+  const monthDay = (iso: string): string => {
+    const [, m, d] = iso.split('-');
+    return m && d ? `${MONTH_NAMES[Number(m)] ?? m} ${Number(d)}` : '';
+  };
+  setText(doc, F.BEGINNING_DATE, isCalendarYear ? '' : monthDay(period.beginISO));
+  setText(doc, F.ENDING_DATE,    isCalendarYear ? '' : monthDay(period.endISO));
   setText(doc, F.ENDING_YEAR,    String(period.year));
 
   // ── Checkboxes (item E) ──────────────────────────────────────────────────────────────
@@ -1228,9 +1239,39 @@ export interface FilingPackage {
    * Also produced standalone via generateForm7004().
    */
   form7004?: Uint8Array;
+  /**
+   * Reasonable Cause Letter, present when filing.include_rcl is true. Appended
+   * to the combined package (before the forms) AND returned standalone.
+   */
+  reasonableCauseLetter?: Uint8Array;
   /** Number of Form 5472s generated (Line 1g). */
   formCount: number;
 }
+
+// Build a plain-language reasonable-cause narrative from the selected reason
+// codes when the user gave no free-text. Falls back to null (the letter then
+// uses its own default narrative).
+const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): string | null => {
+  const free = (filing['rcl_narrative'] as string | undefined)?.trim();
+  if (free) return free;
+  const reasons = filing.reasonable_cause_reasons as string[] | null | undefined;
+  if (!reasons || reasons.length === 0) return null;
+  const phrases: Record<string, string> = {
+    first_time_filing: 'this is the owner’s first time filing in the United States, with no prior U.S. tax-compliance experience',
+    relied_on_non_us_advisor: 'the owner relied on a non-U.S. accountant or formation service that was unfamiliar with U.S. filing requirements',
+    not_informed: 'no formation agent, bank, or advisor informed the owner that Form 5472 was required',
+    no_tax_liability: 'the owner reasonably believed that having no U.S. tax liability meant no return was due',
+    minimal_activity: 'the LLC had little or no activity during the year',
+    incomplete_records: 'records and information needed to file were delayed or incomplete',
+    language_barrier: 'English is not the owner’s first language and the U.S. tax system was unfamiliar',
+    discovered_late: 'the owner only learned of the filing requirement recently, through professional review or self-research',
+    voluntary_filing: 'the owner is coming forward voluntarily and proactively, before any contact from the IRS',
+    new_procedures: 'the owner has put procedures in place to remain compliant in future years',
+  };
+  const sentences = reasons.map((r) => phrases[r]).filter(Boolean);
+  if (sentences.length === 0) return null;
+  return `The failure to file on time was due to reasonable cause and not willful neglect: ${sentences.join('; ')}.`;
+};
 
 /** Whether to include Form 7004 for this filing (extension filed or requested). */
 const wants7004 = (raw: Filing): boolean =>
@@ -1368,7 +1409,21 @@ export const generateFilingPackage = async (
     isLate: hasRCL, hasRCL, formCount: yd.formCount,
   });
 
-  const merged = await assembleYear(yd, [instructions]);
+  // Reasonable Cause Letter — built when the filing opted into the RCL. It is
+  // the cover letter, so it leads the combined package (before instructions),
+  // and is also returned standalone.
+  let reasonableCauseLetter: Uint8Array | undefined;
+  let rclDoc: PDFDocument | null = null;
+  if (hasRCL) {
+    rclDoc = await buildReasonableCauseLetter(filing, [period.year], rclNarrativeFromReasons(rawFiling));
+    reasonableCauseLetter = await rclDoc.save();
+  }
+
+  // Combined order: RCL (if any) → instructions → 1120 → 5472s/statements.
+  const prefix: PDFDocument[] = [];
+  if (rclDoc) prefix.push(await PDFDocument.load(reasonableCauseLetter!));
+  prefix.push(instructions);
+  const merged = await assembleYear(yd, prefix);
 
   // Form 7004 — included when the filing opted into an extension. Appended to
   // the end of the combined package AND returned standalone.
@@ -1390,7 +1445,7 @@ export const generateFilingPackage = async (
     ownerDocs.docPartV  ? ownerDocs.docPartV.save()  : Promise.resolve<Uint8Array | undefined>(undefined),
   ]);
 
-  return { form5472, form1120, combined, statement_partVI, statement_partV, form7004, formCount: yd.formCount };
+  return { form5472, form1120, combined, statement_partVI, statement_partV, form7004, reasonableCauseLetter, formCount: yd.formCount };
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */

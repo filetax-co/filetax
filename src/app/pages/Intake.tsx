@@ -674,6 +674,17 @@ export function Intake() {
     if (!stateOfFormation) errs.push('Select the state of formation.');
     if (!taxYear) errs.push('Select the tax year.');
     if (!entityDOI) errs.push('Enter the date of incorporation.');
+    if (entityDOI && taxYear) {
+      const doiYear = Number(entityDOI.slice(0, 4));
+      const ty = Number(taxYear);
+      // The LLC must already exist during the year being filed: it cannot be
+      // incorporated after the tax year.
+      if (doiYear > ty) {
+        errs.push(`The incorporation date (${entityDOI}) is after the ${ty} tax year. An LLC cannot be incorporated after the year it is filing for. Check the date or the tax year.`);
+      } else if (doiYear < 1900 || doiYear > ty + 1) {
+        errs.push('Check the date of incorporation. The year does not look right.');
+      }
+    }
     if (!entityPrincipalCountry) errs.push('Select the principal country where business is conducted.');
     if (!entityBizActivity) errs.push('Select the LLC principal business activity.');
     if (!entityBizCode.trim()) errs.push('Enter the LLC business activity code.');
