@@ -100,6 +100,82 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
   return UI_TO_CANONICAL[uiType] ?? 'other';
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Transaction money summary (drives the "reportable total" + buckets in the UI)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Mirrors how pdfGenerator.aggregateTransactions + totalReceived/totalPaid map
+// transactions onto Form 5472, so the figures shown to the user reconcile with
+// the generated form:
+//   • formGross   = Part IV monetary FLOWS only (Form 5472 line 1f / 1h). This
+//                   EXCLUDES loan balances and Part V contributions/
+//                   distributions, which sit on their own lines/statements.
+//   • totalEntered= every reportable amount the user entered, any type — shown
+//                   alongside formGross so nothing looks "missing".
+//   • buckets     = friendly Money in / Money out / Other split.
+
+/** UI-vocabulary classification (works on the codes the wizard stores pre-translation). */
+const MONEY_IN_UI = new Set(['capital_contribution', 'loan_to_llc', 'formation_costs', 'formation_tx', 'acquisition_tx']);
+const MONEY_OUT_UI = new Set(['distribution', 'dividend', 'loan_from_llc', 'dissolution_tx', 'disposition_tx']);
+// Everything else (services, rent, royalty, interest, goods, IP, etc.) is an
+// "other dealing" — and these are exactly the Part IV gross-payment flows.
+const PART_IV_FLOW_CANONICAL = new Set<CanonicalTxType>([
+  'sales', 'tangible_property', 'rent_royalty', 'intangible', 'service_payment',
+  'commission', 'interest', 'insurance', 'loan_guarantee', 'other',
+]);
+
+export interface TxMoneySummary {
+  /** Sum of every reportable amount entered (any type). */
+  totalEntered: number;
+  /** Form 5472 gross payments (1f/1h) — Part IV flows only. */
+  formGross: number;
+  bucketIn: { count: number; total: number };
+  bucketOut: { count: number; total: number };
+  bucketOther: { count: number; total: number };
+}
+
+/**
+ * Compute the money summary from raw wizard transaction rows (UI-vocabulary
+ * transaction_type + string/number amount). Loan rows use the closing balance
+ * (amount) for the "entered"/bucket figures, matching what the user sees.
+ */
+export function summarizeTransactions(
+  rows: { transaction_type: string; amount_usd: number | string | null | undefined }[],
+): TxMoneySummary {
+  const amt = (v: number | string | null | undefined): number => {
+    const n = typeof v === 'string' ? Number(v) : (v ?? 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  const s: TxMoneySummary = {
+    totalEntered: 0,
+    formGross: 0,
+    bucketIn: { count: 0, total: 0 },
+    bucketOut: { count: 0, total: 0 },
+    bucketOther: { count: 0, total: 0 },
+  };
+
+  for (const r of rows) {
+    const a = amt(r.amount_usd);
+    s.totalEntered += a;
+
+    if (MONEY_IN_UI.has(r.transaction_type)) {
+      s.bucketIn.count++; s.bucketIn.total += a;
+    } else if (MONEY_OUT_UI.has(r.transaction_type)) {
+      s.bucketOut.count++; s.bucketOut.total += a;
+    } else {
+      s.bucketOther.count++; s.bucketOther.total += a;
+    }
+
+    // Form gross (1f/1h) = Part IV monetary flows only.
+    if (PART_IV_FLOW_CANONICAL.has(toCanonicalTxType(r.transaction_type))) {
+      s.formGross += a;
+    }
+  }
+
+  return s;
+}
+
 /** UI codes that mean a royalty (sets is_royalty = true on the canonical row). */
 const ROYALTY_UI_TYPES = new Set(['royalty']);
 

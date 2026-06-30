@@ -3,11 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
-import { mapTransactionForPersist } from '../../lib/filingMapping';
+import { mapTransactionForPersist, summarizeTransactions } from '../../lib/filingMapping';
 import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
 import {
   BIZ_ACTIVITIES,
   COUNTRIES,
+  DETAILED_TX_GROUPS,
   DIRECTION_TYPES,
   FILING_DUE_DATES,
   LOAN_TYPES,
@@ -15,9 +16,9 @@ import {
   PART_VI_TYPES,
   REASONABLE_CAUSE_REASONS,
   RP_NAICS,
+  SIMPLE_TX,
   STEP_LABELS,
   TAX_YEARS,
-  TX_CATEGORIES,
   TX_TYPES,
   type IntakeStep,
   US_STATES,
@@ -122,11 +123,6 @@ function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   return true;
 }
 
-function buildTxSentence(sentence: string, partyName: string, amount: string, isOwner?: boolean): string {
-  const partyLabel = isOwner ? 'you' : (partyName || 'the related party');
-  const amtLabel = amount && Number(amount) > 0 ? `USD ${Number(amount).toLocaleString()}` : '';
-  return sentence.replace('{party}', partyLabel).replace('{amount}', amtLabel);
-}
 
 function getStepOrder(show1b: boolean): IntakeStep[] {
   if (show1b) return [1, '1b', 2, 3, 4, 5];
@@ -286,6 +282,51 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
   );
 }
 
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+
+/**
+ * Reportable-total + money-bucket panel. Shows what the user entered AND the
+ * true Form 5472 gross-payments figure (Part IV flows), so the form number is
+ * honest while nothing looks missing. Reused on the transaction step (live) and
+ * the review step (static).
+ */
+function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summarizeTransactions>; count: number }) {
+  if (count === 0) return null;
+  const bucket = (label: string, b: { count: number; total: number }, color: string) => (
+    <div style={{ background: 'var(--tf-offset)', borderRadius: '0.5rem', padding: '0.7rem 0.85rem' }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)' }}>{label}{b.count ? ` · ${b.count}` : ''}</div>
+      <div style={{ fontSize: '1.1rem', fontWeight: 700, color }}>{usd(b.total)}</div>
+    </div>
+  );
+  return (
+    <div style={{ ...groupedCardStyle, padding: '1.1rem 1.25rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)' }}>Total you’ve entered</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--tf-text)', lineHeight: 1.1 }}>{usd(summary.totalEntered)}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)' }}>On Form 5472 (gross payments)</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--tf-text)' }}>{usd(summary.formGross)}</div>
+        </div>
+      </div>
+      <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
+        The “gross payments” figure (Form 5472 line 1f/1h) counts service, rent, royalty and goods dealings. Money you put in or took out, and loan balances, are reported on their own lines — so the two numbers can differ, and that’s expected.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+        {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
+        {bucket('Money out', summary.bucketOut, 'var(--tf-accent)')}
+        {bucket('Other dealings', summary.bucketOther, 'var(--tf-text)')}
+      </div>
+    </div>
+  );
+}
+
+// Simple-transaction glyphs (kept lightweight — no icon dependency).
+const SIMPLE_TX_ICON: Record<string, string> = {
+  'in': '↘', 'out': '↗', 'loan-in': '↘', 'loan-out': '↗', 'setup': '🧾', 'dividend': '💵',
+};
+
 const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
 const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-muted)', marginBottom: '1.75rem', lineHeight: 1.55 };
 const sectionStyle: React.CSSProperties = { marginBottom: '2rem' };
@@ -404,7 +445,10 @@ export function Intake() {
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState('');
   const [cat3Acknowledged, setCat3Acknowledged] = useState(false);
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  // Two-tier transaction entry: the detailed picker is hidden until the user
+  // asks for it (the simple one-tap list covers the common ~90%).
+  const [showDetailedTx, setShowDetailedTx] = useState(false);
+  const [detailedSearch, setDetailedSearch] = useState('');
 
   const allPartyLabels = [
     ownerName || 'Primary owner',
@@ -414,6 +458,8 @@ export function Intake() {
   const selectedTxMeta = TX_TYPES.find((t) => t.value === txType);
   const currentStepIdx = stepOrder.indexOf(step);
   const txCategory = getCategoryForTxType(txType);
+  // Live money summary (reconciles with the generator's 1f/1h gross).
+  const txSummary = summarizeTransactions(transactions);
 
   const goToStepByIndex = (idx: number, nextFilingId?: string) => {
     const target = stepOrder[idx];
@@ -942,7 +988,8 @@ export function Intake() {
     setTxDesc('');
     setTxDate('');
     setTxType('');
-    setOpenCategory(null);
+    setShowDetailedTx(false);
+    setDetailedSearch('');
     setCat3Acknowledged(false);
     setTxErrors([]);
     setStepErrors([]);
@@ -1624,6 +1671,8 @@ export function Intake() {
               </div>
             )}
 
+            <TxSummaryPanel summary={txSummary} count={transactions.length} />
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Add a transaction</h3>
 
@@ -1635,64 +1684,89 @@ export function Intake() {
                 </select>
               </Field>
 
-              <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>What kind of transaction?</div>
+              <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>What happened?</div>
               {txErrors.some((e) => e.includes('transaction type')) && (
-                <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Select a transaction type below.</div>
+                <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Pick what happened below.</div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {TX_CATEGORIES.map((cat) => {
-                  const isOpen = openCategory === cat.key;
-                  const typesInCat = TX_TYPES.filter((t) => cat.values.includes(t.value));
-                  const hasSelection = typesInCat.some((t) => t.value === txType);
-                  return (
-                    <div key={cat.key} style={{ ...groupedCardStyle, borderColor: hasSelection ? '#0284c7' : 'var(--tf-border, #e5e7eb)' }}>
-                      <div
-                        className={`tx-cat-header${isOpen ? ' is-open' : ''}`}
-                        onClick={() => setOpenCategory(isOpen ? null : cat.key)}
-                        role="button"
-                        aria-expanded={isOpen}
-                      >
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text, #111)' }}>{cat.label}</span>
-                            {hasSelection && <span style={{ fontSize: '0.72rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>}
-                          </div>
-                          <div style={{ fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{cat.description}</div>
+              {/* Tier 1 — simple one-tap transactions (cover ~90% of filings). */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                {SIMPLE_TX.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    className={`tx-type-card${txType === s.value ? ' is-selected' : ''}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}
+                    onClick={() => {
+                      setTxType(s.value);
+                      setTxDir(s.direction);
+                      setShowDetailedTx(false);
+                      setTxErrors([]);
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: '1.1rem', lineHeight: 1 }}>{SIMPLE_TX_ICON[s.icon]}</span>
+                    <span className="tx-type-label">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Tier 2 — "record a different transaction" reveals the full set. */}
+              <button
+                type="button"
+                onClick={() => setShowDetailedTx((v) => !v)}
+                style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', padding: '0.75rem 0 0', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+              >
+                {showDetailedTx ? '− Hide other transaction types' : '+ Record a different kind of transaction'}
+              </button>
+
+              {showDetailedTx && (
+                <div style={{ ...groupedCardStyle, padding: '1rem 1.25rem', marginTop: '0.75rem' }}>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                    For less common dealings. Pick the closest match — we’ll place it on the right part of the form for you.
+                  </p>
+                  <input
+                    type="text"
+                    value={detailedSearch}
+                    onChange={(e) => setDetailedSearch(e.target.value)}
+                    placeholder="Search (e.g. royalty, services, IP, insurance)…"
+                    style={{ marginBottom: '0.875rem' }}
+                  />
+                  {DETAILED_TX_GROUPS.map((grp) => {
+                    const items = TX_TYPES.filter(
+                      (t) => grp.values.includes(t.value) &&
+                        (!detailedSearch.trim() ||
+                          t.label.toLowerCase().includes(detailedSearch.toLowerCase()) ||
+                          t.sentence.toLowerCase().includes(detailedSearch.toLowerCase())),
+                    );
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={grp.key} style={{ marginBottom: '0.875rem' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', marginBottom: '0.4rem' }}>
+                          {grp.label}
+                          {grp.note && <span style={{ color: 'var(--tf-warn)', textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}> · {grp.note}</span>}
                         </div>
-                        <div className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`}>
-                          <svg viewBox="0 0 20 20" fill="currentColor" width={20} height={20}>
-                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                          </svg>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {items.map((item) => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
+                              onClick={() => {
+                                setTxType(item.value);
+                                setTxErrors([]);
+                                if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
+                              }}
+                            >
+                              <span className="tx-type-label">{item.label}</span>
+                              <span className="tx-type-sentence">{item.sentence.replace('{party}', allPartyLabels[txRelatedPartyIdx] || 'the related party')}</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      {isOpen && (
-                        <div className="tx-cat-body">
-                          {typesInCat.map((item) => {
-                            const partyName = allPartyLabels[txRelatedPartyIdx] || 'the related party';
-                            const preview = buildTxSentence(item.sentence, partyName, txAmt, txRelatedPartyIdx === 0);
-                            return (
-                              <button
-                                key={item.value}
-                                type="button"
-                                className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
-                                onClick={() => {
-                                  setTxType(item.value);
-                                  setTxErrors([]);
-                                  if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
-                                }}
-                              >
-                                <span className="tx-type-label">{item.label}</span>
-                                <span className="tx-type-sentence">{preview}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             {txType && (
@@ -1866,6 +1940,7 @@ export function Intake() {
             {transactions.length > 0 && (
               <section style={sectionStyle}>
                 <h3 style={sectionLabelStyle}>Transactions ({transactions.length})</h3>
+                <TxSummaryPanel summary={txSummary} count={transactions.length} />
                 {transactions.map((t, i) => {
                   const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
                   return (

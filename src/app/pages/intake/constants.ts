@@ -384,6 +384,63 @@ export const TX_TYPES: {
   },
 ];
 
+// ── Two-tier transaction entry ────────────────────────────────────────────
+// SIMPLE_TX: the handful of everyday owner↔LLC dealings that cover ~90% of
+// filings — shown as one-tap options by default. Each maps to an existing
+// TX_TYPES value, so nothing downstream changes.
+//
+// DETAILED_TX_GROUPS: everything else (the less-common Part IV / V / VI types),
+// revealed only when the user opens "Record a different transaction". Grouped
+// lightly and flagged where a CPA review is advisable.
+//
+// Wording here is intentionally our own plain-English voice.
+
+export type SimpleTx = {
+  value: string;            // existing TX_TYPES value
+  label: string;            // plain, first-person
+  icon: 'in' | 'out' | 'loan-in' | 'loan-out' | 'setup' | 'dividend';
+  /** Forced direction for the underlying row (Part V / loan rows have no dropdown). */
+  direction: 'paid' | 'received';
+};
+
+export const SIMPLE_TX: SimpleTx[] = [
+  { value: 'capital_contribution', label: 'I added money to the LLC',     icon: 'in',       direction: 'received' },
+  { value: 'distribution',         label: 'I took money out of the LLC',  icon: 'out',      direction: 'paid' },
+  { value: 'loan_to_llc',          label: 'I lent money to the LLC',      icon: 'loan-in',  direction: 'received' },
+  { value: 'loan_from_llc',        label: 'The LLC lent money to me',     icon: 'loan-out', direction: 'paid' },
+  { value: 'formation_costs',      label: "I paid the LLC's setup costs", icon: 'setup',    direction: 'received' },
+  { value: 'dividend',             label: 'The LLC paid me a dividend',   icon: 'dividend', direction: 'paid' },
+];
+
+export const SIMPLE_TX_VALUES = new Set(SIMPLE_TX.map((s) => s.value));
+
+export type DetailedTxGroup = {
+  key: string;
+  label: string;
+  /** Shown in muted text after the group label; e.g. a CPA-review hint. */
+  note?: string;
+  values: string[];   // TX_TYPES values in this group
+};
+
+export const DETAILED_TX_GROUPS: DetailedTxGroup[] = [
+  {
+    key: 'payments',
+    label: 'Payments & services',
+    values: ['service_payment', 'tech_services', 'commission', 'rent', 'royalty', 'interest', 'tangible_purchase', 'tangible_sale', 'sales'],
+  },
+  {
+    key: 'complex',
+    label: 'Complex dealings',
+    note: 'we suggest a quick CPA review',
+    values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi', 'other'],
+  },
+  {
+    key: 'entity_events',
+    label: 'Formation, dissolution & ownership changes',
+    values: ['formation_tx', 'dissolution_tx', 'acquisition_tx', 'disposition_tx', 'other_part_v'],
+  },
+];
+
 // ── Sets for special-case UI logic ────────────────────────────────────────
 
 // Only pure loan types now (capital_contribution / distribution moved to Part V)
