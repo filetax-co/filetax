@@ -90,12 +90,12 @@ export function Privacy() {
             We use your information to:
           </p>
           <ul style={styles.ul}>
-            <li style={styles.li}>provide, operate, and improve the Service;</li>
-            <li style={styles.li}>prepare and submit tax filings on your behalf when you engage us to do so;</li>
-            <li style={styles.li}>process payments and send related notices;</li>
-            <li style={styles.li}>communicate with you about your account, requests, and waitlist signups;</li>
-            <li style={styles.li}>send service-related announcements and, where permitted, marketing communications (you can unsubscribe at any time);</li>
-            <li style={styles.li}>detect, prevent, and address fraud, abuse, and security issues;</li>
+            <li style={styles.li}>provide, operate, and improve the Service</li>
+            <li style={styles.li}>prepare and submit tax filings on your behalf when you engage us to do so</li>
+            <li style={styles.li}>process payments and send related notices</li>
+            <li style={styles.li}>communicate with you about your account, requests, and waitlist signups</li>
+            <li style={styles.li}>send service-related announcements and, where permitted, marketing communications (you can unsubscribe at any time)</li>
+            <li style={styles.li}>detect, prevent, and address fraud, abuse, and security issues</li>
             <li style={styles.li}>comply with legal obligations and enforce our Terms.</li>
           </ul>
 
@@ -151,12 +151,12 @@ export function Privacy() {
             Depending on where you live, you may have rights under applicable privacy laws, including the right to:
           </p>
           <ul style={styles.ul}>
-            <li style={styles.li}>access the personal information we hold about you;</li>
-            <li style={styles.li}>request correction of inaccurate information;</li>
-            <li style={styles.li}>request deletion of your information (subject to legal retention obligations);</li>
-            <li style={styles.li}>object to or restrict certain processing;</li>
-            <li style={styles.li}>request a portable copy of your information;</li>
-            <li style={styles.li}>withdraw consent where processing is based on consent;</li>
+            <li style={styles.li}>access the personal information we hold about you</li>
+            <li style={styles.li}>request correction of inaccurate information</li>
+            <li style={styles.li}>request deletion of your information (subject to legal retention obligations)</li>
+            <li style={styles.li}>object to or restrict certain processing</li>
+            <li style={styles.li}>request a portable copy of your information</li>
+            <li style={styles.li}>withdraw consent where processing is based on consent</li>
             <li style={styles.li}>lodge a complaint with your local data protection authority.</li>
           </ul>
           <p style={styles.p}>

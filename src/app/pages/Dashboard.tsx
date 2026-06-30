@@ -49,7 +49,7 @@ function dueState(taxYear: string | null | undefined): DueState {
   const extended = new Date(dates.extended);
   if (today <= original) return { label: `Due ${humanDate(dates.original)}`, tone: 'ok', due: dates.original };
   if (today <= extended) return { label: `Extension due ${humanDate(dates.extended)}`, tone: 'warn', due: dates.extended };
-  return { label: 'Past due — file ASAP', tone: 'late', due: dates.extended };
+  return { label: 'Past due, file ASAP', tone: 'late', due: dates.extended };
 }
 
 const SERVICE_LABEL: Record<ServiceType, string> = {
@@ -353,7 +353,7 @@ export function Dashboard() {
           ) : filings.length === 0 ? (
             <div style={{ background: 'var(--tf-surface)', border: '1px dashed var(--tf-border)', borderRadius: '0.75rem', padding: '2.5rem 2rem', textAlign: 'center' }}>
               <p style={{ fontWeight: 700, fontSize: '1.0625rem', marginBottom: '0.4rem' }}>No filings yet</p>
-              <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.25rem' }}>Start your Form 5472 below — it takes about 10 minutes.</p>
+              <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.25rem' }}>Start your Form 5472 below. It takes about 10 minutes.</p>
               <button onClick={() => startFiling('current_year')} disabled={busy !== null} style={primaryBtn(busy === 'current_year')}>
                 {busy === 'current_year' ? 'Creating…' : 'Start my filing'}
               </button>

@@ -63,7 +63,6 @@ export function ResetPassword() {
 
         {done ? (
           <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
             <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>Password updated!</p>
             <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>Redirecting you to your dashboard…</p>
           </div>

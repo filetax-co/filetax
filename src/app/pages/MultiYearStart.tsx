@@ -135,7 +135,7 @@ export function MultiYearStart() {
         <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
           Select every year you missed. We prepare a separate Form 5472 + pro forma 1120 for each year,
           and a single reasonable-cause letter that covers all of them. Your LLC and owner details carry
-          across every year — you’ll only add each year’s transactions.
+          across every year. You’ll only add each year’s transactions.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '0.5rem', marginBottom: '1.5rem' }}>

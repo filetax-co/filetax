@@ -70,7 +70,7 @@ export function Layout() {
                   marginRight: "0.75rem",
                   flexShrink: 0,
                 }}>
-                  ⚠ IRS Warning
+                  IRS Warning
                 </span>
                 {MARQUEE_TEXT}
               </span>

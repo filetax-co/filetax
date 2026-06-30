@@ -473,7 +473,7 @@ const drawStatementHeader = (
     { size: 13, font: fonts.bold }, fonts);
   cursor.y -= 4;
   cursor.y = drawWrapped(page,
-    `Taxpayer: ${filing.llc_name ?? ''}  —  EIN: ${filing.ein ?? ''}`,
+    `Taxpayer: ${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
     MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y = drawWrapped(page,
     `Tax Year: ${periodBegin} – ${periodEnd}  (Tax Year ${taxYear})`,
@@ -524,7 +524,7 @@ export const buildPartVStatement = async (
 
   drawStatementHeader(
     page, cursor,
-    'STATEMENT REQUIRED UNDER FORM 5472, PART V — TRANSACTIONS WITH FOREIGN OWNER',
+    'STATEMENT REQUIRED UNDER FORM 5472, PART V: TRANSACTIONS WITH FOREIGN OWNER',
     filing, periodBegin, periodEnd, period.year, fonts,
   );
 
@@ -577,7 +577,7 @@ export const buildPartVStatement = async (
         : tx.direction;
     const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
       ? `$${tx.amount_usd.toLocaleString('en-US')}`
-      : 'N/A (nonmonetary — FMV not determinable)';
+      : 'N/A (nonmonetary, FMV not determinable)';
     const desc      = tx.description?.trim() || '(No description provided)';
 
     cursor.y = drawWrapped(page, `Transaction ${idx + 1}: ${label}`, MARGIN, cursor.y,
@@ -655,7 +655,7 @@ export const buildPartVIStatement = async (
 
   drawStatementHeader(
     page, cursor,
-    'STATEMENT REQUIRED UNDER FORM 5472, PART VI — NONMONETARY AND LESS-THAN-FMV TRANSACTIONS',
+    'STATEMENT REQUIRED UNDER FORM 5472, PART VI: NONMONETARY AND LESS-THAN-FMV TRANSACTIONS',
     filing, periodBegin, periodEnd, period.year, fonts,
   );
 
@@ -676,7 +676,7 @@ export const buildPartVIStatement = async (
   if (managerialOn) {
     itemNo += 1;
     cursor.y = drawWrapped(page,
-      `Item ${itemNo} — Managerial and Operational Services by Foreign Owner (FMV Not Determinable)`,
+      `Item ${itemNo}: Managerial and Operational Services by Foreign Owner (FMV Not Determinable)`,
       MARGIN, cursor.y, { size: 10, font: bold }, fonts);
     cursor.y -= 4;
 
@@ -701,7 +701,7 @@ export const buildPartVIStatement = async (
 
     itemNo += 1;
     cursor.y = drawWrapped(page,
-      `Item ${itemNo} — Transfer of Property at Less Than Fair Market Value`,
+      `Item ${itemNo}: Transfer of Property at Less Than Fair Market Value`,
       MARGIN, cursor.y, { size: 10, font: bold }, fonts);
     cursor.y -= 4;
 
@@ -754,7 +754,7 @@ export const buildPartVIStatement = async (
 
     itemNo += 1;
     cursor.y = drawWrapped(page,
-      `Item ${itemNo} — Other Nonmonetary Transactions (FMV Not Determinable)`,
+      `Item ${itemNo}: Other Nonmonetary Transactions (FMV Not Determinable)`,
       MARGIN, cursor.y, { size: 10, font: bold }, fonts);
     cursor.y -= 4;
 
@@ -836,7 +836,7 @@ export const buildReasonableCauseLetter = async (
   drawRule(page, cursor);
 
   cursor.y = drawWrapped(page,
-    `Taxpayer: ${filing.llc_name ?? ''}  —  EIN: ${filing.ein ?? ''}`,
+    `Taxpayer: ${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
     MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y = drawWrapped(page, `Covering: ${yearsText}.`, MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y -= 14;
@@ -907,11 +907,11 @@ export const buildInstructionsPage = async (
 
   let { page, cursor } = newPage(doc);
 
-  cursor.y = drawWrapped(page, `Filing Instructions — Tax Year ${period.year}`, MARGIN, cursor.y,
+  cursor.y = drawWrapped(page, `Filing Instructions, Tax Year ${period.year}`, MARGIN, cursor.y,
     { size: 14, font: bold }, fonts);
   cursor.y -= 4;
   cursor.y = drawWrapped(page,
-    `${filing.llc_name ?? ''}  —  EIN: ${filing.ein ?? ''}`,
+    `${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
     MARGIN, cursor.y, { size: 10 }, fonts);
   cursor.y -= 6;
   drawRule(page, cursor);
@@ -927,7 +927,7 @@ export const buildInstructionsPage = async (
     '2. Write "Foreign-owned U.S. DE" across the top of the pro forma Form 1120 (already printed for you).',
     '3. Sign and date the Form 1120 where indicated.',
     '4. Mail OR fax the package to the IRS unit for foreign-owned disregarded entities (Ogden, UT). Re-verify the current address/fax on irs.gov before sending.',
-    '5. Keep a copy and proof of mailing (USPS Certified Mail) — the IRS does not send a receipt.',
+    '5. Keep a copy and proof of mailing (USPS Certified Mail). The IRS does not send a receipt.',
   ];
   for (const ln of lines) {
     if (!ln) continue;

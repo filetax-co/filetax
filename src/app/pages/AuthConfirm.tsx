@@ -63,7 +63,6 @@ export function AuthConfirm() {
     return (
       <div style={containerStyle}>
         <div style={cardStyle}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
           <p style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)', marginBottom: '0.375rem' }}>
             Confirming your email…
           </p>
@@ -78,7 +77,6 @@ export function AuthConfirm() {
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>❌</div>
         <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)', marginBottom: '0.5rem' }}>
           Confirmation failed
         </p>

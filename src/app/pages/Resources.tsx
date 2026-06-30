@@ -53,7 +53,7 @@ const posts = [
     title: "Form 8832 vs Form 2553: Which LLC Classification Change Is Right for You?",
     date: "April 24, 2026",
     category: "Entity Formation" as Category,
-    excerpt: "Form 8832 changes your LLC's default tax classification; Form 2553 elects S-Corporation status. They serve different purposes and have different eligibility rules.",
+    excerpt: "Form 8832 changes your LLC's default tax classification. Form 2553 elects S-Corporation status. They serve different purposes and have different eligibility rules.",
     slug: "form-8832-vs-form-2553",
   },
   {
@@ -163,7 +163,7 @@ export function Resources() {
                   to={`/resources/${post.slug}`}
                   style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}
                 >
-                  Read More &#8594;
+                  Read More
                 </Link>
               </article>
             ))}

@@ -247,20 +247,19 @@ export function Portal() {
   // ── Submitted confirmation UI ─────────────────────────────────────────────
   const submittedUI = (
     <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-      <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📬</div>
       <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>
         {mode === 'forgot' ? 'Reset link sent' : 'Check your email'}
       </p>
       <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
         {mode === 'forgot'
           ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>
-          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account — you will land directly on your filing dashboard.</>}
+          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, and you will land directly on your filing dashboard.</>}
       </p>
 
       {/* Resend button */}
       {resendSuccess && (
         <p style={{ color: '#059669', fontSize: '0.8125rem', marginBottom: '0.75rem', fontWeight: 500 }}>
-          ✓ Email resent successfully.
+          Email resent successfully.
         </p>
       )}
       {error && (
@@ -473,7 +472,6 @@ export function Portal() {
             )}
 
             <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1.5rem', paddingTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#059669', fontSize: '0.875rem' }}>&#128274;</span>
               <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>Secure portal. Data encrypted and stored on Supabase.</p>
             </div>
           </div>

@@ -914,7 +914,7 @@ export function EligibilityCheck() {
                         </p>
                         {selectedPartyCount !== null && selectedPartyCount > 3 && selectedPartyCount < 5 && (
                           <p style={{ fontSize: "0.75rem", color: "#0284C7", fontWeight: 600, marginTop: "0.375rem" }}>
-                            Volume discount applied — forms 4 and beyond: $50/form
+                            Volume discount applied. Forms 4 and beyond: $50/form
                           </p>
                         )}
                       </div>

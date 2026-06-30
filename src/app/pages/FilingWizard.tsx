@@ -313,14 +313,14 @@ export default function FilingWizard() {
                 padding: '1.125rem 1.25rem',
               }}>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <IncludedItem icon="📄" label="Pro Forma 1120" desc="US corporation income tax return" always />
-                  <IncludedItem icon="📋" label="Form 5472" desc="Information return for 25%-foreign-owned US corporations" always />
+                  <IncludedItem icon="" label="Pro Forma 1120" desc="US corporation income tax return" always />
+                  <IncludedItem icon="" label="Form 5472" desc="Information return for 25%-foreign-owned US corporations" always />
                   {hasPartV && (
-                    <IncludedItem icon="📎" label="Part V Statement" desc="Monetary transactions — distributions, dividends, capital contributions, formation costs" always={false} />
+                    <IncludedItem icon="" label="Part V Statement" desc="Monetary transactions: distributions, dividends, capital contributions, formation costs" always={false} />
                   )}
-                  <IncludedItem icon="📎" label="Part VI Statement" desc="Nonmonetary / less-than-FMV transactions — always included" always />
+                  <IncludedItem icon="" label="Part VI Statement" desc="Nonmonetary / less-than-FMV transactions, always included" always />
                   {has7004 && (
-                    <IncludedItem icon="🗓️" label="Form 7004" desc="6-month extension to file — included with your package" always />
+                    <IncludedItem icon="" label="Form 7004" desc="6-month extension to file, included with your package" always />
                   )}
                 </ul>
                 <p style={{
@@ -356,7 +356,7 @@ export default function FilingWizard() {
                           {tx.direction}
                         </span>
                         {tx.description && (
-                          <span style={{ color: 'var(--tf-muted)' }}>— {tx.description}</span>
+                          <span style={{ color: 'var(--tf-muted)' }}>{tx.description}</span>
                         )}
                       </div>
                       {tx.amount_usd != null && (
@@ -425,7 +425,7 @@ export default function FilingWizard() {
                     style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
                     type="button"
                   >
-                    ⬇ Form 7004 only
+                    Form 7004 only
                   </button>
                 )}
                 {!filing?.job_id && (
@@ -439,7 +439,7 @@ export default function FilingWizard() {
                     }}
                     type="button"
                   >
-                    {generating ? 'Generating…' : '⬇ Download Complete Filing'}
+                    {generating ? 'Generating…' : 'Download Complete Filing'}
                   </button>
                 )}
               </div>
@@ -467,7 +467,7 @@ export default function FilingWizard() {
                     style={{ ...primaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
                     type="button"
                   >
-                    {generating ? 'Generating…' : '⬇ Download each year + RCL'}
+                    {generating ? 'Generating…' : 'Download each year + RCL'}
                   </button>
                   <button
                     onClick={() => handleGenerateJob('bundle')}
@@ -475,7 +475,7 @@ export default function FilingWizard() {
                     style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
                     type="button"
                   >
-                    ⬇ Download all-in-one PDF
+                    Download all-in-one PDF
                   </button>
                 </div>
               </div>

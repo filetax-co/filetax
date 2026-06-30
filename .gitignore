@@ -23,3 +23,6 @@ tsconfig.tsbuildinfo
 # transient esbuild stubs from verify scripts
 scripts/_sb*.ts
 scripts/_supabaseStub.ts
+
+# local harness state
+.claude/

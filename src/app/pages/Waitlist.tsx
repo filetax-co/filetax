@@ -168,7 +168,6 @@ export function Waitlist() {
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>&#10003;</div>
               <h2 style={{ fontSize: "1.25rem", marginBottom: "0.5rem" }}>You are on the list</h2>
               <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, marginBottom: "1.5rem" }}>
                 We will email you at <strong style={{ color: "var(--tf-text)" }}>{email}</strong> when the selected services are available.

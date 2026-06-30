@@ -8,17 +8,19 @@ import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
 import {
   BIZ_ACTIVITIES,
   COUNTRIES,
-  DETAILED_TX_GROUPS,
   DIRECTION_TYPES,
   FILING_DUE_DATES,
   LOAN_TYPES,
   PART_V_TYPES,
   PART_VI_TYPES,
+  type QuickTx,
   REASONABLE_CAUSE_REASONS,
+  RELATED_PARTY_TX,
   RP_NAICS,
   SIMPLE_TX,
   STEP_LABELS,
   TAX_YEARS,
+  TX_CATEGORIES,
   TX_TYPES,
   type IntakeStep,
   US_STATES,
@@ -189,22 +191,31 @@ function Field({
   style,
   required,
   tooltip,
+  status,
 }: {
   label: string;
+  /** Deprecated: longer guidance. Routed into the (i) tooltip, never shown inline. */
   hint?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
   required?: boolean;
-  /** Optional plain-language hint shown behind a clickable (i) icon. */
+  /** Guidance shown behind a clickable (i) icon (the single helper per field). */
   tooltip?: string;
+  /** Short always-visible status suffix, e.g. "optional" or "locked". */
+  status?: string;
 }) {
+  // Exactly one helper per field: the (i) tooltip carries all guidance. Any
+  // legacy `hint` becomes tooltip text (so nothing is duplicated or lost).
+  // `status` is the only thing shown inline, for short state words like
+  // "optional" — not guidance.
+  const tip = tooltip ?? hint;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', ...style }}>
       <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)' }}>
         {label}
         {required && <span style={{ color: 'var(--tf-error)', marginLeft: '0.2rem' }}>*</span>}
-        {hint && <span style={{ fontWeight: 400, marginLeft: '0.25rem' }}>{hint}</span>}
-        {tooltip && <InfoTooltip text={tooltip} label={`About ${label}`} />}
+        {status && <span style={{ fontWeight: 400, marginLeft: '0.25rem', fontStyle: 'italic' }}>{status}</span>}
+        {tip && <InfoTooltip text={tip} label={`About ${label}`} />}
       </label>
       {children}
     </div>
@@ -235,7 +246,7 @@ function AddressFields({
       <Field label="State / Region" required>
         {isUS ? (
           <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
-            <option value="">— Select state —</option>
+            <option value="">Select state</option>
             {US_STATES.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
@@ -258,7 +269,7 @@ function AddressFields({
               onChange({ ...value, country: nextCountry, region: wasUS !== nextIsUS ? '' : value.region });
             }}
           >
-            <option value="">— Select country —</option>
+            <option value="">Select country</option>
             {COUNTRIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
@@ -283,6 +294,13 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
 }
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+
+/** One-line readable address from the intake address shape, or null if empty. */
+function formatAddress(a?: { line1?: string; city?: string; region?: string; postal_code?: string; country?: string } | null): string | null {
+  if (!a) return null;
+  const parts = [a.line1, a.city, a.region, a.postal_code, a.country].map((p) => (p ?? '').trim()).filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
 
 /**
  * Reportable-total + money-bucket panel. Shows what the user entered AND the
@@ -311,7 +329,7 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
         </div>
       </div>
       <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
-        The “gross payments” figure (Form 5472 line 1f/1h) counts service, rent, royalty and goods dealings. Money you put in or took out, and loan balances, are reported on their own lines — so the two numbers can differ, and that’s expected.
+        The “gross payments” figure (Form 5472 line 1f/1h) counts service, rent, royalty and goods dealings. Money you put in or took out, and loan balances, are reported on their own lines, so the two numbers can differ. That is expected.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
@@ -321,11 +339,6 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
     </div>
   );
 }
-
-// Simple-transaction glyphs (kept lightweight — no icon dependency).
-const SIMPLE_TX_ICON: Record<string, string> = {
-  'in': '↘', 'out': '↗', 'loan-in': '↘', 'loan-out': '↗', 'setup': '🧾', 'dividend': '💵',
-};
 
 const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
 const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-muted)', marginBottom: '1.75rem', lineHeight: 1.55 };
@@ -445,10 +458,10 @@ export function Intake() {
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState('');
   const [cat3Acknowledged, setCat3Acknowledged] = useState(false);
-  // Two-tier transaction entry: the detailed picker is hidden until the user
-  // asks for it (the simple one-tap list covers the common ~90%).
+  // Two-tier transaction entry: the detailed category accordion is hidden until
+  // the user asks for it (the quick list covers the common ~90%).
   const [showDetailedTx, setShowDetailedTx] = useState(false);
-  const [detailedSearch, setDetailedSearch] = useState('');
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const allPartyLabels = [
     ownerName || 'Primary owner',
@@ -989,7 +1002,7 @@ export function Intake() {
     setTxDate('');
     setTxType('');
     setShowDetailedTx(false);
-    setDetailedSearch('');
+    setOpenCategory(null);
     setCat3Acknowledged(false);
     setTxErrors([]);
     setStepErrors([]);
@@ -1153,7 +1166,7 @@ export function Intake() {
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
         {jobId && (
           <div style={{ background: 'rgba(var(--tf-accent-rgb), 0.08)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: 'var(--tf-text)' }}>
-            <strong>Catch-up filing — tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
+            <strong>Catch-up filing for tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
           </div>
         )}
 
@@ -1185,9 +1198,9 @@ export function Intake() {
 
         {isPaidLocked && (
           <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
-            <strong>This filing has been paid.</strong> Your company and owner identity (EIN, LLC name, tax year, owner name &amp; tax ID, incorporation date) are locked — to file for a different company or year, start a new filing.{' '}
+            <strong>This filing has been paid.</strong> Your company and owner identity (EIN, LLC name, tax year, owner name &amp; tax ID, incorporation date) are locked. To file for a different company or year, start a new filing.{' '}
             {editsRemaining > 0
-              ? `You can still correct other details (addresses, transactions) and re-download — ${editsRemaining} correction${editsRemaining > 1 ? 's' : ''} remaining.`
+              ? `You can still correct other details (addresses, transactions) and re-download. ${editsRemaining} correction${editsRemaining > 1 ? 's' : ''} remaining.`
               : 'You have used all available corrections; contact support@filetax.co for further changes. You can still re-download anytime.'}
           </div>
         )}
@@ -1217,10 +1230,10 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
-                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required hint={isPaidLocked ? '🔒 locked after payment' : undefined}>
+                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required status={isPaidLocked ? 'locked after payment' : undefined}>
                   <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" disabled={isPaidLocked} />
                 </Field>
-                <Field label="EIN" hint={isPaidLocked ? '🔒 locked after payment' : 'Employer Identification Number'} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
+                <Field label="EIN" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
                   <input
                     value={ein}
                     onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
@@ -1237,15 +1250,15 @@ export function Intake() {
                     {US_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Tax year" required hint={isPaidLocked ? '🔒 locked after payment' : undefined}>
+                <Field label="Tax year" required status={isPaidLocked ? 'locked after payment' : undefined}>
                   <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} disabled={isPaidLocked}>
                     {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
-                <Field label="Total assets (USD)" hint="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
+                <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="number" value={totalAssets} onChange={(e) => setTotalAssets(e.target.value)} placeholder="e.g. 50000" />
                 </Field>
-                <Field label="Date of incorporation" required hint={isPaidLocked ? '🔒 locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
+                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
                 </Field>
                 <Field label="Principal country where business is conducted" required>
@@ -1300,7 +1313,7 @@ export function Intake() {
                     </Field>
                   </div>
                   <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
-                    <strong>Fiscal-year filing — please review carefully.</strong> Fiscal-year returns are less common. We'll generate your forms using these dates; double-check the period and your filing due date before submitting.
+                    <strong>Fiscal-year filing. Please review carefully.</strong> Fiscal-year returns are less common. We'll generate your forms using these dates. Double-check the period and your filing due date before submitting.
                   </div>
                 </>
               )}
@@ -1313,7 +1326,7 @@ export function Intake() {
                     <InfoTooltip text="Tick this only if the LLC was dissolved, closed, or permanently stopped operating during this tax year. Do NOT tick it for a year with no activity or a temporary pause." label="About final return" />
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
-                    Only if the LLC closed or dissolved this year — not for a quiet year.
+                    Only if the LLC closed or dissolved this year, not for a quiet year.
                   </div>
                 </div>
               </label>
@@ -1423,7 +1436,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your identity</h3>
               <div style={gridStyle}>
-                <Field label="Your full legal name" hint={isPaidLocked ? '🔒 locked after payment' : 'As shown on government ID'} style={{ gridColumn: '1 / -1' }} required>
+                <Field label="Your full legal name" status={isPaidLocked ? 'locked after payment' : undefined} tooltip="As shown on your government ID / passport." style={{ gridColumn: '1 / -1' }} required>
                   <input
                     value={ownerName}
                     onChange={(e) => {
@@ -1442,7 +1455,7 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Country where you pay taxes" required tooltip="The country where you are a tax resident — i.e. where you file your personal income taxes.">
+                <Field label="Country where you pay taxes" required tooltip="The country where you are a tax resident, i.e. where you file your personal income taxes.">
                   <select value={ownerCountryRes} onChange={(e) => setOwnerCountryRes(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1454,13 +1467,13 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Your foreign tax ID" hint={isPaidLocked ? '🔒 locked after payment' : 'e.g. PAN, UTR, NIF, SIN'} required tooltip="The tax ID number your home country issues you — e.g. PAN (India), UTR (UK), NIF (Spain), SIN (Canada). If your country doesn't issue one, enter 'None'.">
+                <Field label="Your foreign tax ID" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="The tax ID number your home country issues you, such as PAN (India), UTR (UK), NIF (Spain), or SIN (Canada). If your country does not issue one, enter 'None'.">
                   <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Your local tax ID" disabled={isPaidLocked} />
                 </Field>
-                <Field label="US tax ID" hint="SSN, ITIN, or EIN — if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't — leave it blank if so.">
+                <Field label="US tax ID" hint="SSN, ITIN, or EIN, if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
-                <Field label="Your reference code" hint="Used internally on Form 5472" required tooltip="A short code that identifies you on the form (e.g. your initials + 001). We suggest one automatically — you can keep it or change it. It just needs to be consistent.">
+                <Field label="Your reference code" hint="Used internally on Form 5472" required tooltip="A short code that identifies you on the form (e.g. your initials + 001). We suggest one automatically, and you can keep it or change it. It just needs to be consistent.">
                   <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. RAH001" />
                 </Field>
               </div>
@@ -1623,7 +1636,7 @@ export function Intake() {
           <div>
             <h2 style={stepHeadingStyle}>Money between you and the LLC</h2>
             <p style={stepSubheadStyle}>
-              Tell us about any money or assets that moved between the LLC and you (or another related party) this year — money you put in, money you took out, loans, and so on. Don’t include normal business sales to customers or payments to vendors like Stripe or AWS.
+              Tell us about any money or assets that moved between the LLC and you (or another related party) this year: money you put in, money you took out, loans, and so on. Don’t include normal business sales to customers or payments to vendors like Stripe or AWS.
             </p>
 
             {/* Owner managerial-services Part VI disclosure — pre-selected, can opt out */}
@@ -1632,7 +1645,7 @@ export function Intake() {
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
                   I run the LLC myself (include the standard owner-services note)
-                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on Form 5472 Part VI. We include a standard statement for you. Untick only if this does not apply — then no Part VI statement is generated." label="About owner services" />
+                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on Form 5472 Part VI. We include a standard statement for you. Untick only if this does not apply, and then no Part VI statement is generated." label="About owner services" />
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
                   Recommended for almost all single-owner LLCs. Untick if it doesn’t apply.
@@ -1684,89 +1697,105 @@ export function Intake() {
                 </select>
               </Field>
 
-              <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>What happened?</div>
-              {txErrors.some((e) => e.includes('transaction type')) && (
-                <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Pick what happened below.</div>
-              )}
+              {(() => {
+                const isOwnerParty = txRelatedPartyIdx === 0;
+                const quickList: QuickTx[] = isOwnerParty ? SIMPLE_TX : RELATED_PARTY_TX;
+                const selectQuick = (q: QuickTx) => {
+                  setTxType(q.value);
+                  if (q.direction) setTxDir(q.direction);
+                  else if (!DIRECTION_TYPES.has(q.value)) setTxDir('received');
+                  setShowDetailedTx(false);
+                  setTxErrors([]);
+                };
+                return (
+                  <>
+                    <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>
+                      {isOwnerParty ? 'What happened?' : 'What kind of dealing was this?'}
+                    </div>
+                    {txErrors.some((e) => e.includes('transaction type')) && (
+                      <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Choose an option below.</div>
+                    )}
 
-              {/* Tier 1 — simple one-tap transactions (cover ~90% of filings). */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
-                {SIMPLE_TX.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    className={`tx-type-card${txType === s.value ? ' is-selected' : ''}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}
-                    onClick={() => {
-                      setTxType(s.value);
-                      setTxDir(s.direction);
-                      setShowDetailedTx(false);
-                      setTxErrors([]);
-                    }}
-                  >
-                    <span aria-hidden="true" style={{ fontSize: '1.1rem', lineHeight: 1 }}>{SIMPLE_TX_ICON[s.icon]}</span>
-                    <span className="tx-type-label">{s.label}</span>
-                  </button>
-                ))}
-              </div>
+                    {/* Quick options — owner gets first-person shortcuts;
+                        a related party gets neutral, LLC<->party wording. */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                      {quickList.map((q) => (
+                        <button
+                          key={q.value}
+                          type="button"
+                          className={`tx-type-card${txType === q.value ? ' is-selected' : ''}`}
+                          onClick={() => selectQuick(q)}
+                        >
+                          <span className="tx-type-label">{q.label}</span>
+                        </button>
+                      ))}
+                    </div>
 
-              {/* Tier 2 — "record a different transaction" reveals the full set. */}
-              <button
-                type="button"
-                onClick={() => setShowDetailedTx((v) => !v)}
-                style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', padding: '0.75rem 0 0', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-              >
-                {showDetailedTx ? '− Hide other transaction types' : '+ Record a different kind of transaction'}
-              </button>
+                    {/* "Record a different transaction" reveals the full category
+                        accordion. No complexity/CPA wording appears until a
+                        specific type is actually selected (the tier note below). */}
+                    <button
+                      type="button"
+                      onClick={() => setShowDetailedTx((v) => !v)}
+                      style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', padding: '0.75rem 0 0', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                    >
+                      {showDetailedTx ? 'Hide other transaction types' : 'Record a different kind of transaction'}
+                    </button>
 
-              {showDetailedTx && (
-                <div style={{ ...groupedCardStyle, padding: '1rem 1.25rem', marginTop: '0.75rem' }}>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
-                    For less common dealings. Pick the closest match — we’ll place it on the right part of the form for you.
-                  </p>
-                  <input
-                    type="text"
-                    value={detailedSearch}
-                    onChange={(e) => setDetailedSearch(e.target.value)}
-                    placeholder="Search (e.g. royalty, services, IP, insurance)…"
-                    style={{ marginBottom: '0.875rem' }}
-                  />
-                  {DETAILED_TX_GROUPS.map((grp) => {
-                    const items = TX_TYPES.filter(
-                      (t) => grp.values.includes(t.value) &&
-                        (!detailedSearch.trim() ||
-                          t.label.toLowerCase().includes(detailedSearch.toLowerCase()) ||
-                          t.sentence.toLowerCase().includes(detailedSearch.toLowerCase())),
-                    );
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={grp.key} style={{ marginBottom: '0.875rem' }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', marginBottom: '0.4rem' }}>
-                          {grp.label}
-                          {grp.note && <span style={{ color: 'var(--tf-warn)', textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}> · {grp.note}</span>}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          {items.map((item) => (
-                            <button
-                              key={item.value}
-                              type="button"
-                              className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
-                              onClick={() => {
-                                setTxType(item.value);
-                                setTxErrors([]);
-                                if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
-                              }}
-                            >
-                              <span className="tx-type-label">{item.label}</span>
-                              <span className="tx-type-sentence">{item.sentence.replace('{party}', allPartyLabels[txRelatedPartyIdx] || 'the related party')}</span>
-                            </button>
-                          ))}
-                        </div>
+                    {showDetailedTx && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        {TX_CATEGORIES.map((cat) => {
+                          const isOpen = openCategory === cat.key;
+                          const typesInCat = TX_TYPES.filter((t) => cat.values.includes(t.value));
+                          const hasSelection = typesInCat.some((t) => t.value === txType);
+                          return (
+                            <div key={cat.key} style={{ ...groupedCardStyle, borderColor: hasSelection ? 'var(--tf-accent)' : 'var(--tf-border)' }}>
+                              <div
+                                className={`tx-cat-header${isOpen ? ' is-open' : ''}`}
+                                onClick={() => setOpenCategory(isOpen ? null : cat.key)}
+                                role="button"
+                                aria-expanded={isOpen}
+                              >
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text)' }}>{cat.label}</span>
+                                    {hasSelection && <span style={{ fontSize: '0.72rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>}
+                                  </div>
+                                  <div style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.2rem' }}>{cat.description}</div>
+                                </div>
+                                <div className={`tx-cat-chevron${isOpen ? ' is-open' : ''}`}>
+                                  <svg viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
+                                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                                  </svg>
+                                </div>
+                              </div>
+                              {isOpen && (
+                                <div className="tx-cat-body">
+                                  {typesInCat.map((item) => (
+                                    <button
+                                      key={item.value}
+                                      type="button"
+                                      className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
+                                      onClick={() => {
+                                        setTxType(item.value);
+                                        setTxErrors([]);
+                                        if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
+                                      }}
+                                    >
+                                      <span className="tx-type-label">{item.label}</span>
+                                      <span className="tx-type-sentence">{item.sentence.replace('{party}', isOwnerParty ? 'you' : (allPartyLabels[txRelatedPartyIdx] || 'the related party'))}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+                  </>
+                );
+              })()}
             </section>
 
             {txType && (
@@ -1788,7 +1817,7 @@ export function Intake() {
                       3 → complex, CPA review recommended + acknowledgment (red) */}
                 {txType && txCategory === 1 && (
                   <div className="cat-banner-green" style={{ marginBottom: '1rem' }}>
-                    <strong>Straightforward — nothing extra needed from you.</strong> This is a routine item between you and the LLC. Just enter the amount below; we handle the paperwork.
+                    <strong>Straightforward. Nothing extra needed from you.</strong> This is a routine item between you and the LLC. Just enter the amount below and we handle the paperwork.
                   </div>
                 )}
                 {txType && txCategory === 2 && (
@@ -1801,7 +1830,7 @@ export function Intake() {
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
                     <div className="cat3-ack-row" style={{ marginTop: '0.625rem' }}>
                       <input type="checkbox" checked={cat3Acknowledged} onChange={(e) => setCat3Acknowledged(e.target.checked)} id="cat3ack" />
-                      <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand — proceed anyway</label>
+                      <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand, proceed anyway</label>
                     </div>
                   </div>
                 )}
@@ -1825,16 +1854,17 @@ export function Intake() {
                   )}
                   <Field
                     label={selectedTxMeta?.amountLabel ?? 'Amount (USD)'}
-                    hint={selectedTxMeta?.amountOptional ? '(optional)' : selectedTxMeta?.amountHint}
+                    status={selectedTxMeta?.amountOptional ? 'optional' : undefined}
+                    tooltip={selectedTxMeta?.amountOptional ? undefined : selectedTxMeta?.amountHint}
                     required={!selectedTxMeta?.amountOptional && !PART_V_TYPES.has(txType) && !PART_VI_TYPES.has(txType)}
                   >
                     <input type="number" min={0} value={txAmt} onChange={(e) => setTxAmt(e.target.value)} placeholder="0" />
                   </Field>
-                  <Field label="Transaction date" hint="optional">
+                  <Field label="Transaction date" status="optional">
                     <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
                   </Field>
-                  <Field label="Description" hint="optional" style={{ gridColumn: '1 / -1' }}>
-                    <input value={txDesc} onChange={(e) => setTxDesc(e.target.value)} placeholder="Short description (optional)" />
+                  <Field label="Description" status="optional" style={{ gridColumn: '1 / -1' }}>
+                    <input value={txDesc} onChange={(e) => setTxDesc(e.target.value)} placeholder="Short description" />
                   </Field>
                 </div>
 
@@ -1885,13 +1915,17 @@ export function Intake() {
               <div style={reviewGridStyle}>
                 <SummaryRow label="Name" value={llcName} />
                 <SummaryRow label="EIN" value={ein} />
-                <SummaryRow label="State" value={stateOfFormation} />
+                <SummaryRow label="State of formation" value={stateOfFormation} />
                 <SummaryRow label="Tax year" value={taxYear} />
                 <SummaryRow label="Total assets" value={totalAssets ? `USD ${Number(totalAssets).toLocaleString()}` : null} />
-                <SummaryRow label="Incorporated" value={entityDOI} />
+                <SummaryRow label="Date of incorporation" value={entityDOI} />
                 <SummaryRow label="Principal country" value={entityPrincipalCountry} />
                 <SummaryRow label="Business type" value={entityBizActivity} />
                 <SummaryRow label="Business code" value={entityBizCode} />
+                <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
+                <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear) ? 'Yes' : 'No'} />
+                <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
+                {isFiscalYear && <SummaryRow label="Fiscal year" value={`${fiscalBegin || '—'} to ${fiscalEnd || '—'}`} />}
               </div>
             </section>
 
@@ -1899,12 +1933,23 @@ export function Intake() {
               <section style={sectionStyle}>
                 <h3 style={sectionLabelStyle}>Filing status</h3>
                 <div style={reviewGridStyle}>
-                  <SummaryRow label="Extension filed" value={extensionFiled === null ? '—' : extensionFiled ? 'Yes' : 'No'} />
+                  <SummaryRow label="Extension (Form 7004) filed" value={extensionFiled === null ? '—' : extensionFiled ? 'Yes' : 'No'} />
                   <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
-                  {includeReasonableCause && reasonableCauseReasons.length > 0 && (
-                    <SummaryRow label="Reasons" value={reasonableCauseReasons.join(', ')} />
-                  )}
                 </div>
+                {includeReasonableCause && reasonableCauseReasons.length > 0 && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.4rem' }}>
+                      Reasons selected
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {reasonableCauseReasons.map((r) => (
+                        <li key={r} style={{ fontSize: '0.875rem', color: 'var(--tf-text)' }}>
+                          {REASONABLE_CAUSE_REASONS.find((x) => x.value === r)?.label ?? r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </section>
             )}
 
@@ -1916,9 +1961,11 @@ export function Intake() {
                 <SummaryRow label="Tax residence" value={ownerCountryRes} />
                 <SummaryRow label="Citizenship" value={ownerCountryCitizenship} />
                 <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
+                <SummaryRow label="US tax ID" value={ownerSSN} />
                 <SummaryRow label="Reference code" value={ownerRefNumber} />
                 <SummaryRow label="Business type" value={ownerBizActivity || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
                 <SummaryRow label="Business code" value={ownerBizCode} />
+                <SummaryRow label="Address" value={formatAddress(ownerAddress)} />
               </div>
             </section>
 
@@ -1928,10 +1975,14 @@ export function Intake() {
                 {relatedParties.map((rp, i) => (
                   <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.75rem' }}>
                     <SummaryRow label="Name" value={rp.name} />
-                    <SummaryRow label="Country" value={rp.country} />
+                    <SummaryRow label="Country of business" value={rp.country} />
                     <SummaryRow label="Tax residence" value={rp.country_residence} />
-                    <SummaryRow label="Ref code" value={rp.ref_number} />
+                    <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
+                    <SummaryRow label="US tax ID" value={rp.us_tin} />
+                    <SummaryRow label="Reference code" value={rp.ref_number} />
                     <SummaryRow label="Business type" value={rp.biz_activity} />
+                    <SummaryRow label="Business code" value={rp.biz_code} />
+                    <SummaryRow label="Address" value={formatAddress(rp.address)} />
                   </div>
                 ))}
               </section>
@@ -1943,17 +1994,28 @@ export function Intake() {
                 <TxSummaryPanel summary={txSummary} count={transactions.length} />
                 {transactions.map((t, i) => {
                   const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
+                  const isLoan = LOAN_TYPES.has(t.transaction_type);
                   return (
                     <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.5rem' }}>
                       <SummaryRow label="Type" value={meta?.label ?? t.transaction_type} />
                       <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? '—'} />
-                      <SummaryRow label="Amount" value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : '—'} />
-                      {DIRECTION_TYPES.has(t.transaction_type) && <SummaryRow label="Direction" value={t.direction} />}
+                      <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : '—'} />
+                      {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? `USD ${Number(t.loan_begin_usd).toLocaleString()}` : 'USD 0'} />}
+                      {DIRECTION_TYPES.has(t.transaction_type) && <SummaryRow label="Direction" value={t.direction === 'received' ? 'Money in' : 'Money out'} />}
+                      <SummaryRow label="Date" value={t.transaction_date || null} />
+                      <SummaryRow label="Description" value={t.description || null} />
                     </div>
                   );
                 })}
               </section>
             )}
+
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Owner services (Part VI)</h3>
+              <div style={reviewGridStyle}>
+                <SummaryRow label="Include managerial-services statement" value={partViManagerial ? 'Yes' : 'No'} />
+              </div>
+            </section>
 
             {noTransactionsConfirmed && (
               <div style={infoBoxStyle}>No reportable transactions confirmed.</div>
@@ -1961,9 +2023,7 @@ export function Intake() {
 
             {!isPaidLocked && (
               <div className="cat-banner-amber" style={{ marginTop: '1.5rem' }}>
-                <strong>Before you submit:</strong> once you pay, your company and owner identity —
-                EIN, LLC name, tax year, your legal name &amp; foreign tax ID, and incorporation date —
-                are locked and cannot be changed. To file for a different company or year you’d start a new
+                <strong>Before you submit:</strong> once you pay, your company and owner identity (EIN, LLC name, tax year, your legal name and foreign tax ID, and incorporation date) are locked and cannot be changed. To file for a different company or year you’d start a new
                 filing. Other details (addresses, transactions) can still be corrected afterward. Please
                 double-check these now.
               </div>

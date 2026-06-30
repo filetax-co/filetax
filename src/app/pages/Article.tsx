@@ -33,7 +33,7 @@ const articles: Record<string, {
     body: [
       "The $25,000 penalty for missing Form 5472 is one of the steepest automatic penalties in the U.S. tax code. Unlike many IRS penalties that scale with the amount owed, this one is fixed and applies regardless of the LLC's revenue, profit, or level of activity.",
       "The penalty applies per form, per year. If you own two LLCs and failed to file for three years, you could face $150,000 in penalties before any IRS review. The IRS does not need to prove intent. The penalty is automatic upon detection of a missing filing.",
-      "The penalty is compounded by the fact that many foreign founders are simply unaware of the requirement. The Form 5472 obligation is not disclosed by most LLC formation services, and there is no IRS notice sent when the deadline passes. Many founders only discover the requirement when they apply for a U.S. bank account, seek a visa, or prepare to sell their business.",
+      "The penalty is compounded by the fact that many foreign founders are unaware of the requirement. The Form 5472 obligation is not disclosed by most LLC formation services, and there is no IRS notice sent when the deadline passes. Many founders only discover the requirement when they apply for a U.S. bank account, seek a visa, or prepare to sell their business.",
       "The IRS may waive the penalty if you can demonstrate reasonable cause, typically that you were genuinely unaware of the requirement and acted promptly once you discovered it. This argument is strongest when submitted alongside the late filing, supported by a written statement prepared by a CPA.",
       "If you have missed Form 5472 for one or more years, the best course of action is to file the past-year returns as soon as possible and include a reasonable cause letter. Waiting longer weakens your argument and increases the likelihood that penalties will accumulate further. See our pricing page for past-year filing options.",
     ],
@@ -203,9 +203,9 @@ export function Article() {
           <div style={{ background: "var(--tf-surface)", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>
             <p style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.75rem" }}>Related pages</p>
             <div className="flex flex-wrap gap-3">
-              <Link to="/pricing" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Pricing &#8594;</Link>
-              <Link to="/services" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Services &#8594;</Link>
-              <Link to="/past-filings" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Past Filings &#8594;</Link>
+              <Link to="/pricing" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Pricing</Link>
+              <Link to="/services" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Services</Link>
+              <Link to="/past-filings" style={{ color: "#0284C7", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>Past Filings</Link>
             </div>
           </div>
 
@@ -223,7 +223,7 @@ export function Article() {
           </div>
 
           <Link to="/resources" style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "0.875rem", textDecoration: "none" }}>
-            &#8592; Back to Resources
+            Back to Resources
           </Link>
         </div>
       </section>

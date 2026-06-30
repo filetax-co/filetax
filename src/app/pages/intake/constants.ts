@@ -395,24 +395,38 @@ export const TX_TYPES: {
 //
 // Wording here is intentionally our own plain-English voice.
 
-export type SimpleTx = {
+export type QuickTx = {
   value: string;            // existing TX_TYPES value
-  label: string;            // plain, first-person
-  icon: 'in' | 'out' | 'loan-in' | 'loan-out' | 'setup' | 'dividend';
-  /** Forced direction for the underlying row (Part V / loan rows have no dropdown). */
-  direction: 'paid' | 'received';
+  label: string;            // plain-language card label
+  /** Forced direction for the underlying row, when the type has no direction toggle. */
+  direction?: 'paid' | 'received';
 };
 
-export const SIMPLE_TX: SimpleTx[] = [
-  { value: 'capital_contribution', label: 'I added money to the LLC',     icon: 'in',       direction: 'received' },
-  { value: 'distribution',         label: 'I took money out of the LLC',  icon: 'out',      direction: 'paid' },
-  { value: 'loan_to_llc',          label: 'I lent money to the LLC',      icon: 'loan-in',  direction: 'received' },
-  { value: 'loan_from_llc',        label: 'The LLC lent money to me',     icon: 'loan-out', direction: 'paid' },
-  { value: 'formation_costs',      label: "I paid the LLC's setup costs", icon: 'setup',    direction: 'received' },
-  { value: 'dividend',             label: 'The LLC paid me a dividend',   icon: 'dividend', direction: 'paid' },
+// Owner counterparty: first-person shortcuts that cover ~90% of filings.
+export const SIMPLE_TX: QuickTx[] = [
+  { value: 'capital_contribution', label: 'I added money to the LLC',     direction: 'received' },
+  { value: 'distribution',         label: 'I took money out of the LLC',  direction: 'paid' },
+  { value: 'loan_to_llc',          label: 'I lent money to the LLC',      direction: 'received' },
+  { value: 'loan_from_llc',        label: 'The LLC lent money to me',     direction: 'paid' },
+  { value: 'formation_costs',      label: "I paid the LLC's setup costs", direction: 'received' },
+  { value: 'dividend',             label: 'The LLC paid me a dividend',   direction: 'paid' },
 ];
 
-export const SIMPLE_TX_VALUES = new Set(SIMPLE_TX.map((s) => s.value));
+// Related-party counterparty: neutral options worded for the LLC dealing with
+// that party (never first-person "I"). Capital contributions and distributions
+// are owner-only concepts, so they are NOT offered here.
+export const RELATED_PARTY_TX: QuickTx[] = [
+  { value: 'service_payment',      label: 'Services' },
+  { value: 'rent',                 label: 'Rent' },
+  { value: 'royalty',              label: 'Royalty' },
+  { value: 'interest',             label: 'Interest' },
+  { value: 'loan_to_llc',          label: 'Loan to the LLC',  direction: 'received' },
+  { value: 'loan_from_llc',        label: 'Loan from the LLC', direction: 'paid' },
+  { value: 'tangible_purchase',    label: 'Goods or inventory' },
+  { value: 'other',                label: 'Other' },
+];
+
+export const SIMPLE_TX_VALUES = new Set([...SIMPLE_TX, ...RELATED_PARTY_TX].map((s) => s.value));
 
 export type DetailedTxGroup = {
   key: string;
