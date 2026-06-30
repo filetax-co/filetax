@@ -66,10 +66,12 @@ create table if not exists public.filings (
   current_step  int  not null default 1,
 
   -- ── Tax year / period ─────────────────────────────────────────────────────
-  -- tax_year: the four-digit year string, e.g. '2024'
+  -- tax_year: the four-digit year string, e.g. '2024'. Required — every insert
+  -- path seeds it (the wizard lets the user change it in step 1). NOT NULL
+  -- catches any code path that forgets to set it.
   -- tax_period_begin / tax_period_end: exact ISO dates for the Form 5472 header
   -- (supports fiscal-year LLCs; calendar-year default: Jan 1 – Dec 31)
-  tax_year          text,
+  tax_year          text not null,
   tax_period_begin  date,
   tax_period_end    date,
 

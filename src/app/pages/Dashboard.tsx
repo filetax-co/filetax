@@ -95,12 +95,18 @@ function deriveServiceType(years: string | null | undefined): ServiceType {
   return 'past_year';
 }
 
-function deriveTaxYear(years: string | null | undefined): string | null {
+/**
+ * Seed tax year for a brand-new filing. Never returns null — the filings table
+ * requires tax_year, and the wizard lets the user change it in step 1 anyway.
+ * The "3-plus" / unknown catch-up case defaults to the most recent filable year.
+ */
+function deriveTaxYear(years: string | null | undefined): string {
   const now = new Date().getUTCFullYear();
-  if (!years || years === 'current') return String(now - 1);
+  const mostRecentFilable = now - 1;
+  if (!years || years === 'current') return String(mostRecentFilable);
   if (years === '1-prior') return String(now - 2);
   if (years === '2-prior') return String(now - 3);
-  return null;
+  return String(mostRecentFilable);
 }
 
 function actionLabel(status: Filing['status']): string {
@@ -230,6 +236,9 @@ export function Dashboard() {
         service_type: serviceType,
         status: 'draft',
         current_step: 1,
+        // tax_year is required (NOT NULL); seed the most recent filable year.
+        // The user confirms/changes it in step 1 of the wizard.
+        tax_year: deriveTaxYear(serviceType === 'current_year' ? 'current' : null),
         include_rcl: serviceType === 'past_year',
       })
       .select('id')
