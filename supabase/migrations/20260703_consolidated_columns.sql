@@ -22,8 +22,9 @@ alter table public.filings
   add column if not exists date_of_incorporation         date,
   add column if not exists naics_code                    text,
   add column if not exists naics_description             text,
-  -- wizard step 1b (late filing)
+  -- wizard step 1b (late filing) + Form 7004 extension
   add column if not exists extension_filed               boolean,
+  add column if not exists include_7004                  boolean,
   add column if not exists include_reasonable_cause      boolean,
   add column if not exists reasonable_cause_reasons      text[],
   -- wizard step 2 (owner)
