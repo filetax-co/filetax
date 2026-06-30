@@ -3,12 +3,16 @@ import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 
 // ---------------------------------------------------------------------
-// TEMPORARY: Services are not yet live. The "Create Your Free Account"
-// CTA at the end of the eligibility flow routes to /waitlist instead
-// of the portal. To revert when services launch, change PORTAL_PATH
-// back to "/portal".
+// Service go-live flag.
+//   WAITLIST_MODE = true  → eligibility CTA routes to /waitlist (pre-launch).
+//   WAITLIST_MODE = false → eligibility CTA routes to /portal, carrying the
+//                           eligibility answers as query params so the filing
+//                           is seeded (see buildPortalPath + Portal.tsx +
+//                           Dashboard.startFromEligibility).
+// Flip this single flag to switch the funnel live.
 // ---------------------------------------------------------------------
-const PORTAL_PATH = "/waitlist"; // original: "/portal"
+const WAITLIST_MODE = false;
+const PORTAL_PATH = WAITLIST_MODE ? "/waitlist" : "/portal";
 const TAXCLAIM_URL = "https://taxclaim.co/filetax"; // original: "https://taxclaim.co"
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -427,15 +431,16 @@ export function EligibilityCheck() {
               )}
             </div>
 
-            {/* original CTA copy: "Create Your Free Account to Begin" — revert when services go live */}
             <Link
               to={portalPath}
               style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.875rem 1.5rem", borderRadius: "0.5rem", textDecoration: "none", display: "block", textAlign: "center", minHeight: "44px", lineHeight: "1.5", marginBottom: "0.75rem" }}
             >
-              Join the Waitlist
+              {WAITLIST_MODE ? "Join the Waitlist" : "Create Your Free Account to Begin"}
             </Link>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, textAlign: "center", lineHeight: 1.6 }}>
-              We will email you the moment this is live.
+              {WAITLIST_MODE
+                ? "We will email you the moment this is live."
+                : "Your answers carry over automatically. No payment until you download your forms."}
             </p>
           </div>
         </div>

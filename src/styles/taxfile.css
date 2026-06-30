@@ -11,6 +11,35 @@
   --tf-success:   #059669;
   --tf-error:     #B31D1D;
   --tf-border:    #E2E8F0;
+
+  /* ── Extended semantic tokens (used by the intake wizard + shared UI) ──
+     Added so every color in the wizard resolves through a token and adapts
+     to dark mode. RGB tuples power rgba(var(--token-rgb), a) overlays. */
+  --tf-accent-rgb:    2, 132, 199;
+  --tf-accent-soft:   #93C5FD;   /* hover borders on selectable cards */
+  --tf-on-accent:     #FFFFFF;   /* text/icon on an accent-filled surface */
+  --tf-offset:        #F1F5F9;   /* subtle inset panel on a surface */
+  --tf-input-bg:      #FFFFFF;
+
+  --tf-error-rgb:     220, 38, 38;
+  --tf-error-bg:      #FEF2F2;
+  --tf-error-border:  #FECACA;
+  --tf-error-text:    #991B1B;
+
+  --tf-success-rgb:   22, 163, 74;
+  --tf-warn:          #D97706;
+  --tf-warn-rgb:      217, 119, 6;
+
+  /* Tier / status banner palette (green = routine, amber = review, red = stop) */
+  --tf-banner-green-bg:     #F0FDF4;
+  --tf-banner-green-border: #86EFAC;
+  --tf-banner-green-text:   #166534;
+  --tf-banner-amber-bg:     #FFFBEB;
+  --tf-banner-amber-border: #FBBF24;
+  --tf-banner-amber-text:   #92400E;
+  --tf-banner-red-bg:       #FEF2F2;
+  --tf-banner-red-border:   #FCA5A5;
+  --tf-banner-red-text:     #991B1B;
 }
 
 [data-theme="dark"] {
@@ -19,6 +48,26 @@
   --tf-text:      #F1F5F9;
   --tf-muted:     #94A3B8;
   --tf-border:    #1E293B;
+
+  /* Dark overrides for the extended tokens. Accent/status hues stay the same
+     hue family; backgrounds become translucent tints over the dark surface. */
+  --tf-accent-soft:   #1E3A5F;
+  --tf-offset:        #1E293B;
+  --tf-input-bg:      #0B1220;
+
+  --tf-error-bg:      rgba(220, 38, 38, 0.14);
+  --tf-error-border:  rgba(220, 38, 38, 0.40);
+  --tf-error-text:    #FCA5A5;
+
+  --tf-banner-green-bg:     rgba(22, 163, 74, 0.12);
+  --tf-banner-green-border: rgba(134, 239, 172, 0.30);
+  --tf-banner-green-text:   #86EFAC;
+  --tf-banner-amber-bg:     rgba(217, 119, 6, 0.12);
+  --tf-banner-amber-border: rgba(251, 191, 36, 0.30);
+  --tf-banner-amber-text:   #FBBF24;
+  --tf-banner-red-bg:       rgba(220, 38, 38, 0.12);
+  --tf-banner-red-border:   rgba(252, 165, 165, 0.30);
+  --tf-banner-red-text:     #FCA5A5;
 }
 
 html, body {

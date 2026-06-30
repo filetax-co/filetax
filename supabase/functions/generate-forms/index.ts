@@ -1,16 +1,29 @@
 // supabase/functions/generate-forms/index.ts
 //
-// Server-side renderer for Form 5472. Loads the blank PDF from the
-// `irs-forms` storage bucket, fills it using the SAME simple AcroForm field
-// names that src/lib/form5472Fields.ts defines (NOT the XFA dot-paths the
-// previous version used — those silently no-op'd and shipped users a blank
-// template), uploads the filled PDF to the `filled-forms` bucket, and hands
-// back a 1-hour signed URL.
+// ⚠️ DEPRECATED / DEAD CODE — DO NOT EXTEND. ⚠️
 //
-// Keep the field name list here aligned with src/lib/form5472Fields.ts. If
-// they drift, the saved PDF is missing fields with no error. There is a
-// `tests/edge_function_field_parity.spec.ts` placeholder for a CI check that
-// hashes the two lists; wire it up before adding new fields.
+// This edge function is NOT invoked anywhere in the app. The live download
+// path is the client-side generator in src/lib/pdfGenerator.ts (used by
+// src/components/DownloadPackageButton.tsx and src/app/pages/FilingWizard.tsx),
+// which produces the full package: Pro Forma 1120 + one Form 5472 per related
+// party + Part V / Part VI statements, all merged into a single PDF.
+//
+// This function, by contrast:
+//   • fills ONLY a single Form 5472 (no 1120, no statements, no per-party)
+//   • reads stale column names and address shapes that no longer match intake
+//   • hardcodes every country to "United States"
+//   • fills no Part IV / V / VI data at all
+//
+// It is retained only so an existing deployment doesn't 404 if something still
+// references the route. If you need server-side generation, port
+// src/lib/pdfGenerator.ts (and src/lib/filingMapping.ts) to Deno instead of
+// editing this file. Any change here will diverge from the real generator.
+//
+// ──────────────────────────────────────────────────────────────────────────
+// Original notes (historical):
+// Loads the blank PDF from the `irs-forms` storage bucket, fills it using the
+// SAME simple AcroForm field names that src/lib/form5472Fields.ts defines,
+// uploads to `filled-forms`, and returns a 1-hour signed URL.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'

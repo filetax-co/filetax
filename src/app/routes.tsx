@@ -15,6 +15,7 @@ import { Auth } from './pages/Auth';
 import { AuthConfirm } from './pages/AuthConfirm';
 import { Dashboard } from './pages/Dashboard';
 import { Intake } from './pages/Intake';
+import { MultiYearStart } from './pages/MultiYearStart';
 import FilingWizard from './pages/FilingWizard';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
@@ -57,6 +58,7 @@ export const router = createBrowserRouter(
             { path: 'dashboard', Component: Dashboard },
             // intake uses ?filing_id= query-string, not a path param
             { path: 'intake', Component: Intake },
+            { path: 'catch-up', Component: MultiYearStart },
             { path: 'filing/:id', Component: FilingWizard },
           ],
         },

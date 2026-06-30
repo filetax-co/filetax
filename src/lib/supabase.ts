@@ -95,6 +95,26 @@ export type Filing = {
   /** Pro Forma 1120 header checkboxes */
   name_change?: boolean | null;
   address_change?: boolean | null;
+  /** 1120 item E "Final return" — LLC dissolved/closed this tax year. */
+  final_return?: boolean | null;
+  /** Non-calendar (fiscal-year) filer — drives the review notice. */
+  is_fiscal_year?: boolean | null;
+  /**
+   * Owner managerial-services Part VI disclosure toggle.
+   * Default true: the owner of a foreign-owned DE necessarily provides
+   * managerial services whose FMV cannot be determined. If the user opts out
+   * (false), the Part VI box is NOT ticked and no Part VI statement is
+   * generated (unless an actual non-monetary transaction exists).
+   */
+  part_vi_managerial?: boolean | null;
+  /** Multi-year catch-up job this filing belongs to (one RCL across years). */
+  job_id?: string | null;
+  /**
+   * Number of correcting edits made AFTER payment. Identity fields are frozen
+   * regardless; other fields may be corrected up to a cap (2). Enforced by the
+   * filings_freeze_when_paid DB trigger.
+   */
+  post_payment_edits?: number | null;
   owner_primary_country?: string | null;
   owner_us_tin?: string | null;
   owner_reference_id?: string | null;
@@ -202,6 +222,12 @@ export type Transaction = {
   id: string;
   filing_id: string;
   created_at?: string | null;
+  /**
+   * Which related party this transaction is with.
+   * 0 = the primary foreign owner; 1..n = additional related parties
+   * (index into filings.related_parties). Drives one Form 5472 per party.
+   */
+  related_party_index?: number | null;
   transaction_type:
     | 'sales'
     | 'service_payment'
@@ -226,6 +252,12 @@ export type Transaction = {
     | 'nonmonetary_other';
   direction: 'paid' | 'received';
   amount_usd?: number | null;
+  /**
+   * Beginning-of-year balance for loan_to_llc / loan_from_llc rows.
+   * Form 5472 lines 17a (borrowed) / 31a (loaned). amount_usd holds the
+   * end-of-year closing balance (lines 17b / 31b).
+   */
+  loan_begin_usd?: number | null;
   transaction_date?: string | null;
   description?: string | null;
   is_royalty?: boolean | null;

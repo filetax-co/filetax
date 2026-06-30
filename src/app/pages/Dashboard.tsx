@@ -3,8 +3,54 @@ import { Link, useNavigate } from 'react-router';
 import { supabase, type Filing, type ServiceType } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
+import { FILING_DUE_DATES } from './intake/constants';
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// ── Status buckets — group filings into a small, human set on the dashboard ──
+type Bucket = 'action' | 'in_progress' | 'ready' | 'done';
+
+const BUCKET_OF: Record<Filing['status'], Bucket> = {
+  payment_failed: 'action',
+  draft: 'in_progress',
+  in_progress: 'in_progress',
+  paid: 'ready',
+  completed: 'done',
+  submitted: 'done',
+};
+
+const BUCKET_TITLE: Record<Bucket, string> = {
+  action: 'Needs your attention',
+  in_progress: 'In progress',
+  ready: 'Ready to download',
+  done: 'Filed & downloaded',
+};
+
+const BUCKET_ORDER: Bucket[] = ['action', 'ready', 'in_progress', 'done'];
+
+/** "December 1, 2025" — the one human date format used across the product. */
+function humanDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${MONTHS[m]} ${d}, ${y}`;
+}
+
+type DueState = { label: string; tone: 'ok' | 'warn' | 'late'; due: string } | null;
+
+/** Compute the IRS on-time / extended / late state for a filing's tax year. */
+function dueState(taxYear: string | null | undefined): DueState {
+  if (!taxYear) return null;
+  const dates = FILING_DUE_DATES[Number(taxYear)];
+  if (!dates) return null;
+  const today = new Date();
+  const original = new Date(dates.original);
+  const extended = new Date(dates.extended);
+  if (today <= original) return { label: `Due ${humanDate(dates.original)}`, tone: 'ok', due: dates.original };
+  if (today <= extended) return { label: `Extension due ${humanDate(dates.extended)}`, tone: 'warn', due: dates.extended };
+  return { label: 'Past due — file ASAP', tone: 'late', due: dates.extended };
+}
 
 const SERVICE_LABEL: Record<ServiceType, string> = {
   current_year: 'Form 5472 + Pro Forma 1120',
@@ -21,13 +67,14 @@ const STATUS_LABEL: Record<Filing['status'], string> = {
   submitted: 'Submitted',
 };
 
+// Status badge colors via design tokens so they adapt to dark mode.
 const STATUS_COLOR: Record<Filing['status'], { bg: string; fg: string }> = {
-  draft: { bg: '#E2E8F0', fg: '#0F172A' },
-  in_progress: { bg: '#FEF3C7', fg: '#92400E' },
-  payment_failed: { bg: '#FEE2E2', fg: '#B31D1D' },
-  paid: { bg: '#DBEAFE', fg: '#1E40AF' },
-  completed: { bg: '#D1FAE5', fg: '#065F46' },
-  submitted: { bg: '#DBEAFE', fg: '#1E40AF' },
+  draft:          { bg: 'var(--tf-offset)',           fg: 'var(--tf-text)' },
+  in_progress:    { bg: 'var(--tf-banner-amber-bg)',  fg: 'var(--tf-banner-amber-text)' },
+  payment_failed: { bg: 'var(--tf-banner-red-bg)',    fg: 'var(--tf-banner-red-text)' },
+  paid:           { bg: 'rgba(var(--tf-accent-rgb), 0.12)', fg: 'var(--tf-accent)' },
+  completed:      { bg: 'var(--tf-banner-green-bg)',  fg: 'var(--tf-banner-green-text)' },
+  submitted:      { bg: 'rgba(var(--tf-accent-rgb), 0.12)', fg: 'var(--tf-accent)' },
 };
 
 type EligibilityIntake = {
@@ -211,7 +258,7 @@ export function Dashboard() {
       <section style={{ background: 'var(--tf-bg)', padding: '3rem 1rem 2rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <span style={{ display: 'inline-block', background: '#059669', color: 'white', borderRadius: '9999px', padding: '0.2rem 0.875rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.875rem' }}>
+            <span style={{ display: 'inline-block', background: 'var(--tf-success)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.2rem 0.875rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.875rem' }}>
               Dashboard
             </span>
             <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', marginBottom: '0.5rem', lineHeight: 1.2 }}>
@@ -230,9 +277,9 @@ export function Dashboard() {
       {!loading && pendingIntake && (
         <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 1rem' }}>
           <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-            <div style={{ border: '2px solid #0284C7', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', background: 'rgba(2,132,199,0.04)' }}>
+            <div style={{ border: '2px solid var(--tf-accent)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                <span style={{ display: 'inline-block', background: '#0284C7', color: 'white', borderRadius: '9999px', padding: '0.2rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                <span style={{ display: 'inline-block', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.2rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                   From Your Eligibility Check
                 </span>
               </div>
@@ -245,7 +292,7 @@ export function Dashboard() {
               <button
                 onClick={startFromEligibility}
                 disabled={busy !== null}
-                style={{ background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy === 'eligibility' ? 0.7 : 1 }}
+                style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy === 'eligibility' ? 0.7 : 1 }}
               >
                 {busy === 'eligibility' ? 'Setting up...' : 'Continue your filing'}
               </button>
@@ -254,83 +301,133 @@ export function Dashboard() {
         </section>
       )}
 
-      <section style={{ background: 'var(--tf-bg)', padding: '1rem 1rem 2rem' }}>
+      {/* ── Summary strip ───────────────────────────────────────────────── */}
+      {!loading && filings.length > 0 && (
+        <section style={{ background: 'var(--tf-bg)', padding: '0.5rem 1rem 1.5rem' }}>
+          <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }} className="dash-summary">
+            {(() => {
+              const counts = { action: 0, in_progress: 0, ready: 0, done: 0 } as Record<Bucket, number>;
+              for (const f of filings) counts[BUCKET_OF[f.status]]++;
+              // Nearest upcoming/most-urgent deadline among non-done filings.
+              const upcoming = filings
+                .filter((f) => BUCKET_OF[f.status] !== 'done')
+                .map((f) => dueState(f.tax_year))
+                .filter((d): d is NonNullable<DueState> => !!d)
+                .sort((a, b) => a.due.localeCompare(b.due))[0];
+              const stat = (label: string, value: string, tone?: 'late' | 'warn') => (
+                <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '0.875rem 1rem' }}>
+                  <div style={{ fontSize: '1.375rem', fontWeight: 700, color: tone === 'late' ? 'var(--tf-banner-red-text)' : tone === 'warn' ? 'var(--tf-banner-amber-text)' : 'var(--tf-text)' }}>{value}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '0.15rem' }}>{label}</div>
+                </div>
+              );
+              return (
+                <>
+                  {counts.action > 0 && stat('Need attention', String(counts.action), 'late')}
+                  {counts.ready > 0 && stat('Ready to download', String(counts.ready))}
+                  {counts.in_progress > 0 && stat('In progress', String(counts.in_progress))}
+                  {stat('Total filings', String(filings.length))}
+                  {upcoming && stat('Next deadline', humanDate(upcoming.due), upcoming.tone === 'late' ? 'late' : upcoming.tone === 'warn' ? 'warn' : undefined)}
+                </>
+              );
+            })()}
+          </div>
+        </section>
+      )}
+
+      {/* ── Filings, grouped by status bucket ───────────────────────────── */}
+      <section style={{ background: 'var(--tf-bg)', padding: '0.5rem 1rem 2rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Your filings</h2>
-          {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
+          {error && <p style={{ color: 'var(--tf-error-text)', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
           {loading ? (
-            <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 500 }}>Loading...</p>
+            <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 500 }}>Loading…</p>
           ) : filings.length === 0 ? (
-            <div style={{ background: 'var(--tf-surface)', border: '1px dashed var(--tf-border)', borderRadius: '0.75rem', padding: '2rem', textAlign: 'center' }}>
-              <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.5rem' }}>No filings yet.</p>
-              <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>Start one below.</p>
+            <div style={{ background: 'var(--tf-surface)', border: '1px dashed var(--tf-border)', borderRadius: '0.75rem', padding: '2.5rem 2rem', textAlign: 'center' }}>
+              <p style={{ fontWeight: 700, fontSize: '1.0625rem', marginBottom: '0.4rem' }}>No filings yet</p>
+              <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.25rem' }}>Start your Form 5472 below — it takes about 10 minutes.</p>
+              <button onClick={() => startFiling('current_year')} disabled={busy !== null} style={primaryBtn(busy === 'current_year')}>
+                {busy === 'current_year' ? 'Creating…' : 'Start my filing'}
+              </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {filings.map((f) => {
-                const c = STATUS_COLOR[f.status];
-                return (
-                  <div key={f.id} style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
-                        <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--tf-text)' }}>
-                          {SERVICE_LABEL[f.service_type]}{f.tax_year ? ` (${f.tax_year})` : ''}
-                        </p>
-                        <span style={{ display: 'inline-block', background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.03em' }}>
-                          {STATUS_LABEL[f.status]}
-                        </span>
+            (() => {
+              // Group standalone filings vs multi-year job filings.
+              const jobs = new Map<string, Filing[]>();
+              const standalone: Filing[] = [];
+              for (const f of filings) {
+                if (f.job_id) {
+                  const arr = jobs.get(f.job_id) ?? [];
+                  arr.push(f); jobs.set(f.job_id, arr);
+                } else standalone.push(f);
+              }
+              // Bucket standalone filings.
+              const byBucket = new Map<Bucket, Filing[]>();
+              for (const f of standalone) {
+                const b = BUCKET_OF[f.status];
+                const arr = byBucket.get(b) ?? [];
+                arr.push(f); byBucket.set(b, arr);
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                  {/* Multi-year job cards first (most actionable) */}
+                  {[...jobs.entries()].map(([jobId, yearFilings]) => (
+                    <JobCard key={jobId} filings={yearFilings} />
+                  ))}
+
+                  {BUCKET_ORDER.filter((b) => (byBucket.get(b)?.length ?? 0) > 0).map((b) => (
+                    <div key={b}>
+                      <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', marginBottom: '0.75rem' }}>
+                        {BUCKET_TITLE[b]}
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {byBucket.get(b)!.map((f) => <FilingCard key={f.id} f={f} />)}
                       </div>
-                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>
-                        Updated {formatDate(f.updated_at)}
-                        {(f.status === 'draft' || f.status === 'in_progress') ? ` (Step ${f.current_step} of 4)` : ''}
-                      </p>
                     </div>
-                    <Link
-                      to={filingPath(f)}
-                      style={{ background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center' }}
-                    >
-                      {actionLabel(f.status)}
-                    </Link>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              );
+            })()
           )}
         </div>
       </section>
 
+      {/* ── Start a new filing ──────────────────────────────────────────── */}
       <section style={{ background: 'var(--tf-surface)', padding: '3rem 1rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Start a new filing</h2>
-          <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>Pick a service to begin.</p>
-          <div className="dash-services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem' }}>
+          <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>
+            File this year, or catch up on years you missed.
+          </p>
+          <div className="dash-services" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
             <div style={cardStyle}>
-              <p style={tagStyle}>Most Popular</p>
-              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Form 5472 + Pro Forma 1120</h3>
+              <p style={tagStyle}>Most popular</p>
+              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>File this year</h3>
               <p style={priceStyle}>$150</p>
-              <p style={mutedStyle}>One-time filing. No ongoing fees.</p>
+              <p style={mutedStyle}>Form 5472 + pro forma 1120 for the current tax year. One-time, no ongoing fees.</p>
               <button onClick={() => startFiling('current_year')} disabled={busy !== null} style={primaryBtn(busy === 'current_year')}>
-                {busy === 'current_year' ? 'Creating...' : 'Start filing'}
+                {busy === 'current_year' ? 'Creating…' : 'Start filing'}
               </button>
             </div>
             <div style={cardStyle}>
-              <p style={tagStyle}>For Late Filers</p>
-              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Past Year Filing + RCL</h3>
-              <p style={priceStyle}>from $350</p>
-              <p style={mutedStyle}>Includes Reasonable Cause Letter.</p>
-              <button onClick={() => startFiling('past_year')} disabled={busy !== null} style={primaryBtn(busy === 'past_year')}>
-                {busy === 'past_year' ? 'Creating...' : 'Start filing'}
+              <p style={tagStyle}>For late filers</p>
+              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Catch up on past years</h3>
+              <p style={priceStyle}>from $350<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year</span></p>
+              <p style={mutedStyle}>File one or more missed years. One reasonable-cause letter covers them all.</p>
+              <button onClick={() => navigate('/catch-up')} disabled={busy !== null} style={primaryBtn(false)}>
+                Choose years
               </button>
             </div>
-            <div style={cardStyle}>
-              <p style={tagStyle}>Add-on Service</p>
-              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>LLC Tax Classification Change</h3>
-              <p style={priceStyle}>$50</p>
-              <p style={mutedStyle}>One-time filing. No ongoing fees.</p>
-              <button onClick={() => startFiling('tax_classification')} disabled={busy !== null} style={primaryBtn(busy === 'tax_classification')}>
-                {busy === 'tax_classification' ? 'Creating...' : 'Start filing'}
-              </button>
-            </div>
+          </div>
+
+          {/* Secondary / additional services */}
+          <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem 1.25rem', flexWrap: 'wrap', padding: '1rem 1.25rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem' }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Also available:</span>
+            <button onClick={() => startFiling('tax_classification')} disabled={busy !== null} style={linkBtnStyle}>
+              LLC tax classification change (8832 / 2553) · $50
+            </button>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
+              IRS fax submission add-on · Form 7004, FBAR &amp; more coming soon
+            </span>
           </div>
         </div>
         <style>{`@media (max-width: 800px) { .dash-services { grid-template-columns: 1fr !important; } }`}</style>
@@ -340,11 +437,97 @@ export function Dashboard() {
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>
             Need help? Email us at{' '}
-            <a href="mailto:hello@filetax.co" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>. We respond within 1 business day.
+            <a href="mailto:hello@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>. We respond within 1 business day.
           </p>
         </div>
       </section>
     </>
+  );
+}
+
+// ── Filing card ──────────────────────────────────────────────────────────────
+function FilingCard({ f }: { f: Filing }) {
+  const c = STATUS_COLOR[f.status];
+  const due = (f.status !== 'completed' && f.status !== 'submitted') ? dueState(f.tax_year) : null;
+  const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
+  return (
+    <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+          <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
+            {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
+          </p>
+          <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.03em' }}>
+            {STATUS_LABEL[f.status]}
+          </span>
+          {due && (
+            <span style={{ background: due.tone === 'late' ? 'var(--tf-banner-red-bg)' : due.tone === 'warn' ? 'var(--tf-banner-amber-bg)' : 'var(--tf-offset)', color: due.tone === 'late' ? 'var(--tf-banner-red-text)' : due.tone === 'warn' ? 'var(--tf-banner-amber-text)' : 'var(--tf-muted)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.72rem', fontWeight: 600 }}>
+              {due.label}
+            </span>
+          )}
+        </div>
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>
+          {f.ein ? `EIN ${f.ein} · ` : ''}{SERVICE_LABEL[f.service_type]} · Updated {formatDate(f.updated_at)}
+          {(f.status === 'draft' || f.status === 'in_progress') ? ` · Step ${f.current_step} of 5` : ''}
+        </p>
+      </div>
+      <Link
+        to={filingPath(f)}
+        style={{ background: f.status === 'completed' ? 'transparent' : 'var(--tf-accent)', color: f.status === 'completed' ? 'var(--tf-accent)' : 'var(--tf-on-accent)', border: f.status === 'completed' ? '1px solid var(--tf-border)' : 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+      >
+        {actionLabel(f.status)}
+      </Link>
+    </div>
+  );
+}
+
+// ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
+function JobCard({ filings }: { filings: Filing[] }) {
+  const sorted = [...filings].sort((a, b) => Number(b.tax_year) - Number(a.tax_year));
+  const years = sorted.map((f) => f.tax_year).filter(Boolean);
+  const llc = sorted.find((f) => f.llc_name)?.llc_name?.trim() || 'Catch-up filing';
+  const remaining = sorted.filter((f) => f.status === 'draft' || f.status === 'in_progress').length;
+  const allReady = sorted.every((f) => f.status === 'paid' || f.status === 'completed');
+  // Where the primary action should go: first unfinished year, else the most recent (download).
+  const target = sorted.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
+
+  return (
+    <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+            <span style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Multi-year catch-up
+            </span>
+          </div>
+          <p style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--tf-text)' }}>{llc}</p>
+          <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.1rem' }}>
+            {years.length} years ({years.slice().reverse().join(', ')}) · one reasonable-cause letter covers them all
+            {remaining > 0 ? ` · ${remaining} year${remaining > 1 ? 's' : ''} left to complete` : allReady ? ' · all years ready' : ''}
+          </p>
+        </div>
+        <Link
+          to={filingPath(target)}
+          style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+        >
+          {remaining > 0 ? 'Continue' : 'Download all'}
+        </Link>
+      </div>
+      <div style={{ borderTop: '1px solid var(--tf-border)' }}>
+        {sorted.map((f) => {
+          const c = STATUS_COLOR[f.status];
+          return (
+            <Link key={f.id} to={filingPath(f)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 1.5rem', borderTop: '1px solid var(--tf-border)', textDecoration: 'none' }}>
+              <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.1rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}>{STATUS_LABEL[f.status]}</span>
+                <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -358,9 +541,15 @@ const cardStyle: React.CSSProperties = {
   flexDirection: 'column',
 };
 const tagStyle: React.CSSProperties = { color: 'var(--tf-muted)', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' };
-const priceStyle: React.CSSProperties = { color: '#0284C7', fontWeight: 700, fontSize: '1.5rem', marginBottom: '0.25rem' };
+const priceStyle: React.CSSProperties = { color: 'var(--tf-accent)', fontWeight: 700, fontSize: '1.5rem', marginBottom: '0.25rem' };
 const mutedStyle: React.CSSProperties = { color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, marginBottom: '1.25rem', flex: 1 };
 
 function primaryBtn(busy: boolean): React.CSSProperties {
-  return { background: '#0284C7', color: 'white', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy ? 0.7 : 1 };
+  return { background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy ? 0.7 : 1 };
 }
+
+const linkBtnStyle: React.CSSProperties = {
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+  color: 'var(--tf-accent)', fontSize: '0.875rem', fontWeight: 600,
+  textDecoration: 'underline', textUnderlineOffset: '2px',
+};

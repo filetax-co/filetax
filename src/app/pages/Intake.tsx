@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
+import { mapTransactionForPersist } from '../../lib/filingMapping';
+import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
 import {
   BIZ_ACTIVITIES,
   COUNTRIES,
@@ -48,6 +50,8 @@ type TransactionRow = {
   transaction_type: string;
   direction: 'paid' | 'received';
   amount_usd: string;
+  /** Beginning-of-year balance for loan rows (Form 5472 lines 17a / 31a). */
+  loan_begin_usd?: string;
   description: string;
   transaction_date: string;
 };
@@ -60,6 +64,17 @@ function formatEIN(raw: string): string {
 
 function isValidEIN(val: string): boolean {
   return /^\d{2}-\d{7}$/.test(val);
+}
+
+/**
+ * An initial (first-ever) return is one where the LLC was formed during the
+ * tax year being filed. Drives the Form 5472 / 1120 "Initial return" checkbox
+ * and the short-year begin date.
+ */
+function isInitialReturn(doiISO: string, taxYear: string): boolean {
+  if (!doiISO) return false;
+  const y = Number(doiISO.slice(0, 4));
+  return y > 0 && y === Number(taxYear);
 }
 
 function isUSCountry(value?: string | null): boolean {
@@ -123,25 +138,77 @@ function getCategoryForTxType(txType: string): 1 | 2 | 3 | null {
   return found ? found.category : null;
 }
 
+/**
+ * Accessible info tooltip — a small "i" the user can hover OR click/focus to
+ * reveal a plain-language hint. Click/focus toggles it so it works on touch and
+ * for keyboard users (not hover-only). Uses --tf-* tokens so it adapts to dark
+ * mode. The popover is a sibling positioned relative to the trigger.
+ */
+function InfoTooltip({ text, label }: { text: string; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}>
+      <button
+        type="button"
+        aria-label={label ?? 'More information'}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onBlur={() => setOpen(false)}
+        style={{
+          width: '15px', height: '15px', borderRadius: '9999px',
+          border: '1px solid var(--tf-border)', background: 'var(--tf-offset)',
+          color: 'var(--tf-muted)', fontSize: '10px', fontWeight: 700,
+          lineHeight: 1, cursor: 'pointer', padding: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          marginLeft: '0.35rem',
+        }}
+      >
+        i
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          style={{
+            position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+            width: 'max-content', maxWidth: '260px', zIndex: 20,
+            background: 'var(--tf-text)', color: 'var(--tf-surface)',
+            fontSize: '0.75rem', fontWeight: 400, lineHeight: 1.5,
+            padding: '0.5rem 0.625rem', borderRadius: '0.375rem',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.18)', textTransform: 'none', letterSpacing: 'normal',
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Field({
   label,
   hint,
   children,
   style,
   required,
+  tooltip,
 }: {
   label: string;
   hint?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
   required?: boolean;
+  /** Optional plain-language hint shown behind a clickable (i) icon. */
+  tooltip?: string;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', ...style }}>
-      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text-muted, #6b7280)' }}>
+      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)' }}>
         {label}
-        {required && <span style={{ color: '#b91c1c', marginLeft: '0.2rem' }}>*</span>}
+        {required && <span style={{ color: 'var(--tf-error)', marginLeft: '0.2rem' }}>*</span>}
         {hint && <span style={{ fontWeight: 400, marginLeft: '0.25rem' }}>{hint}</span>}
+        {tooltip && <InfoTooltip text={tooltip} label={`About ${label}`} />}
       </label>
       {children}
     </div>
@@ -209,10 +276,10 @@ function AddressFields({
 function SummaryRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--tf-text-muted, #6b7280)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
         {label}
       </div>
-      <div style={{ fontSize: '0.95rem', fontWeight: 500, color: value ? 'var(--tf-text, #111)' : 'var(--tf-text-muted, #9ca3af)' }}>
+      <div style={{ fontSize: '0.95rem', fontWeight: 500, color: value ? 'var(--tf-text)' : 'var(--tf-muted)' }}>
         {value || '—'}
       </div>
     </div>
@@ -220,17 +287,17 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
 }
 
 const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
-const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '1.75rem', lineHeight: 1.55 };
+const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-muted)', marginBottom: '1.75rem', lineHeight: 1.55 };
 const sectionStyle: React.CSSProperties = { marginBottom: '2rem' };
-const sectionLabelStyle: React.CSSProperties = { fontSize: '0.8rem', fontWeight: 700, color: 'var(--tf-text-muted, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.875rem' };
+const sectionLabelStyle: React.CSSProperties = { fontSize: '0.8rem', fontWeight: 700, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.875rem' };
 const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' };
-const reviewGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', background: 'var(--tf-surface, #fff)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1rem 1.25rem' };
-const primaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.5rem', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '0.5rem', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' };
-const secondaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.25rem', background: 'transparent', color: 'var(--tf-text, #111)', border: '1px solid var(--tf-border, #d1d5db)', borderRadius: '0.5rem', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' };
-const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'flex-start', padding: '0.4375rem 1rem', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '0.375rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' };
-const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset, #f9fafb)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.375rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.75rem' };
-const errorSummaryStyle: React.CSSProperties = { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
-const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', background: 'var(--tf-surface, #fff)', overflow: 'hidden' };
+const reviewGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1rem 1.25rem' };
+const primaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.5rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', borderRadius: '0.5rem', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' };
+const secondaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.25rem', background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' };
+const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'flex-start', padding: '0.4375rem 1rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', borderRadius: '0.375rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' };
+const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset)', border: '1px solid var(--tf-border)', borderRadius: '0.375rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.75rem' };
+const errorSummaryStyle: React.CSSProperties = { background: 'var(--tf-error-bg)', color: 'var(--tf-error-text)', border: '1px solid var(--tf-error-border)', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
+const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border)', borderRadius: '0.625rem', background: 'var(--tf-surface)', overflow: 'hidden' };
 
 export function Intake() {
   const navigate = useNavigate();
@@ -270,6 +337,11 @@ export function Intake() {
   const [mailing, setMailing] = useState<Address>({ country: 'US' });
   const [entityBizActivity, setEntityBizActivity] = useState('');
   const [entityBizCode, setEntityBizCode] = useState('');
+  // Final return + fiscal-year (non-calendar) filing
+  const [finalReturn, setFinalReturn] = useState(false);
+  const [isFiscalYear, setIsFiscalYear] = useState(false);
+  const [fiscalBegin, setFiscalBegin] = useState('');
+  const [fiscalEnd, setFiscalEnd] = useState('');
 
   // Step 1b
   const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
@@ -280,6 +352,7 @@ export function Intake() {
   const [ownerName, setOwnerName] = useState('');
   const [ownerCountry, setOwnerCountry] = useState('');
   const [ownerCountryRes, setOwnerCountryRes] = useState('');
+  const [ownerCountryCitizenship, setOwnerCountryCitizenship] = useState('');
   const [ownerSSN, setOwnerSSN] = useState('');
   const [ownerForeignTaxId, setOwnerForeignTaxId] = useState('');
   const [ownerRefNumber, setOwnerRefNumber] = useState('');
@@ -306,10 +379,28 @@ export function Intake() {
   // Step 4
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [noTransactionsConfirmed, setNoTransactionsConfirmed] = useState(false);
+  // Owner managerial-services Part VI disclosure. Pre-selected (true): the owner
+  // of a foreign-owned DE provides managerial services with no determinable FMV.
+  // If the owner deselects it, the Part VI box is not ticked and no statement is
+  // generated (unless an actual non-monetary transaction exists).
+  const [partViManagerial, setPartViManagerial] = useState(true);
+  // True once we auto-fill entity/owner data from the saved profile, so we can
+  // show a "we pre-filled this — please review" banner on a returning user.
+  const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
+  // Set when this filing is part of a multi-year catch-up job; drives "next
+  // year" routing after each year's intake is submitted.
+  const [jobId, setJobId] = useState<string | null>(null);
+  // Payment-integrity state: a paid filing locks its identity fields forever
+  // and allows only a capped number of corrections to other fields.
+  const [isPaidLocked, setIsPaidLocked] = useState(false);
+  const [postPaymentEdits, setPostPaymentEdits] = useState(0);
+  const POST_PAYMENT_EDIT_CAP = 2;
+  const editsRemaining = Math.max(0, POST_PAYMENT_EDIT_CAP - postPaymentEdits);
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
   const [txAmt, setTxAmt] = useState('');
+  const [txLoanBegin, setTxLoanBegin] = useState('');
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState('');
   const [cat3Acknowledged, setCat3Acknowledged] = useState(false);
@@ -353,23 +444,33 @@ export function Intake() {
       const { data: f, error: err } = await supabase.from('filings').select('*').eq('id', filingId).single();
       if (err || !f) { setLoadingFiling(false); return; }
 
+      // Payment integrity: once paid, a filing's IDENTITY (EIN, LLC name, tax
+      // year, owner identity, incorporation date) is permanently frozen so one
+      // payment can't be re-skinned into a different company's forms. Genuine
+      // corrections to other fields (addresses, transactions) are still allowed,
+      // capped at a small number of edits. We surface that lock in the UI rather
+      // than blocking the whole filing.
+      setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
+      setPostPaymentEdits((f as any).post_payment_edits ?? 0);
+
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
       setStateOfFormation(f.state_of_formation ?? '');
       setTaxYear(String(f.tax_year ?? '2024'));
       setTotalAssets(String((f as any).total_assets ?? ''));
-      setEntityDOI((f as any).entity_date_of_incorporation ?? '');
+      setEntityDOI((f as any).entity_date_of_incorporation ?? (f as any).date_of_incorporation ?? '');
       setEntityPrincipalCountry((f as any).entity_principal_country ?? '');
       setMailing((f.mailing_address as Address) ?? { country: 'US' });
-      setEntityBizActivity((f as any).entity_business_activity ?? '');
+      setEntityBizActivity((f as any).entity_business_activity ?? (f as any).naics_description ?? '');
       setEntityBizCode((f as any).entity_business_code ?? '');
       setExtensionFiled((f as any).extension_filed ?? null);
       setIncludeReasonableCause((f as any).include_reasonable_cause ?? false);
       setReasonableCauseReasons((f as any).reasonable_cause_reasons ?? []);
       setOwnerName(f.owner_full_name ?? '');
-      setOwnerCountry((f as any).owner_country ?? '');
+      setOwnerCountry((f as any).owner_country ?? f.owner_primary_country ?? '');
       setOwnerCountryRes(f.owner_country_residence ?? '');
-      setOwnerSSN((f as any).owner_ssn ?? '');
+      setOwnerCountryCitizenship(f.owner_country_citizenship ?? '');
+      setOwnerSSN((f as any).owner_ssn ?? f.owner_us_tin ?? '');
       setOwnerForeignTaxId(f.owner_foreign_tax_id ?? '');
       setOwnerRefNumber((f as any).owner_ref_number ?? '');
       setOwnerAddress((f.owner_address as Address) ?? {});
@@ -377,6 +478,12 @@ export function Intake() {
       setOwnerBizCode((f as any).owner_business_code ?? '');
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
+      setPartViManagerial((f as any).part_vi_managerial ?? true);
+      setJobId((f as any).job_id ?? null);
+      setFinalReturn((f as any).final_return ?? false);
+      setIsFiscalYear((f as any).is_fiscal_year ?? false);
+      setFiscalBegin((f as any).tax_period_begin ?? '');
+      setFiscalEnd((f as any).tax_period_end ?? '');
 
       const { data: txns } = await supabase
         .from('reportable_transactions')
@@ -391,12 +498,52 @@ export function Intake() {
           transaction_type: t.transaction_type,
           direction: t.direction,
           amount_usd: String(t.amount_usd ?? ''),
+          loan_begin_usd: String(t.loan_begin_usd ?? ''),
           description: t.description ?? '',
           transaction_date: t.transaction_date ?? '',
         })));
       }
       setLoadingFiling(false);
     })();
+  }, [filingId]);
+
+  // Prefill a BRAND-NEW filing (no filing_id) from the user's saved profile so
+  // year 2+ is auto-populated for review. Only fills empty fields; never
+  // overwrites anything the user has already typed this session.
+  useEffect(() => {
+    if (filingId) return; // existing filing is loaded by the effect above
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+      const profile = await loadProfile(user.id);
+      if (cancelled || !profile) return;
+
+      const fill = (cur: string, val?: string | null) => (cur ? cur : (val ?? ''));
+      setLlcName((c) => fill(c, profile.llc_name));
+      setEin((c) => fill(c, profile.ein));
+      setStateOfFormation((c) => fill(c, profile.state_of_formation));
+      setEntityDOI((c) => fill(c, profile.date_of_incorporation));
+      setEntityBizActivity((c) => fill(c, profile.entity_business_activity ?? profile.naics_description));
+      setEntityBizCode((c) => fill(c, profile.entity_business_code ?? profile.naics_code));
+      setMailing((c) => (c && c.line1 ? c : ((profile.mailing_address as Address) ?? { country: 'US' })));
+
+      setOwnerName((c) => fill(c, profile.owner_full_name));
+      setOwnerCountry((c) => fill(c, profile.owner_country ?? profile.owner_primary_country));
+      setOwnerCountryRes((c) => fill(c, profile.owner_country_residence));
+      setOwnerCountryCitizenship((c) => fill(c, profile.owner_country_citizenship));
+      setOwnerForeignTaxId((c) => fill(c, profile.owner_foreign_tax_id));
+      setOwnerSSN((c) => fill(c, profile.owner_us_tin));
+      setOwnerRefNumber((c) => fill(c, profile.owner_reference_id ?? profile.owner_ref_number));
+      setOwnerBizActivity((c) => fill(c, profile.owner_business_activity));
+      setOwnerBizCode((c) => fill(c, profile.owner_business_code ?? profile.owner_naics_code));
+      setOwnerAddress((c) => (c && c.line1 ? c : ((profile.owner_address as Address) ?? {})));
+      if (profile.related_parties && Array.isArray(profile.related_parties)) {
+        setRelatedParties((c) => (c.length ? c : (profile.related_parties as RelatedParty[])));
+      }
+      setPrefilledFromProfile(true);
+    })();
+    return () => { cancelled = true; };
   }, [filingId]);
 
   function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
@@ -406,11 +553,23 @@ export function Intake() {
       state_of_formation: stateOfFormation.trim() || null,
       tax_year: taxYear,
       total_assets: totalAssets ? Number(totalAssets) : null,
+      // Wizard columns (kept for resume/load compatibility)
       entity_date_of_incorporation: entityDOI.trim() || null,
       entity_principal_country: entityPrincipalCountry.trim() || null,
       mailing_address: mailing,
       entity_business_activity: entityBizActivity.trim() || null,
       entity_business_code: entityBizCode.trim() || null,
+      // Canonical columns read directly by the PDF generator
+      date_of_incorporation: entityDOI.trim() || null,
+      naics_code: entityBizCode.trim() || null,
+      naics_description: entityBizActivity.trim() || null,
+      // Initial return: the LLC was formed during the tax year being filed.
+      initial_return: isInitialReturn(entityDOI, taxYear),
+      // Final return + fiscal-year (non-calendar) period.
+      final_return: finalReturn,
+      is_fiscal_year: isFiscalYear,
+      tax_period_begin: isFiscalYear && fiscalBegin ? fiscalBegin : null,
+      tax_period_end: isFiscalYear && fiscalEnd ? fiscalEnd : null,
     };
     if (step === '1b') return {
       extension_filed: extensionFiled,
@@ -419,6 +578,7 @@ export function Intake() {
     };
     if (step === 2) return {
       owner_full_name: ownerName.trim() || null,
+      // Wizard columns (kept for resume/load compatibility)
       owner_country: ownerCountry.trim() || null,
       owner_country_residence: ownerCountryRes.trim() || null,
       owner_ssn: ownerSSN.trim() || null,
@@ -427,9 +587,18 @@ export function Intake() {
       owner_address: ownerAddress,
       owner_business_activity: ownerBizActivity.trim() || null,
       owner_business_code: ownerBizCode.trim() || null,
+      // Canonical columns read directly by the PDF generator
+      owner_primary_country: ownerCountry.trim() || null,   // "country where you do business"
+      owner_country_citizenship: ownerCountryCitizenship.trim() || null,
+      owner_us_tin: ownerSSN.trim() || null,
+      owner_reference_id: ownerRefNumber.trim() || null,
+      owner_naics_code: ownerBizCode.trim() || null,
     };
     if (step === 3) return { related_parties: relatedParties };
-    if (step === 4) return { no_transactions_confirmed: noTransactionsConfirmed };
+    if (step === 4) return {
+      no_transactions_confirmed: noTransactionsConfirmed,
+      part_vi_managerial: partViManagerial,
+    };
     return {};
   }
 
@@ -465,6 +634,7 @@ export function Intake() {
     if (!ownerName.trim()) errs.push('Enter your full legal name.');
     if (!ownerCountry) errs.push('Select the country where you do business.');
     if (!ownerCountryRes) errs.push('Select the country where you pay taxes.');
+    if (!ownerCountryCitizenship) errs.push('Select your country of citizenship.');
     if (!ownerForeignTaxId.trim()) errs.push('Enter your foreign tax ID.');
     if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
     if (!ownerBizActivity) errs.push('Select your type of business.');
@@ -530,7 +700,17 @@ export function Intake() {
         setLocalFilingId(newId);
         return newId;
       }
-      const { error: err } = await supabase.from('filings').update(patch).eq('id', filingId);
+      let finalPatch = patch;
+      if (isPaidLocked) {
+        // Never attempt to write frozen identity fields on a paid filing (the
+        // DB trigger would reject the whole update). Strip them client-side so
+        // legitimate corrections to other fields still go through.
+        const FROZEN = ['llc_name', 'ein', 'tax_year', 'owner_full_name', 'owner_foreign_tax_id', 'date_of_incorporation', 'entity_date_of_incorporation'];
+        finalPatch = Object.fromEntries(
+          Object.entries(patch).filter(([k]) => !FROZEN.includes(k)),
+        ) as typeof patch;
+      }
+      const { error: err } = await supabase.from('filings').update(finalPatch).eq('id', filingId);
       if (err) throw err;
       return filingId;
     } catch (e: unknown) {
@@ -551,24 +731,35 @@ export function Intake() {
       );
       if (validTxns.length === 0) return true;
 
-      const toInsert = validTxns.filter((t) => !t.id).map((t) => ({
-        filing_id: activeFilingId,
-        related_party_index: t.related_party_index,
-        transaction_type: t.transaction_type,
-        direction: t.direction,
-        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-        description: t.description || null,
-        transaction_date: t.transaction_date || null,
-      }));
+      // Translate each row from the rich UI vocabulary into the canonical
+      // transaction_type the DB CHECK constraint and the PDF generator
+      // understand, carrying is_royalty / loan beginning balance.
+      const mapRow = (t: TransactionRow) => {
+        const m = mapTransactionForPersist({
+          transaction_type: t.transaction_type,
+          direction: t.direction,
+          amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
+          loan_begin_usd: t.loan_begin_usd ? Number(t.loan_begin_usd) : null,
+          description: t.description,
+          transaction_date: t.transaction_date,
+        });
+        return {
+          filing_id: activeFilingId,
+          related_party_index: t.related_party_index,
+          transaction_type: m.transaction_type,
+          direction: m.direction,
+          amount_usd: m.amount_usd,
+          loan_begin_usd: m.loan_begin_usd,
+          is_royalty: m.is_royalty,
+          description: m.description,
+          transaction_date: m.transaction_date,
+        };
+      };
+
+      const toInsert = validTxns.filter((t) => !t.id).map(mapRow);
       const toUpsert = validTxns.filter((t) => !!t.id).map((t) => ({
         id: t.id!,
-        filing_id: activeFilingId,
-        related_party_index: t.related_party_index,
-        transaction_type: t.transaction_type,
-        direction: t.direction,
-        amount_usd: t.amount_usd ? Number(t.amount_usd) : null,
-        description: t.description || null,
-        transaction_date: t.transaction_date || null,
+        ...mapRow(t),
       }));
 
       if (toInsert.length > 0) {
@@ -622,12 +813,74 @@ export function Intake() {
     setSaving(true);
     setError(null);
     try {
-      // ✅ ADD THIS — save transactions before navigating
+      // Save transactions before navigating
       const saved = await saveTransactions(filingId);
       if (!saved) return;
-  
+
+      if (isPaidLocked) {
+        // Paid filing: this submit is a correction round. Increment the edit
+        // counter (DB enforces the cap) and go straight to the download page —
+        // do NOT touch status (it stays paid/completed).
+        if (editsRemaining > 0) {
+          await supabase.from('filings')
+            .update({ post_payment_edits: postPaymentEdits + 1 })
+            .eq('id', filingId);
+        }
+        navigate(`/filing/${filingId}`);
+        return;
+      }
+
       const { error: err } = await supabase.from('filings').update({ status: 'in_progress' }).eq('id', filingId);
       if (err) throw err;
+
+      // Remember entity + owner details so the next year's filing prefills.
+      // Best-effort: never block submission on a profile write.
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        await saveProfileFromFiling(user?.id, {
+          llc_name: llcName.trim() || null,
+          ein: ein.trim() || null,
+          state_of_formation: stateOfFormation.trim() || null,
+          date_of_incorporation: entityDOI.trim() || null,
+          mailing_address: mailing,
+          entity_business_activity: entityBizActivity.trim() || null,
+          entity_business_code: entityBizCode.trim() || null,
+          naics_code: entityBizCode.trim() || null,
+          naics_description: entityBizActivity.trim() || null,
+          owner_full_name: ownerName.trim() || null,
+          owner_country: ownerCountry.trim() || null,
+          owner_primary_country: ownerCountry.trim() || null,
+          owner_country_residence: ownerCountryRes.trim() || null,
+          owner_country_citizenship: ownerCountryCitizenship.trim() || null,
+          owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
+          owner_us_tin: ownerSSN.trim() || null,
+          owner_reference_id: ownerRefNumber.trim() || null,
+          owner_business_activity: ownerBizActivity.trim() || null,
+          owner_business_code: ownerBizCode.trim() || null,
+          owner_naics_code: ownerBizCode.trim() || null,
+          owner_address: ownerAddress,
+          related_parties: relatedParties,
+        });
+      } catch { /* profile save is non-critical */ }
+
+      // Multi-year catch-up: after finishing this year, jump to the next year
+      // in the same job that still needs work; if all years are done, go to the
+      // (most-recent) filing's package page to review/download the whole job.
+      if (jobId) {
+        const { data: siblings } = await supabase
+          .from('filings')
+          .select('id, tax_year, current_step, status')
+          .eq('job_id', jobId)
+          .order('tax_year', { ascending: false });
+        const nextYear = (siblings ?? []).find(
+          (s) => s.id !== filingId && s.status === 'draft',
+        );
+        if (nextYear) {
+          navigate(`/intake?filing_id=${nextYear.id}`);
+          return;
+        }
+      }
+
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Submit failed');
@@ -680,10 +933,12 @@ export function Intake() {
       transaction_type: txType,
       direction: txDir,
       amount_usd: txAmt,
+      loan_begin_usd: LOAN_TYPES.has(txType) ? txLoanBegin : '',
       description: txDesc,
       transaction_date: txDate,
     }]);
     setTxAmt('');
+    setTxLoanBegin('');
     setTxDesc('');
     setTxDate('');
     setTxType('');
@@ -729,19 +984,19 @@ export function Intake() {
         .intake-form input:focus,
         .intake-form select:focus,
         .intake-form textarea:focus {
-          border-color: #0284c7;
-          box-shadow: 0 0 0 3px rgba(2,132,199,0.18);
+          border-color: var(--tf-accent);
+          box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.18);
         }
-        .intake-form input::placeholder { color: var(--tf-text-muted, #9ca3af); opacity: 1; }
+        .intake-form input::placeholder { color: var(--tf-muted); opacity: 1; }
         .intake-form input[data-invalid="true"],
         .intake-form select[data-invalid="true"] {
-          border-color: #dc2626;
-          box-shadow: 0 0 0 3px rgba(220,38,38,0.15);
+          border-color: var(--tf-error);
+          box-shadow: 0 0 0 3px rgba(var(--tf-error-rgb), 0.15);
         }
-        .intake-form .field-error { font-size: 0.78rem; color: #dc2626; margin-top: 0.25rem; }
+        .intake-form .field-error { font-size: 0.78rem; color: var(--tf-error-text); margin-top: 0.25rem; }
         .intake-form select option {
-          background: var(--tf-surface, #fff);
-          color: var(--tf-text, #111);
+          background: var(--tf-surface);
+          color: var(--tf-text);
         }
 
         /* ── Stepper ── */
@@ -760,123 +1015,101 @@ export function Intake() {
           white-space: nowrap; border: none; background: transparent;
           transition: background 0.15s, color 0.15s; line-height: 1;
         }
-        .stepper-pill--active { background: #0284c7; color: #fff; font-weight: 700; cursor: default; box-shadow: 0 1px 4px rgba(2,132,199,0.25); }
-        .stepper-pill--done { background: var(--tf-pill-done-bg, #e0f2fe); color: var(--tf-pill-done-text, #0369a1); font-weight: 600; cursor: pointer; }
-        .stepper-pill--done:hover { background: var(--tf-pill-done-hover, #bae6fd); }
-        .stepper-pill--pending { color: var(--tf-text-muted, #94a3b8); cursor: default; }
-        .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: var(--tf-check-bg, #0369a1); color: #fff; font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
+        .stepper-pill--active { background: var(--tf-accent); color: var(--tf-on-accent); font-weight: 700; cursor: default; box-shadow: 0 1px 4px rgba(var(--tf-accent-rgb), 0.25); }
+        .stepper-pill--done { background: rgba(var(--tf-accent-rgb), 0.12); color: var(--tf-accent); font-weight: 600; cursor: pointer; }
+        .stepper-pill--done:hover { background: rgba(var(--tf-accent-rgb), 0.20); }
+        .stepper-pill--pending { color: var(--tf-muted); cursor: default; }
+        .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: var(--tf-accent); color: var(--tf-on-accent); font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
 
         /* ── Radio / checkbox selection cards ── */
         .select-card {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 0.875rem 1rem;
-          border: 1px solid var(--tf-border, #e5e7eb);
+          border: 1px solid var(--tf-border);
           border-radius: 0.5rem; cursor: pointer;
-          background: var(--tf-surface, #fff);
+          background: var(--tf-surface);
           transition: border-color 0.12s, background 0.12s;
         }
-        .select-card:hover { border-color: #93c5fd; background: var(--tf-offset, #f8fafc); }
-        .select-card.is-selected { border-color: #0284c7; background: var(--tf-selected-bg, #eff6ff); }
+        .select-card:hover { border-color: var(--tf-accent-soft); background: var(--tf-offset); }
+        .select-card.is-selected { border-color: var(--tf-accent); background: rgba(var(--tf-accent-rgb), 0.08); }
         .select-card input[type="radio"],
         .select-card input[type="checkbox"] {
           width: 1.1rem !important; height: 1.1rem !important;
           flex-shrink: 0; margin-top: 0.15rem;
-          accent-color: #0284c7;
+          accent-color: var(--tf-accent);
           padding: 0 !important; border: none !important;
           box-shadow: none !important;
         }
-        .select-card-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
-        .select-card-hint { font-size: 0.8rem; color: var(--tf-text-muted, #6b7280); margin-top: 0.15rem; line-height: 1.4; }
+        .select-card-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text); }
+        .select-card-hint { font-size: 0.8rem; color: var(--tf-muted); margin-top: 0.15rem; line-height: 1.4; }
 
         /* ── Transaction category accordion ── */
         .tx-cat-header {
           display: flex; align-items: center; justify-content: space-between;
           padding: 0.875rem 1rem; cursor: pointer; user-select: none;
-          background: var(--tf-surface, #fff);
+          background: var(--tf-surface);
           transition: background 0.12s;
         }
-        .tx-cat-header:hover { background: var(--tf-offset, #f8fafc); }
-        .tx-cat-header.is-open { background: var(--tf-cat-open-bg, #f0f9ff); }
+        .tx-cat-header:hover { background: var(--tf-offset); }
+        .tx-cat-header.is-open { background: rgba(var(--tf-accent-rgb), 0.08); }
         .tx-cat-chevron {
           width: 1.25rem; height: 1.25rem; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
-          color: var(--tf-text-muted, #6b7280);
+          color: var(--tf-muted);
           transition: transform 0.2s;
         }
         .tx-cat-chevron.is-open { transform: rotate(180deg); }
         .tx-cat-body {
-          border-top: 1px solid var(--tf-border, #e5e7eb);
-          padding: 0.875rem; background: var(--tf-cat-body-bg, #fafbfc);
+          border-top: 1px solid var(--tf-border);
+          padding: 0.875rem; background: var(--tf-offset);
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 0.5rem;
         }
         .tx-type-card {
-          text-align: left; border: 1px solid var(--tf-border, #d1d5db);
+          text-align: left; border: 1px solid var(--tf-border);
           border-radius: 0.5rem; padding: 0.75rem 0.875rem;
-          background: var(--tf-surface, #fff); cursor: pointer; width: 100%;
+          background: var(--tf-surface); cursor: pointer; width: 100%;
           transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
         }
-        .tx-type-card:hover { border-color: #93c5fd; background: var(--tf-offset, #f8fafc); }
-        .tx-type-card.is-selected { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.12); background: var(--tf-selected-bg, #eff6ff); }
-        .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text, #111); }
-        .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-text-muted, #6b7280); line-height: 1.45; }
+        .tx-type-card:hover { border-color: var(--tf-accent-soft); background: var(--tf-offset); }
+        .tx-type-card.is-selected { border-color: var(--tf-accent); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.12); background: rgba(var(--tf-accent-rgb), 0.08); }
+        .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text); }
+        .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-muted); line-height: 1.45; }
 
         /* ── Confirm no-transactions row ── */
         .confirm-check-row {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 1rem 1.25rem;
-          background: var(--tf-warn-bg, #fffbeb); border: 1px solid var(--tf-warn-border, #fbbf24); border-radius: 0.5rem;
+          background: var(--tf-banner-amber-bg); border: 1px solid var(--tf-banner-amber-border); border-radius: 0.5rem;
           margin-top: 1.25rem;
         }
         .confirm-check-row input[type="checkbox"] {
           width: 1.1rem !important; height: 1.1rem !important;
           flex-shrink: 0; margin-top: 0.15rem;
-          accent-color: #d97706;
+          accent-color: var(--tf-warn);
           padding: 0 !important; border: none !important;
           box-shadow: none !important;
         }
 
-        /* ── CPA banners ── */
-        .cat-banner-green { background: var(--tf-banner-green-bg, #f0fdf4); border: 1px solid var(--tf-banner-green-border, #86efac); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-green-text, #166534); margin-bottom: 1rem; line-height: 1.5; }
-        .cat-banner-amber { background: var(--tf-banner-amber-bg, #fffbeb); border: 1px solid var(--tf-banner-amber-border, #fbbf24); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-amber-text, #92400e); margin-bottom: 1rem; line-height: 1.5; }
-        .cat-banner-red { background: var(--tf-banner-red-bg, #fef2f2); border: 1px solid var(--tf-banner-red-border, #fca5a5); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-red-text, #991b1b); margin-bottom: 1rem; line-height: 1.5; }
+        /* ── Transaction tier banners (green = routine, amber = review, red = complex) ── */
+        .cat-banner-green { background: var(--tf-banner-green-bg); border: 1px solid var(--tf-banner-green-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-green-text); margin-bottom: 1rem; line-height: 1.5; }
+        .cat-banner-amber { background: var(--tf-banner-amber-bg); border: 1px solid var(--tf-banner-amber-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-amber-text); margin-bottom: 1rem; line-height: 1.5; }
+        .cat-banner-red { background: var(--tf-banner-red-bg); border: 1px solid var(--tf-banner-red-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-red-text); margin-bottom: 1rem; line-height: 1.5; }
         .cat3-ack-row { display: flex; gap: 0.75rem; align-items: flex-start; margin-top: 0.75rem; }
-        .cat3-ack-row input[type="checkbox"] { width: 1.1rem !important; height: 1.1rem !important; flex-shrink: 0; margin-top: 0.1rem; accent-color: #dc2626; padding: 0 !important; border: none !important; box-shadow: none !important; }
+        .cat3-ack-row input[type="checkbox"] { width: 1.1rem !important; height: 1.1rem !important; flex-shrink: 0; margin-top: 0.1rem; accent-color: var(--tf-error); padding: 0 !important; border: none !important; box-shadow: none !important; }
 
-        /* ── Dark mode overrides ── */
-        .dark .stepper-track { background: rgba(255,255,255,0.08); }
-        .dark .stepper-pill--done { background: rgba(255,255,255,0.10); color: #7dd3fc; }
-        .dark .stepper-pill--done:hover { background: rgba(255,255,255,0.16); }
-        .dark .stepper-pill--active { background: #0284c7; color: #fff; }
-        .dark .stepper-pill--pending { color: #64748b; }
-        .dark .stepper-check { background: #0ea5e9; }
-
-        .dark .select-card { background: var(--tf-surface); border-color: var(--tf-border); }
-        .dark .select-card:hover { background: var(--tf-offset); border-color: #3b82f6; }
-        .dark .select-card.is-selected { background: rgba(2,132,199,0.15); border-color: #0284c7; }
-        .dark .select-card-label { color: var(--tf-text); }
-        .dark .select-card-hint { color: var(--tf-text-muted); }
-
-        .dark .tx-cat-header { background: var(--tf-surface); }
-        .dark .tx-cat-header:hover { background: var(--tf-offset); }
-        .dark .tx-cat-header.is-open { background: rgba(2,132,199,0.10); }
-        .dark .tx-cat-body { background: var(--tf-offset); }
-        .dark .tx-type-card { background: var(--tf-surface); border-color: var(--tf-border); }
-        .dark .tx-type-card:hover { background: var(--tf-offset); border-color: #3b82f6; }
-        .dark .tx-type-card.is-selected { background: rgba(2,132,199,0.15); border-color: #0284c7; }
-        .dark .tx-type-card.is-selected .tx-type-label { color: #e0f2fe; }
-        .dark .tx-type-card.is-selected .tx-type-sentence { color: #7dd3fc; }
-
-        .dark .confirm-check-row { background: rgba(217,119,6,0.12); border-color: rgba(251,191,36,0.35); }
-        .dark .cat-banner-green { background: rgba(22,163,74,0.12); border-color: rgba(134,239,172,0.3); color: #86efac; }
-        .dark .cat-banner-amber { background: rgba(217,119,6,0.12); border-color: rgba(251,191,36,0.3); color: #fcd34d; }
-        .dark .cat-banner-red { background: rgba(220,38,38,0.12); border-color: rgba(252,165,165,0.3); color: #fca5a5; }
-
-        .dark .intake-form select option { background: var(--tf-surface, #1e293b); color: var(--tf-text, #f1f5f9); }
+        /* ── Dark-mode-only structural tweak (colors already resolve via tokens) ── */
+        .dark .stepper-track { background: rgba(255,255,255,0.06); }
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
+        {jobId && (
+          <div style={{ background: 'rgba(var(--tf-accent-rgb), 0.08)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: 'var(--tf-text)' }}>
+            <strong>Catch-up filing — tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
+          </div>
+        )}
+
         {/* Stepper */}
         <nav aria-label="Form steps">
           <div className="stepper-track">
@@ -903,6 +1136,15 @@ export function Intake() {
           </div>
         </nav>
 
+        {isPaidLocked && (
+          <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
+            <strong>This filing has been paid.</strong> Your company and owner identity (EIN, LLC name, tax year, owner name &amp; tax ID, incorporation date) are locked — to file for a different company or year, start a new filing.{' '}
+            {editsRemaining > 0
+              ? `You can still correct other details (addresses, transactions) and re-download — ${editsRemaining} correction${editsRemaining > 1 ? 's' : ''} remaining.`
+              : 'You have used all available corrections; contact support@filetax.co for further changes. You can still re-download anytime.'}
+          </div>
+        )}
+
         {error && <div style={errorSummaryStyle}>{error}</div>}
         {stepErrors.length > 0 && (
           <div style={errorSummaryStyle}>
@@ -919,19 +1161,26 @@ export function Intake() {
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
             <p style={stepSubheadStyle}>Basic information about the US company. This goes on the pro forma 1120 and all Form 5472 filings.</p>
 
+            {prefilledFromProfile && (
+              <div className="cat-banner-green" style={{ marginBottom: '1.5rem' }}>
+                <strong>We’ve pre-filled your details from your last filing.</strong> Please review everything below and update anything that changed. Your edits here apply to this filing only.
+              </div>
+            )}
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
-                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required>
-                  <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" />
+                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required hint={isPaidLocked ? '🔒 locked after payment' : undefined}>
+                  <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" disabled={isPaidLocked} />
                 </Field>
-                <Field label="EIN" hint="Employer Identification Number" required>
+                <Field label="EIN" hint={isPaidLocked ? '🔒 locked after payment' : 'Employer Identification Number'} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
                   <input
                     value={ein}
                     onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
                     onBlur={handleEinBlur}
                     placeholder="12-3456789"
                     data-invalid={!!einErr}
+                    disabled={isPaidLocked}
                   />
                   {einErr && <div className="field-error">{einErr}</div>}
                 </Field>
@@ -941,16 +1190,16 @@ export function Intake() {
                     {US_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Tax year" required>
-                  <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)}>
+                <Field label="Tax year" required hint={isPaidLocked ? '🔒 locked after payment' : undefined}>
+                  <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} disabled={isPaidLocked}>
                     {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
-                <Field label="Total assets (USD)" hint="optional">
+                <Field label="Total assets (USD)" hint="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="number" value={totalAssets} onChange={(e) => setTotalAssets(e.target.value)} placeholder="e.g. 50000" />
                 </Field>
-                <Field label="Date of incorporation" required>
-                  <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} />
+                <Field label="Date of incorporation" required hint={isPaidLocked ? '🔒 locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
+                  <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
                 </Field>
                 <Field label="Principal country where business is conducted" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
@@ -972,10 +1221,55 @@ export function Intake() {
                     {BIZ_ACTIVITIES.map((a) => <option key={a.label} value={a.label}>{a.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Business code" required>
+                <Field label="Business code" required tooltip="The 6-digit NAICS code that best matches what your LLC does. We fill this in automatically when you pick a type of business.">
                   <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
+            </section>
+
+            {/* ── Fiscal year + final return ─────────────────────────────────── */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Tax period</h3>
+              <label className={`confirm-check-row${isFiscalYear ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: 0 }}>
+                <input type="checkbox" checked={isFiscalYear} onChange={(e) => setIsFiscalYear(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                    My LLC uses a fiscal year (not January–December)
+                    <InfoTooltip text="Most LLCs use the calendar year (Jan 1 – Dec 31). Only tick this if your LLC was set up with a different tax year-end. If you're not sure, leave it unticked." label="About fiscal year" />
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                    Leave unticked for the normal calendar year.
+                  </div>
+                </div>
+              </label>
+              {isFiscalYear && (
+                <>
+                  <div style={{ ...gridStyle, marginTop: '0.875rem' }}>
+                    <Field label="Tax period begins" required tooltip="The first day of your LLC's fiscal year for this filing.">
+                      <input type="date" value={fiscalBegin} onChange={(e) => setFiscalBegin(e.target.value)} />
+                    </Field>
+                    <Field label="Tax period ends" required tooltip="The last day of your LLC's fiscal year for this filing.">
+                      <input type="date" value={fiscalEnd} onChange={(e) => setFiscalEnd(e.target.value)} />
+                    </Field>
+                  </div>
+                  <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
+                    <strong>Fiscal-year filing — please review carefully.</strong> Fiscal-year returns are less common. We'll generate your forms using these dates; double-check the period and your filing due date before submitting.
+                  </div>
+                </>
+              )}
+
+              <label className={`confirm-check-row${finalReturn ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: '0.875rem' }}>
+                <input type="checkbox" checked={finalReturn} onChange={(e) => setFinalReturn(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                    This is my LLC's final return
+                    <InfoTooltip text="Tick this only if the LLC was dissolved, closed, or permanently stopped operating during this tax year. Do NOT tick it for a year with no activity or a temporary pause." label="About final return" />
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                    Only if the LLC closed or dissolved this year — not for a quiet year.
+                  </div>
+                </div>
+              </label>
             </section>
 
             <section style={sectionStyle}>
@@ -1082,7 +1376,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your identity</h3>
               <div style={gridStyle}>
-                <Field label="Your full legal name" hint="As shown on government ID" style={{ gridColumn: '1 / -1' }} required>
+                <Field label="Your full legal name" hint={isPaidLocked ? '🔒 locked after payment' : 'As shown on government ID'} style={{ gridColumn: '1 / -1' }} required>
                   <input
                     value={ownerName}
                     onChange={(e) => {
@@ -1092,27 +1386,34 @@ export function Intake() {
                       }
                     }}
                     placeholder="e.g. Rahul Sharma"
+                    disabled={isPaidLocked}
                   />
                 </Field>
-                <Field label="Country where you do business" required>
+                <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">
                   <select value={ownerCountry} onChange={(e) => setOwnerCountry(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Country where you pay taxes" required>
+                <Field label="Country where you pay taxes" required tooltip="The country where you are a tax resident — i.e. where you file your personal income taxes.">
                   <select value={ownerCountryRes} onChange={(e) => setOwnerCountryRes(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Your foreign tax ID" hint="e.g. PAN, UTR, NIF, SIN" required>
-                  <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Your local tax ID" />
+                <Field label="Country of citizenship" hint="The country on your passport" required tooltip="The country that issued your passport. If you hold more than one, use the one you'll list on the form.">
+                  <select value={ownerCountryCitizenship} onChange={(e) => setOwnerCountryCitizenship(e.target.value)}>
+                    <option value="">Select country</option>
+                    {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
                 </Field>
-                <Field label="US tax ID" hint="SSN, ITIN, or EIN — if you have one">
+                <Field label="Your foreign tax ID" hint={isPaidLocked ? '🔒 locked after payment' : 'e.g. PAN, UTR, NIF, SIN'} required tooltip="The tax ID number your home country issues you — e.g. PAN (India), UTR (UK), NIF (Spain), SIN (Canada). If your country doesn't issue one, enter 'None'.">
+                  <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Your local tax ID" disabled={isPaidLocked} />
+                </Field>
+                <Field label="US tax ID" hint="SSN, ITIN, or EIN — if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't — leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
-                <Field label="Your reference code" hint="Used internally on Form 5472" required>
+                <Field label="Your reference code" hint="Used internally on Form 5472" required tooltip="A short code that identifies you on the form (e.g. your initials + 001). We suggest one automatically — you can keep it or change it. It just needs to be consistent.">
                   <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. RAH001" />
                 </Field>
               </div>
@@ -1172,7 +1473,9 @@ export function Intake() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button type="button" style={secondaryBtnStyle} onClick={() => openRpForm(i)}>Edit</button>
-                        <button type="button" style={{ ...secondaryBtnStyle, color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => removeRp(i)}>Remove</button>
+                        {!isPaidLocked && (
+                          <button type="button" style={{ ...secondaryBtnStyle, color: 'var(--tf-error-text)', borderColor: 'var(--tf-error-border)' }} onClick={() => removeRp(i)}>Remove</button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1251,8 +1554,14 @@ export function Intake() {
               </div>
             )}
 
-            {!showRpForm && (
+            {!showRpForm && !isPaidLocked && (
               <button type="button" style={addBtnStyle} onClick={() => openRpForm()}>Add related party</button>
+            )}
+            {!showRpForm && isPaidLocked && (
+              <div className="cat-banner-amber" style={{ marginTop: '0.5rem' }}>
+                Adding another related party after payment generates an additional Form 5472 and is a paid add-on. Email{' '}
+                <a href="mailto:hello@filetax.co" style={{ color: 'inherit', fontWeight: 700 }}>hello@filetax.co</a> to add a party to this filing.
+              </div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
@@ -1265,10 +1574,24 @@ export function Intake() {
         {/* ── Step 4: Transactions ── */}
         {step === 4 && (
           <div>
-            <h2 style={stepHeadingStyle}>Transactions</h2>
+            <h2 style={stepHeadingStyle}>Money between you and the LLC</h2>
             <p style={stepSubheadStyle}>
-              Record every reportable transaction between the LLC and any related foreign party during this tax year. These populate Form 5472 Parts IV, V, and VI.
+              Tell us about any money or assets that moved between the LLC and you (or another related party) this year — money you put in, money you took out, loans, and so on. Don’t include normal business sales to customers or payments to vendors like Stripe or AWS.
             </p>
+
+            {/* Owner managerial-services Part VI disclosure — pre-selected, can opt out */}
+            <label className={`confirm-check-row${partViManagerial ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: 0, marginBottom: '1.5rem' }}>
+              <input type="checkbox" checked={partViManagerial} onChange={(e) => setPartViManagerial(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                  I run the LLC myself (include the standard owner-services note)
+                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on Form 5472 Part VI. We include a standard statement for you. Untick only if this does not apply — then no Part VI statement is generated." label="About owner services" />
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                  Recommended for almost all single-owner LLCs. Untick if it doesn’t apply.
+                </div>
+              </div>
+            </label>
 
             {transactions.length > 0 && (
               <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1289,7 +1612,7 @@ export function Intake() {
                       </div>
                       <button
                         type="button"
-                        style={{ ...secondaryBtnStyle, fontSize: '0.8rem', padding: '0.3rem 0.75rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                        style={{ ...secondaryBtnStyle, fontSize: '0.8rem', padding: '0.3rem 0.75rem', color: 'var(--tf-error-text)', borderColor: 'var(--tf-error-border)' }}
                         onClick={() => removeTransaction(i)}
                       >
                         Remove
@@ -1333,7 +1656,7 @@ export function Intake() {
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--tf-text, #111)' }}>{cat.label}</span>
-                            {hasSelection && <span style={{ fontSize: '0.72rem', background: '#0284c7', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>}
+                            {hasSelection && <span style={{ fontSize: '0.72rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', padding: '0.1rem 0.45rem', borderRadius: '1rem', fontWeight: 700 }}>Selected</span>}
                           </div>
                           <div style={{ fontSize: '0.8125rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.2rem' }}>{cat.description}</div>
                         </div>
@@ -1384,9 +1707,24 @@ export function Intake() {
                   </div>
                 )}
 
-                {txCategory === 3 && (
+                {/* Tier note — revealed only AFTER a transaction type is picked, so we
+                    never pre-signal complexity in the picker. Driven by TX_TYPES.category:
+                      1 → routine, nothing extra needed (green)
+                      2 → reportable but straightforward, we handle it (amber/blue)
+                      3 → complex, CPA review recommended + acknowledgment (red) */}
+                {txType && txCategory === 1 && (
+                  <div className="cat-banner-green" style={{ marginBottom: '1rem' }}>
+                    <strong>Straightforward — nothing extra needed from you.</strong> This is a routine item between you and the LLC. Just enter the amount below; we handle the paperwork.
+                  </div>
+                )}
+                {txType && txCategory === 2 && (
+                  <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
+                    <strong>Reportable, and we’ve got it.</strong> This needs to be reported, but it’s a standard case. Enter the details below and we’ll put it on the right part of the form for you.
+                  </div>
+                )}
+                {txType && txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
-                    <strong>CPA review recommended.</strong> This transaction type (Part VI) is complex. We will complete the fields as best we can from your inputs, but recommend a CPA review before submission.
+                    <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
                     <div className="cat3-ack-row" style={{ marginTop: '0.625rem' }}>
                       <input type="checkbox" checked={cat3Acknowledged} onChange={(e) => setCat3Acknowledged(e.target.checked)} id="cat3ack" />
                       <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand — proceed anyway</label>
@@ -1401,6 +1739,14 @@ export function Intake() {
                         <option value="received">LLC received the money</option>
                         <option value="paid">LLC paid the money</option>
                       </select>
+                    </Field>
+                  )}
+                  {LOAN_TYPES.has(txType) && (
+                    <Field
+                      label="Beginning balance (USD)"
+                      hint="Outstanding loan balance at the START of the tax year (0 if the loan started this year)"
+                    >
+                      <input type="number" min={0} value={txLoanBegin} onChange={(e) => setTxLoanBegin(e.target.value)} placeholder="0" />
                     </Field>
                   )}
                   <Field
@@ -1494,6 +1840,7 @@ export function Intake() {
                 <SummaryRow label="Name" value={ownerName} />
                 <SummaryRow label="Country of business" value={ownerCountry} />
                 <SummaryRow label="Tax residence" value={ownerCountryRes} />
+                <SummaryRow label="Citizenship" value={ownerCountryCitizenship} />
                 <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
                 <SummaryRow label="Reference code" value={ownerRefNumber} />
                 <SummaryRow label="Business type" value={ownerBizActivity || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
@@ -1537,10 +1884,20 @@ export function Intake() {
               <div style={infoBoxStyle}>No reportable transactions confirmed.</div>
             )}
 
+            {!isPaidLocked && (
+              <div className="cat-banner-amber" style={{ marginTop: '1.5rem' }}>
+                <strong>Before you submit:</strong> once you pay, your company and owner identity —
+                EIN, LLC name, tax year, your legal name &amp; foreign tax ID, and incorporation date —
+                are locked and cannot be changed. To file for a different company or year you’d start a new
+                filing. Other details (addresses, transactions) can still be corrected afterward. Please
+                double-check these now.
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
-              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving}>
-                {saving ? 'Submitting…' : 'Submit for processing'}
+              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || (isPaidLocked && editsRemaining === 0)}>
+                {saving ? 'Submitting…' : isPaidLocked ? 'Save corrections & re-download' : 'Submit for processing'}
               </button>
             </div>
           </div>

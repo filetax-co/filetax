@@ -106,6 +106,76 @@ export default function FilingWizard() {
     }
   };
 
+  // ── multi-year job download ─────────────────────────────────────────────────
+  // When this filing belongs to a catch-up job, build the whole job: one
+  // reasonable-cause letter + one print-ready PDF per year + an optional
+  // single bundled PDF. `mode` selects which artifact to download.
+
+  const triggerDownload = (bytes: Uint8Array, filename: string) => {
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const handleGenerateJob = async (mode: 'bundle' | 'per-year') => {
+    if (!filing?.job_id) return;
+    setGenerating(true);
+    setGenErr(null);
+    try {
+      const { data: job } = await supabase
+        .from('filing_jobs').select('include_rcl, rcl_narrative').eq('id', filing.job_id).single();
+
+      const { data: yearFilings, error: yfErr } = await supabase
+        .from('filings').select('*').eq('job_id', filing.job_id);
+      if (yfErr || !yearFilings || yearFilings.length === 0) {
+        throw new Error(yfErr?.message ?? 'No filings found for this catch-up job.');
+      }
+
+      // Load every year's transactions in parallel.
+      const years = await Promise.all(
+        yearFilings.map(async (f) => {
+          const { data: txns } = await supabase
+            .from('reportable_transactions').select('*').eq('filing_id', f.id);
+          return {
+            taxYear: Number(f.tax_year),
+            filing: f as Filing,
+            transactions: (txns ?? []) as Transaction[],
+          };
+        }),
+      );
+
+      const { generateMultiYearPackage } = await import('../../lib/pdfGenerator');
+      const pkg = await generateMultiYearPackage(years, {
+        includeRCL: !!job?.include_rcl,
+        rclNarrative: job?.rcl_narrative ?? null,
+      });
+
+      const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
+
+      if (mode === 'bundle') {
+        triggerDownload(pkg.bundled, `FilingPackage_${slug}_${pkg.taxYears[0]}-${pkg.taxYears[pkg.taxYears.length - 1]}.pdf`);
+      } else {
+        // One file per year, plus the single RCL.
+        if (pkg.reasonableCauseLetter) {
+          triggerDownload(pkg.reasonableCauseLetter, `ReasonableCauseLetter_${slug}.pdf`);
+        }
+        for (const y of pkg.perYear) {
+          triggerDownload(y.pdf, `Form-5472-${slug}-${y.taxYear}.pdf`);
+        }
+      }
+    } catch (err) {
+      setGenErr(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   // ── render ────────────────────────────────────────────────────────────────
 
   // Determine which parts will be generated (mirrors pdfGenerator.ts logic)
@@ -294,7 +364,7 @@ export default function FilingWizard() {
                   Go back to the intake form to add at least one reportable transaction before generating.
                 </p>
                 <button
-                  onClick={() => id && navigate(`/intake/${id}`)}
+                  onClick={() => id && navigate(`/intake?filing_id=${id}`)}
                   style={{ ...secondaryBtnStyle, marginTop: '1rem', display: 'inline-block' }}
                 >
                   ← Back to Intake
@@ -318,26 +388,64 @@ export default function FilingWizard() {
               flexWrap: 'wrap',
             }}>
               <button
-                onClick={() => id && navigate(`/intake/${id}`)}
+                onClick={() => id && navigate(`/intake?filing_id=${id}`)}
                 style={secondaryBtnStyle}
                 type="button"
               >
                 ← Edit Filing
               </button>
 
-              <button
-                onClick={handleGenerate}
-                disabled={generating || transactions.length === 0}
-                style={{
-                  ...primaryBtnStyle,
-                  opacity: generating || transactions.length === 0 ? 0.55 : 1,
-                  cursor: generating || transactions.length === 0 ? 'not-allowed' : 'pointer',
-                }}
-                type="button"
-              >
-                {generating ? 'Generating…' : '⬇ Download Complete Filing'}
-              </button>
+              {!filing?.job_id && (
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating || transactions.length === 0}
+                  style={{
+                    ...primaryBtnStyle,
+                    opacity: generating || transactions.length === 0 ? 0.55 : 1,
+                    cursor: generating || transactions.length === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                  type="button"
+                >
+                  {generating ? 'Generating…' : '⬇ Download Complete Filing'}
+                </button>
+              )}
             </div>
+
+            {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
+            {filing?.job_id && (
+              <div style={{
+                marginTop: '1.5rem', padding: '1.25rem',
+                border: '1px solid var(--tf-border)', borderRadius: '0.625rem',
+                background: 'var(--tf-offset)',
+              }}>
+                <p style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem', color: 'var(--tf-text)' }}>
+                  This is a multi-year catch-up filing
+                </p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', marginBottom: '1rem', lineHeight: 1.55 }}>
+                  We prepare one reasonable-cause letter covering every year, plus a separate print-ready
+                  PDF per year (each starts with its own filing instructions). Download the years separately,
+                  or as one combined PDF.
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleGenerateJob('per-year')}
+                    disabled={generating}
+                    style={{ ...primaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
+                    type="button"
+                  >
+                    {generating ? 'Generating…' : '⬇ Download each year + RCL'}
+                  </button>
+                  <button
+                    onClick={() => handleGenerateJob('bundle')}
+                    disabled={generating}
+                    style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
+                    type="button"
+                  >
+                    ⬇ Download all-in-one PDF
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
