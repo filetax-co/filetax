@@ -168,6 +168,10 @@ export type Filing = {
   // ── Filing options ───────────────────────────────────────────────────────
   include_irs_fax: boolean;
   include_rcl: boolean;
+  /** True if the user told us Form 7004 (extension) was filed for this year. */
+  extension_filed?: boolean | null;
+  /** True to generate Form 7004 (extension) for this filing / as a standalone. */
+  include_7004?: boolean | null;
   notes?: string | null;
   parties_count: number;
   complex_sections: string[];

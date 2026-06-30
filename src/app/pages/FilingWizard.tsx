@@ -183,6 +183,25 @@ export default function FilingWizard() {
     ['distribution', 'dividend', 'capital_contribution', 'formation_costs'].includes(t.transaction_type)
   );
   // Part VI is always generated — hardcoded true in pdfGenerator.ts
+  // Form 7004 included when the filing opted into an extension.
+  const has7004 = filing?.extension_filed === true || filing?.include_7004 === true;
+
+  // Standalone Form 7004 download (independent extension service).
+  const handleDownload7004 = async () => {
+    if (!filing) return;
+    setGenerating(true);
+    setGenErr(null);
+    try {
+      const { generateForm7004 } = await import('../../lib/pdfGenerator');
+      const bytes = await generateForm7004(filing);
+      const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
+      triggerDownload(bytes, `Form-7004-${slug}-${filing.tax_year ?? 'extension'}.pdf`);
+    } catch (err) {
+      setGenErr(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <>
@@ -193,12 +212,12 @@ export default function FilingWizard() {
         .filing-wizard textarea {
           width: 100%;
           padding: 0.5rem 0.75rem;
-          border: 1px solid var(--tf-border, #d1d5db);
+          border: 1px solid var(--tf-border);
           border-radius: 0.375rem;
           font-size: 0.9375rem;
           font-family: inherit;
-          background: var(--tf-input-bg, var(--tf-surface, #fff));
-          color: var(--tf-text, #111);
+          background: var(--tf-input-bg, var(--tf-surface));
+          color: var(--tf-text);
           outline: none;
           box-sizing: border-box;
           transition: border-color 0.15s, box-shadow 0.15s;
@@ -206,11 +225,11 @@ export default function FilingWizard() {
         .filing-wizard input:focus,
         .filing-wizard select:focus,
         .filing-wizard textarea:focus {
-          border-color: var(--tf-primary, #2563eb);
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-primary, #2563eb) 18%, transparent);
+          border-color: var(--tf-accent);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-accent) 18%, transparent);
         }
         .filing-wizard input::placeholder {
-          color: var(--tf-text-muted, #9ca3af);
+          color: var(--tf-muted);
           opacity: 1;
         }
       `}</style>
@@ -228,7 +247,7 @@ export default function FilingWizard() {
             to="/dashboard"
             style={{
               fontSize: '0.875rem',
-              color: 'var(--tf-text-muted, #6b7280)',
+              color: 'var(--tf-muted)',
               textDecoration: 'none',
               display: 'inline-flex',
               alignItems: 'center',
@@ -244,14 +263,14 @@ export default function FilingWizard() {
           Generate Filing Package
         </h2>
         {filing && (
-          <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '1.75rem' }}>
+          <p style={{ fontSize: '0.875rem', color: 'var(--tf-muted)', marginBottom: '1.75rem' }}>
             {filing.llc_name ?? '—'} · Tax year {filing.tax_year ?? '—'}
           </p>
         )}
 
         {/* ── Loading ───────────────────────────────────────────────────── */}
         {loading && (
-          <p style={{ color: 'var(--tf-text-muted, #6b7280)', fontSize: '0.9rem' }}>Loading filing…</p>
+          <p style={{ color: 'var(--tf-muted)', fontSize: '0.9rem' }}>Loading filing…</p>
         )}
 
         {/* ── Load error ────────────────────────────────────────────────── */}
@@ -269,8 +288,8 @@ export default function FilingWizard() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
                 gap: '0.75rem',
-                background: 'var(--tf-surface, #fff)',
-                border: '1px solid var(--tf-border, #e5e7eb)',
+                background: 'var(--tf-surface)',
+                border: '1px solid var(--tf-border)',
                 borderRadius: '0.625rem',
                 padding: '1.125rem 1.25rem',
               }}>
@@ -288,8 +307,8 @@ export default function FilingWizard() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>What's Included</h3>
               <div style={{
-                background: 'var(--tf-surface, #fff)',
-                border: '1px solid var(--tf-border, #e5e7eb)',
+                background: 'var(--tf-surface)',
+                border: '1px solid var(--tf-border)',
                 borderRadius: '0.625rem',
                 padding: '1.125rem 1.25rem',
               }}>
@@ -300,11 +319,14 @@ export default function FilingWizard() {
                     <IncludedItem icon="📎" label="Part V Statement" desc="Monetary transactions — distributions, dividends, capital contributions, formation costs" always={false} />
                   )}
                   <IncludedItem icon="📎" label="Part VI Statement" desc="Nonmonetary / less-than-FMV transactions — always included" always />
+                  {has7004 && (
+                    <IncludedItem icon="🗓️" label="Form 7004" desc="6-month extension to file — included with your package" always />
+                  )}
                 </ul>
                 <p style={{
                   marginTop: '1rem',
                   fontSize: '0.8125rem',
-                  color: 'var(--tf-text-muted, #6b7280)',
+                  color: 'var(--tf-muted)',
                   lineHeight: 1.55,
                 }}>
                   All documents are combined into a single PDF ready to submit with your tax return.
@@ -321,8 +343,8 @@ export default function FilingWizard() {
                     <div key={tx.id} style={{
                       display: 'flex', alignItems: 'center', gap: '0.75rem',
                       padding: '0.55rem 0.875rem',
-                      background: 'var(--tf-surface, #fff)',
-                      border: '1px solid var(--tf-border, #e5e7eb)',
+                      background: 'var(--tf-surface)',
+                      border: '1px solid var(--tf-border)',
                       borderRadius: '0.5rem',
                       fontSize: '0.875rem',
                     }}>
@@ -330,15 +352,15 @@ export default function FilingWizard() {
                         <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
                           {tx.transaction_type.replace(/_/g, ' ')}
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--tf-text-muted, #6b7280)', textTransform: 'capitalize' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', textTransform: 'capitalize' }}>
                           {tx.direction}
                         </span>
                         {tx.description && (
-                          <span style={{ color: 'var(--tf-text-muted, #6b7280)' }}>— {tx.description}</span>
+                          <span style={{ color: 'var(--tf-muted)' }}>— {tx.description}</span>
                         )}
                       </div>
                       {tx.amount_usd != null && (
-                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--tf-primary, #2563eb)' }}>
+                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--tf-accent)' }}>
                           ${tx.amount_usd.toLocaleString()}
                         </span>
                       )}
@@ -353,8 +375,8 @@ export default function FilingWizard() {
               <div style={{
                 textAlign: 'center',
                 padding: '2rem 1rem',
-                color: 'var(--tf-text-muted, #6b7280)',
-                border: '2px dashed var(--tf-border, #e5e7eb)',
+                color: 'var(--tf-muted)',
+                border: '2px dashed var(--tf-border)',
                 borderRadius: '0.75rem',
                 marginBottom: '1.5rem',
                 fontSize: '0.9rem',
@@ -384,7 +406,7 @@ export default function FilingWizard() {
               alignItems: 'center',
               gap: '0.75rem',
               paddingTop: '1.5rem',
-              borderTop: '1px solid var(--tf-border, #e5e7eb)',
+              borderTop: '1px solid var(--tf-border)',
               flexWrap: 'wrap',
             }}>
               <button
@@ -395,20 +417,32 @@ export default function FilingWizard() {
                 ← Edit Filing
               </button>
 
-              {!filing?.job_id && (
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating || transactions.length === 0}
-                  style={{
-                    ...primaryBtnStyle,
-                    opacity: generating || transactions.length === 0 ? 0.55 : 1,
-                    cursor: generating || transactions.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                  type="button"
-                >
-                  {generating ? 'Generating…' : '⬇ Download Complete Filing'}
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {has7004 && (
+                  <button
+                    onClick={handleDownload7004}
+                    disabled={generating}
+                    style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
+                    type="button"
+                  >
+                    ⬇ Form 7004 only
+                  </button>
+                )}
+                {!filing?.job_id && (
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating || transactions.length === 0}
+                    style={{
+                      ...primaryBtnStyle,
+                      opacity: generating || transactions.length === 0 ? 0.55 : 1,
+                      cursor: generating || transactions.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    type="button"
+                  >
+                    {generating ? 'Generating…' : '⬇ Download Complete Filing'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
@@ -460,7 +494,7 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
     <div>
       <div style={{
         fontSize: '0.75rem',
-        color: 'var(--tf-text-muted, #6b7280)',
+        color: 'var(--tf-muted)',
         fontWeight: 600,
         textTransform: 'uppercase',
         letterSpacing: '0.04em',
@@ -470,7 +504,7 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
       <div style={{
         fontSize: '0.95rem',
         fontWeight: 500,
-        color: value ? 'var(--tf-text, #111)' : 'var(--tf-text-muted, #9ca3af)',
+        color: value ? 'var(--tf-text)' : 'var(--tf-muted)',
       }}>
         {value || '—'}
       </div>
@@ -490,7 +524,7 @@ function IncludedItem({
     <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
       <span style={{ fontSize: '1rem', lineHeight: 1.4, flexShrink: 0 }}>{icon}</span>
       <div>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text, #111)' }}>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
           {label}
         </span>
         {!always && (
@@ -500,8 +534,8 @@ function IncludedItem({
             fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            color: 'var(--tf-primary, #2563eb)',
-            background: 'color-mix(in srgb, var(--tf-primary, #2563eb) 12%, transparent)',
+            color: 'var(--tf-accent)',
+            background: 'color-mix(in srgb, var(--tf-accent) 12%, transparent)',
             padding: '0.1rem 0.4rem',
             borderRadius: '0.25rem',
           }}>
@@ -511,7 +545,7 @@ function IncludedItem({
         <p style={{
           margin: '0.15rem 0 0',
           fontSize: '0.8125rem',
-          color: 'var(--tf-text-muted, #6b7280)',
+          color: 'var(--tf-muted)',
           lineHeight: 1.5,
         }}>
           {desc}
@@ -530,17 +564,17 @@ const sectionStyle: React.CSSProperties = {
 const sectionLabelStyle: React.CSSProperties = {
   fontSize: '0.8rem',
   fontWeight: 700,
-  color: 'var(--tf-text-muted, #6b7280)',
+  color: 'var(--tf-muted)',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   marginBottom: '0.75rem',
 };
 
 const errorBannerStyle: React.CSSProperties = {
-  background: '#fef2f2',
-  color: '#991b1b',
-  border: '1px solid #fecaca',
-  borderRadius: '0.375rem',
+  background: 'var(--tf-error-bg)',
+  color: 'var(--tf-error-text)',
+  border: '1px solid var(--tf-error-border)',
+  borderRadius: '0.5rem',
   padding: '0.75rem 1rem',
   fontSize: '0.875rem',
   marginBottom: '1.25rem',
@@ -548,8 +582,8 @@ const errorBannerStyle: React.CSSProperties = {
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: '0.6rem 1.5rem',
-  background: 'var(--tf-primary, #2563eb)',
-  color: '#fff',
+  background: 'var(--tf-accent)',
+  color: 'var(--tf-on-accent)',
   border: 'none',
   borderRadius: '0.5rem',
   fontWeight: 700,
@@ -560,8 +594,8 @@ const primaryBtnStyle: React.CSSProperties = {
 const secondaryBtnStyle: React.CSSProperties = {
   padding: '0.6rem 1.25rem',
   background: 'transparent',
-  color: 'var(--tf-text, #111)',
-  border: '1px solid var(--tf-border, #d1d5db)',
+  color: 'var(--tf-text)',
+  border: '1px solid var(--tf-border)',
   borderRadius: '0.5rem',
   fontWeight: 600,
   fontSize: '0.95rem',

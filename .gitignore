@@ -19,3 +19,7 @@ build/
 
 # TypeScript incremental build cache
 tsconfig.tsbuildinfo
+
+# transient esbuild stubs from verify scripts
+scripts/_sb*.ts
+scripts/_supabaseStub.ts

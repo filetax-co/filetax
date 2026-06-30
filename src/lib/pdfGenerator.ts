@@ -127,6 +127,12 @@ export const get1120PdfUrl = (taxYear: number): string => {
   return `${BASE}pdf/Form-1120-2019.pdf`;
 };
 
+export const get7004PdfUrl = (_taxYear: number): string => {
+  // Only the 2025 revision is bundled today; reuse it for now (the form shape
+  // is stable year to year). Drop year-specific PDFs into public/pdf/ later.
+  return `${BASE}pdf/Form-7004-2025.pdf`;
+};
+
 // ─── address helpers ──────────────────────────────────────────────────────────────────
 
 /** Build a combined "City, ST  ZIP" string from a US address. */
@@ -1144,6 +1150,47 @@ const fill1120 = async (
   return doc;
 };
 
+// ─── Form 7004 filler (automatic 6-month extension to file) ──────────────────────────────────
+//
+// 7004 maps purely from entity + period data we already hold. Field names come
+// from the custom AcroForm in public/pdf/Form-7004-2025.pdf (13 fields).
+// For a calendar-year filer, LLC_Calendar_Year carries the 4-digit year; for an
+// initial short year or a fiscal year, the beginning/ending fields carry the
+// actual period instead.
+
+const fill7004 = async (
+  filing: NormalizedFiling,
+  period: ResolvedPeriod,
+): Promise<PDFDocument> => {
+  const url  = get7004PdfUrl(period.year);
+  const doc  = await loadPdf(url);
+  const addr = filing.llc_us_address;
+
+  setText(doc, 'LLC_Name',           filing.llc_name ?? '');
+  setText(doc, 'LLC_EIN',            filing.ein ?? '');
+  setText(doc, 'LLC_Street_Address', buildStreet(addr));
+  setText(doc, 'LLC_City',           addr?.city ?? '');
+  setText(doc, 'LLC_State',          addr?.state ?? filing.state_of_formation ?? '');
+  setText(doc, 'LLC_Country',        addr?.country || 'United States');
+  setText(doc, 'LLC_ZIP',            addr?.zip ?? '');
+
+  // Calendar-year filers: just the year. Short/fiscal years: fill the period.
+  const isCalendarYear =
+    !filing.is_fiscal_year && period.beginISO === `${period.year}-01-01`;
+  if (isCalendarYear) {
+    setText(doc, 'LLC_Calendar_Year', String(period.year));
+  } else {
+    setText(doc, 'LLC_Beginning_Date', period.beginText);
+    setText(doc, 'LLC_Beginning_Year', period.beginISO.split('-')[0] ?? String(period.year));
+    setText(doc, 'LLC_Ending_Year',    period.endISO.split('-')[0] ?? String(period.year));
+  }
+
+  checkBox(doc, 'Initial_Return', period.isInitial);
+  checkBox(doc, 'Final_Return',   filing.final_return ?? false);
+
+  return doc;
+};
+
 // ─── merge helper ─────────────────────────────────────────────────────────────────────────────────
 
 const mergeInto = async (dest: PDFDocument, src: PDFDocument): Promise<void> => {
@@ -1175,9 +1222,34 @@ export interface FilingPackage {
   statement_partV?: Uint8Array;
   /** The OWNER's standalone Part VI statement (always present). */
   statement_partVI: Uint8Array;
+  /**
+   * Form 7004 (6-month extension), present when the filing opted into an
+   * extension (filed elsewhere → for their records, or filing one through us).
+   * Also produced standalone via generateForm7004().
+   */
+  form7004?: Uint8Array;
   /** Number of Form 5472s generated (Line 1g). */
   formCount: number;
 }
+
+/** Whether to include Form 7004 for this filing (extension filed or requested). */
+const wants7004 = (raw: Filing): boolean =>
+  raw.extension_filed === true || raw.include_7004 === true;
+
+/**
+ * Generate a standalone, filled Form 7004 — used both inside the package and
+ * as an independent "file an extension only" download.
+ */
+export const generateForm7004 = async (
+  rawFiling: Filing,
+  taxYear?: number,
+): Promise<Uint8Array> => {
+  const year = taxYear ?? (rawFiling.tax_year != null ? Number(rawFiling.tax_year) : new Date().getFullYear() - 1);
+  const filing = normalizeFiling(rawFiling);
+  const period = resolvePeriod(filing, year);
+  const doc = await fill7004(filing, period);
+  return doc.save();
+};
 
 /** Gross of all reportable transactions for a single party (drives 1f / 1h). */
 const grossForTransactions = (txns: Transaction[]): number => {
@@ -1298,6 +1370,17 @@ export const generateFilingPackage = async (
 
   const merged = await assembleYear(yd, [instructions]);
 
+  // Form 7004 — included when the filing opted into an extension. Appended to
+  // the end of the combined package AND returned standalone.
+  const include7004 = wants7004(rawFiling);
+  let form7004: Uint8Array | undefined;
+  if (include7004) {
+    const doc7004 = await fill7004(filing, period);
+    form7004 = await doc7004.save();
+    // Append a fresh copy to the combined PDF (mergeInto flattens its source).
+    await mergeInto(merged, await PDFDocument.load(form7004));
+  }
+
   const ownerDocs = yd.partyDocs.find((pd) => pd.party.is_owner) ?? yd.partyDocs[0];
   const [form1120, combined, form5472, statement_partVI, statement_partV] = await Promise.all([
     yd.doc1120.save(),
@@ -1307,7 +1390,7 @@ export const generateFilingPackage = async (
     ownerDocs.docPartV  ? ownerDocs.docPartV.save()  : Promise.resolve<Uint8Array | undefined>(undefined),
   ]);
 
-  return { form5472, form1120, combined, statement_partVI, statement_partV, formCount: yd.formCount };
+  return { form5472, form1120, combined, statement_partVI, statement_partV, form7004, formCount: yd.formCount };
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */
