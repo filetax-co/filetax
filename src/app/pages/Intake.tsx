@@ -454,6 +454,9 @@ export function Intake() {
   const [ownerAddress, setOwnerAddress] = useState<Address>({});
   const [ownerBizActivity, setOwnerBizActivity] = useState('');
   const [ownerBizCode, setOwnerBizCode] = useState('');
+  // Signing title (goes on the 1120 signature block + RCL). Defaults to
+  // "Managing Member", the usual role for a single-member LLC owner.
+  const [signerTitle, setSignerTitle] = useState('Managing Member');
 
   // Step 3
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
@@ -584,6 +587,7 @@ export function Intake() {
       setOwnerAddress((f.owner_address as Address) ?? {});
       setOwnerBizActivity(f.owner_business_activity ?? '');
       setOwnerBizCode((f as any).owner_business_code ?? '');
+      setSignerTitle((f as any).signer_title ?? 'Managing Member');
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
@@ -682,6 +686,7 @@ export function Intake() {
       setOwnerRefNumber((c) => fill(c, profile.owner_reference_id ?? profile.owner_ref_number));
       setOwnerBizActivity((c) => fill(c, profile.owner_business_activity));
       setOwnerBizCode((c) => fill(c, profile.owner_business_code ?? profile.owner_naics_code));
+      setSignerTitle((c) => (c && c !== 'Managing Member' ? c : (profile.signer_title || 'Managing Member')));
       setOwnerAddress((c) => (c && c.line1 ? c : ((profile.owner_address as Address) ?? {})));
       if (profile.related_parties && Array.isArray(profile.related_parties)) {
         setRelatedParties((c) => (c.length ? c : (profile.related_parties as RelatedParty[])));
@@ -755,6 +760,7 @@ export function Intake() {
       owner_us_tin: ownerSSN.trim() || null,
       owner_reference_id: ownerRefNumber.trim() || null,
       owner_naics_code: ownerBizCode.trim() || null,
+      signer_title: signerTitle.trim() || 'Managing Member',
     };
     if (step === 3) return { related_parties: relatedParties };
     if (step === 4) return {
@@ -1059,6 +1065,7 @@ export function Intake() {
           owner_business_code: ownerBizCode.trim() || null,
           owner_naics_code: ownerBizCode.trim() || null,
           owner_address: ownerAddress,
+          signer_title: signerTitle.trim() || 'Managing Member',
           related_parties: relatedParties,
         });
       } catch { /* profile save is non-critical */ }
@@ -1688,6 +1695,13 @@ export function Intake() {
                     }}
                     placeholder="e.g. Rahul Sharma"
                     disabled={isPaidLocked}
+                  />
+                </Field>
+                <Field label="Your title / role" tooltip="How you'll sign the return, e.g. Managing Member, Member, President. This prints on the Form 1120 signature block and any reasonable-cause letter. Defaults to Managing Member.">
+                  <input
+                    value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="Managing Member"
                   />
                 </Field>
                 <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">

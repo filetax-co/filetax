@@ -1106,17 +1106,23 @@ const fill5472 = async (
   checkBox(doc, F.FOREIGN_OWNS_50PCT,        true);
   checkBox(doc, F.CORP_IS_FOREIGN_OWNED_DE,  true);
 
-  // ── Part II — 25 % Foreign Shareholder (this party) ──────────────────────────────
-  // The 5472 combines name + mailing address into a single field.
-  setText(doc, F.SHAREHOLDER_NAME,                buildNameAndAddress(party.full_name, party.address));
-  setText(doc, F.SHAREHOLDER_US_TIN,              party.us_tin);
-  setText(doc, F.SHAREHOLDER_REFERENCE_ID,        party.reference_id);
-  setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         party.foreign_tax_id);
-  setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS,    party.country_business);
-  setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, party.country_citizenship);
-  setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,    party.country_residence);
+  // ── Part II — 25 % Foreign Shareholder ───────────────────────────────────────────
+  // Part II is ALWAYS the 25% foreign shareholder (the owner), on every Form
+  // 5472 for this entity — including the ones filed for additional related
+  // parties. Only Part III changes per form. The 5472 combines name + mailing
+  // address into a single field.
+  const owner = filing.owner;
+  setText(doc, F.SHAREHOLDER_NAME,                buildNameAndAddress(owner.full_name, owner.address));
+  setText(doc, F.SHAREHOLDER_US_TIN,              owner.us_tin);
+  setText(doc, F.SHAREHOLDER_REFERENCE_ID,        owner.reference_id);
+  setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         owner.foreign_tax_id);
+  setText(doc, F.SHAREHOLDER_COUNTRY_BUSINESS,    owner.country_business);
+  setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, owner.country_citizenship);
+  setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,    owner.country_residence);
 
-  // ── Part III — Related Party (this party) ────────────────────────────────────────
+  // ── Part III — Related Party (THIS form's party) ─────────────────────────────────
+  // For the owner's own 5472 the related party IS the owner; for an additional
+  // related party's 5472 this is that related party.
   checkBox(doc, F.RP_IS_FOREIGN_PERSON, true);
   checkBox(doc, F.RP_IS_US_PERSON,      false);
 
