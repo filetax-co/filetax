@@ -47,19 +47,18 @@ const cards: PricingCard[] = [
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
-    title: "Add-On: Additional Form 5472",
-    price: "+$75",
-    priceNote: "per form",
-    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is needed for each.",
-    note: "Volume discount: $50/form from the 4th form filed.",
+    title: "Add-On: Additional Related Party (Form 5472)",
+    price: "+$50",
+    priceNote: "per related party",
+    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
     title: "Add-On: CPA-Prepared Reasonable Cause Letter",
     price: "+$200",
-    priceNote: "per year",
-    description: "Added to any past-year filing. Total with past-year filing: $350 per year.",
+    priceNote: "one letter",
+    description: "For late filings. One letter covers every year you're catching up on. Total with a single past-year filing: $350.",
     badge: "Recommended for Late Filers",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
@@ -83,8 +82,9 @@ const cards: PricingCard[] = [
   },
   {
     title: "Multi-Year Past Filing Package",
-    price: "Custom",
-    description: "3 or more unfiled years. Contact via portal. Reasonable cause letter available per year.",
+    price: "$150",
+    priceNote: "per year + one $200 letter",
+    description: "Catch up on several unfiled years at once. $150 per year, plus a single $200 reasonable cause letter covering all of them.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },

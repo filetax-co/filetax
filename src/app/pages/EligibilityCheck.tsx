@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PRICE_PER_YEAR, PRICE_RCL, additionalPartiesCost, additionalPartiesBreakdown } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
 // Service go-live flag.
@@ -90,29 +91,14 @@ const INITIAL_SUB: SubAnswers = {};
 
 // ── Pricing helpers ───────────────────────────────────────────────
 
-/**
- * Returns the cost of additional Form 5472s beyond the first.
- * Forms 2–3: $75 each.  Form 4+: $50 each (volume discount).
- */
+/** Flat $50 per additional related party (each extra Form 5472). */
 function calcAdditionalFormsCost(totalForms: number): number {
-  if (totalForms <= 1) return 0;
-  let cost = 0;
-  for (let i = 2; i <= totalForms; i++) {
-    cost += i <= 3 ? 75 : 50;
-  }
-  return cost;
+  return additionalPartiesCost(totalForms);
 }
 
 /** Human-readable breakdown string for the party-count selector */
 function additionalFormsBreakdown(totalForms: number): string {
-  const additional = totalForms - 1;
-  const cost = calcAdditionalFormsCost(totalForms);
-  if (totalForms <= 3) {
-    return `${additional} additional Form 5472${additional > 1 ? "s" : ""} at $75 each = +$${cost}.`;
-  }
-  const atSeventy = 2; // forms 2–3
-  const atFifty   = totalForms - 3; // forms 4+
-  return `${additional} additional forms: ${atSeventy} x $75 + ${atFifty} x $50 = +$${cost}. Volume discount applied.`;
+  return additionalPartiesBreakdown(totalForms);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -337,14 +323,14 @@ export function EligibilityCheck() {
   // ── Pass screen ──────────────────────────────────────────────
 
   if (outcome === "pass") {
-    const basePerYear = 150;
-    const rclPerYear = 200;
+    const basePerYear = PRICE_PER_YEAR;
     const numYears = yearCount ?? 1;
     const totalForms = answers.relatedPartyCount ?? 1;
     const additionalFormsCostPerYear = calcAdditionalFormsCost(totalForms);
     const additionalFormsTotal = numYears * additionalFormsCostPerYear;
     const baseTotal = numYears * basePerYear;
-    const rclTotal = answers.includeRCL ? numYears * rclPerYear : 0;
+    // One reasonable-cause letter covers every year — a single flat $200.
+    const rclTotal = answers.includeRCL ? PRICE_RCL : 0;
     const grandTotal = answers.filingYears !== "3-plus"
       ? baseTotal + additionalFormsTotal + rclTotal
       : null;
@@ -378,23 +364,16 @@ export function EligibilityCheck() {
 
                 {answers.includeRCL && hasPriorYears && (
                   <PriceRow
-                    label={`CPA-Prepared Reasonable Cause Letter${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
-                    value={yearCount && yearCount > 1 ? `+$${rclTotal}` : "+$200"}
+                    label="CPA-Prepared Reasonable Cause Letter (one letter, covers all years)"
+                    value="+$200"
                   />
                 )}
 
                 {additionalParties > 0 && (
-                  <>
-                    <PriceRow
-                      label={`Additional Form 5472${additionalParties > 1 ? "s" : ""} (${additionalParties} more ${additionalParties === 1 ? "party" : "parties"}${numYears > 1 ? `, ${numYears} years` : ""})`}
-                      value={numYears > 1 ? `+$${additionalFormsTotal}` : `+$${additionalFormsCostPerYear}`}
-                    />
-                    {totalForms > 3 && (
-                      <p style={{ fontSize: "0.75rem", color: "var(--tf-muted)", fontWeight: 400, paddingLeft: "0.25rem", marginTop: "-0.25rem" }}>
-                        Volume discount applied (forms 4+: $50/form)
-                      </p>
-                    )}
-                  </>
+                  <PriceRow
+                    label={`Additional related part${additionalParties > 1 ? "ies" : "y"} (${additionalParties} more${numYears > 1 ? `, ${numYears} years` : ""})`}
+                    value={numYears > 1 ? `+$${additionalFormsTotal}` : `+$${additionalFormsCostPerYear}`}
+                  />
                 )}
 
                 {grandTotal !== null && (
@@ -678,10 +657,10 @@ export function EligibilityCheck() {
                       Multi-Year Package
                     </span>
                     <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--tf-text)", marginBottom: "0.625rem" }}>
-                      CPA-Prepared Reasonable Cause Letter included per year
+                      One CPA-Prepared Reasonable Cause Letter covers every year
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "0.875rem" }}>
-                      Filing three or more years at once is handled through our multi-year package. A Reasonable Cause Letter is prepared for each year. Pricing is confirmed at checkout based on the number of years filed.
+                      Filing three or more years at once is handled through our multi-year package. A single Reasonable Cause Letter covers all the years you file. Pricing is confirmed at checkout: $150 per year plus one $200 letter.
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-muted)", fontWeight: 400, lineHeight: 1.6 }}>
                       Each year filed: $350 (Form 5472 + Reasonable Cause Letter). Three or more years may qualify for package pricing.
@@ -723,12 +702,12 @@ export function EligibilityCheck() {
                   />
                   <OptionButton
                     label="2 prior years"
-                    sublabel="Reasonable Cause Letter available per year."
+                    sublabel="One Reasonable Cause Letter covers both years."
                     onClick={() => { setAnswers((a) => ({ ...a, filingYears: "2-prior" })); setShowPriorYearNote(true); }}
                   />
                   <OptionButton
                     label="3 or more prior years"
-                    sublabel="Multi-year package with Reasonable Cause Letter per year."
+                    sublabel="Multi-year package; one Reasonable Cause Letter covers all years."
                     onClick={() => setShowMultiYearNote(true)}
                   />
                 </div>
@@ -912,11 +891,6 @@ export function EligibilityCheck() {
                             ? "For 5 or more related parties, a Form 5472 is prepared for each one. Our platform handles this, though a careful review of your output before filing is recommended."
                             : `Your filing will include ${selectedPartyCount} Form 5472s, one per related party. ${additionalFormsBreakdown(selectedPartyCount)}`}
                         </p>
-                        {selectedPartyCount !== null && selectedPartyCount > 3 && selectedPartyCount < 5 && (
-                          <p style={{ fontSize: "0.75rem", color: "#0284C7", fontWeight: 600, marginTop: "0.375rem" }}>
-                            Volume discount applied. Forms 4 and beyond: $50/form
-                          </p>
-                        )}
                       </div>
                       <button
                         onClick={() => { setAnswers((a) => ({ ...a, relatedPartyCount: selectedPartyCount })); pass(); }}

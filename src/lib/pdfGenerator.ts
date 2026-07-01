@@ -148,6 +148,26 @@ const buildCityStateZip = (a: Address | null, fallbackState?: string | null): st
 /** Return a single street line from a US address. */
 const buildStreet = (a: Address | null): string => a?.street ?? '';
 
+/** Build a single-line address string (street, city, state, zip, country). */
+const buildFullAddress = (a: Address | null): string => {
+  if (!a) return '';
+  const line1 = a.street ?? '';
+  const cityStateZip = [a.city, a.state].filter(Boolean).join(', ')
+    + (a.zip ? `  ${a.zip}` : '');
+  const country = a.country ?? '';
+  return [line1, cityStateZip, country].map((s) => s.trim()).filter(Boolean).join(', ');
+};
+
+/**
+ * Form 5472 combines the party name and address into a single field
+ * (ShareholderNameAddress / RPNameAddress). Build "Name — Street, City, ST ZIP,
+ * Country", falling back to name-only when no address is on file.
+ */
+const buildNameAndAddress = (name: string, a: Address | null): string => {
+  const addr = buildFullAddress(a);
+  return addr ? `${name}\n${addr}` : name;
+};
+
 // ─── period & initial-return derivation ─────────────────────────────────────────────────
 //
 // For an initial (first-ever) return whose formation date falls mid-year, the
@@ -236,6 +256,8 @@ export interface AggregatedTransactions {
   // Part V — Distributions / contributions / nonmonetary owner transactions
   distributions_paid: number;
   contributions_received: number;
+  // Part VI — monetary consideration recorded on nonmonetary / below-FMV items
+  part_vi_amount: number;
   // flags
   hasPartIV: boolean;
   /**
@@ -278,6 +300,7 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
     borrowed_begin: 0, borrowed_end: 0,
     loaned_begin: 0, loaned_end: 0,
     distributions_paid: 0, contributions_received: 0,
+    part_vi_amount: 0,
     hasPartIV: false,
     // Part V: only monetary owner transactions (distributions, contributions, dividends)
     hasPartV: false,
@@ -348,9 +371,9 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       // These are NOT reported on Part V (no monetary amount to disclose there).
       // They are always disclosed in the Part VI statement instead.
       case 'property_transfer':
-        t.hasPropertyTransfer = true; break;
+        t.hasPropertyTransfer = true; t.part_vi_amount += amt; break;
       case 'nonmonetary_other':
-        t.hasNonmonetaryOther = true; break;
+        t.hasNonmonetaryOther = true; t.part_vi_amount += amt; break;
       // formation_costs: owner paid something on behalf of LLC — Part V disclosure
       case 'formation_costs':
         t.hasPartV = true; break;
@@ -388,6 +411,19 @@ const totalPaid = (t: AggregatedTransactions): number =>
   t.commissions_paid + t.interest_paid + t.insurance_paid +
   t.loan_guarantee_paid + t.other_paid;
 
+/**
+ * Gross payments for Form 5472 line 1f (this form) / line 1h (all forms).
+ *
+ * Line 1f/1h are the aggregate of the monetary transactions reported for the
+ * related party. Per requirement, this includes not only the Part IV flows but
+ * also the monetary Part V transactions (owner distributions, capital
+ * contributions, dividends) and any monetary Part VI amounts (consideration on
+ * property transfers / other nonmonetary items where an amount was recorded).
+ * Loan balances (17a/17b, 31a/31b) remain balances, not flows, and are excluded.
+ */
+const grossPaymentsForLines1f1h = (t: AggregatedTransactions): number =>
+  totalReceived(t) + totalPaid(t) + t.distributions_paid + t.contributions_received + t.part_vi_amount;
+
 // ─── shared statement page utilities ─────────────────────────────────────────────────────────
 
 const PAGE_W  = 612; // US Letter
@@ -395,6 +431,14 @@ const PAGE_H  = 792;
 const MARGIN  = 56;
 const COL_W   = PAGE_W - MARGIN * 2;
 const MIN_Y   = MARGIN + 60;
+
+// Single, consistent type scale for every generated statement / letter /
+// instructions page. Body copy is a constant 9pt across all forms; only the
+// page title and the footer disclaimer differ, kept close so the pages read
+// uniformly.
+const FS_BODY    = 9;
+const FS_HEADING = 12;   // page title
+const FS_FOOTER  = 8;    // small footer disclaimer
 
 type FontPair = { bold: Awaited<ReturnType<PDFDocument['embedFont']>>; reg: Awaited<ReturnType<PDFDocument['embedFont']>> };
 
@@ -415,7 +459,7 @@ const drawWrapped = (
   },
   fonts: FontPair,
 ): number => {
-  const size   = opts.size     ?? 10;
+  const size   = opts.size     ?? FS_BODY;
   const font   = opts.font     ?? fonts.reg;
   const color  = opts.color    ?? rgb(0, 0, 0);
   const maxW   = opts.maxWidth ?? COL_W;
@@ -470,14 +514,14 @@ const drawStatementHeader = (
   fonts: FontPair,
 ): void => {
   cursor.y = drawWrapped(page, title, MARGIN, cursor.y,
-    { size: 13, font: fonts.bold }, fonts);
+    { size: FS_HEADING, font: fonts.bold }, fonts);
   cursor.y -= 4;
   cursor.y = drawWrapped(page,
     `Taxpayer: ${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
-    MARGIN, cursor.y, { size: 10 }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y = drawWrapped(page,
     `Tax Year: ${periodBegin} – ${periodEnd}  (Tax Year ${taxYear})`,
-    MARGIN, cursor.y, { size: 10 }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 6;
   drawRule(page, cursor);
 };
@@ -528,32 +572,33 @@ export const buildPartVStatement = async (
     filing, periodBegin, periodEnd, period.year, fonts,
   );
 
-  // Intro paragraph
+  // Intro paragraph — cite the governing law, reference Part V and the txns.
   const intro =
-    'Pursuant to the Instructions for Form 5472 (Part V, "TransactionsWithOwner" checkbox), '
-    + 'the reporting corporation listed above had the following transactions with its '
-    + 'foreign owner or related party during the tax year. These transactions include '
-    + 'owner withdrawals (distributions), capital contributions, dividends, and payments '
-    + 'made by the owner on behalf of the LLC (such as formation costs) that are required '
-    + 'to be disclosed under this Part.';
-  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: 10 }, fonts);
+    'This statement is furnished under Internal Revenue Code section 6038A and '
+    + 'Treasury Regulation section 1.6038A-2, and supports Part V of Form 5472. '
+    + 'During the tax year identified above, the reporting corporation engaged in the '
+    + 'following reportable transactions with its 25% foreign owner (a related party '
+    + 'within the meaning of section 6038A(c)) — including owner distributions and '
+    + 'withdrawals, capital contributions, dividends, and amounts paid by the owner on '
+    + 'behalf of the reporting corporation. Each such transaction is described below.';
+  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 14;
 
   // ── Aggregated monetary totals block ──────────────────────────────────────────
   const txn = aggregateTransactions(txns);
   if (txn.distributions_paid > 0 || txn.contributions_received > 0) {
     cursor.y = drawWrapped(page, 'Summary of Monetary Part V Transactions:', MARGIN, cursor.y,
-      { size: 10, font: bold }, fonts);
+      { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 2;
     if (txn.distributions_paid > 0) {
       cursor.y = drawWrapped(page,
         `Total Distributions / Withdrawals paid to Owner:  $${txn.distributions_paid.toLocaleString('en-US')}`,
-        MARGIN + 12, cursor.y, { size: 10 }, fonts);
+        MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     }
     if (txn.contributions_received > 0) {
       cursor.y = drawWrapped(page,
         `Total Capital Contributions received from Owner:  $${txn.contributions_received.toLocaleString('en-US')}`,
-        MARGIN + 12, cursor.y, { size: 10 }, fonts);
+        MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     }
     cursor.y -= 12;
   }
@@ -561,7 +606,7 @@ export const buildPartVStatement = async (
   // ── Individual transaction entries ────────────────────────────────────────────────
   if (partVTxns.length > 0) {
     cursor.y = drawWrapped(page, 'Transaction Detail:', MARGIN, cursor.y,
-      { size: 10, font: bold }, fonts);
+      { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 4;
   }
 
@@ -578,25 +623,27 @@ export const buildPartVStatement = async (
     const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
       ? `$${tx.amount_usd.toLocaleString('en-US')}`
       : 'N/A (nonmonetary, FMV not determinable)';
-    const desc      = tx.description?.trim() || '(No description provided)';
+    const desc      = tx.description?.trim();
 
     cursor.y = drawWrapped(page, `Transaction ${idx + 1}: ${label}`, MARGIN, cursor.y,
-      { size: 10, font: bold }, fonts);
+      { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 2;
 
+    // Omit the Description line entirely when the filer gave none — the label
+    // already identifies the transaction.
     const fields: [string, string][] = [
       ['Date:',        txDate],
       ['Direction:',   dirText],
       ['Amount:',      amtText],
-      ['Description:', desc],
+      ...(desc ? [['Description:', desc] as [string, string]] : []),
     ];
 
     for (const [fieldLabel, fieldValue] of fields) {
       if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
       const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-      page.drawText(fieldLabel, { x: MARGIN + 12, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+      page.drawText(fieldLabel, { x: MARGIN + 12, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
       cursor.y = drawWrapped(page, fieldValue, MARGIN + 12 + labelW, cursor.y,
-        { size: 10, maxWidth: COL_W - 12 - labelW }, fonts);
+        { size: FS_BODY, maxWidth: COL_W - 12 - labelW }, fonts);
     }
 
     cursor.y -= 12;
@@ -617,7 +664,7 @@ export const buildPartVStatement = async (
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
   drawWrapped(page,
     'This statement is attached to and made a part of Form 5472 (Part V) filed by the reporting corporation named above.',
-    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) }, fonts);
+    MARGIN, cursor.y, { size: FS_FOOTER, color: rgb(0.4, 0.4, 0.4) }, fonts);
 
   return doc;
 };
@@ -677,7 +724,7 @@ export const buildPartVIStatement = async (
     itemNo += 1;
     cursor.y = drawWrapped(page,
       `Item ${itemNo}: Managerial and Operational Services by Foreign Owner (FMV Not Determinable)`,
-      MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+      MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 4;
 
     const managerialText =
@@ -691,7 +738,7 @@ export const buildPartVIStatement = async (
       `management activity. Accordingly, no dollar amount is reported on Part IV of ` +
       `Form 5472 for these services, and they are disclosed here pursuant to Part VI.`;
 
-    cursor.y = drawWrapped(page, managerialText, MARGIN + 12, cursor.y, { size: 10 }, fonts);
+    cursor.y = drawWrapped(page, managerialText, MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 16;
   }
 
@@ -702,7 +749,7 @@ export const buildPartVIStatement = async (
     itemNo += 1;
     cursor.y = drawWrapped(page,
       `Item ${itemNo}: Transfer of Property at Less Than Fair Market Value`,
-      MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+      MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 4;
 
     cursor.y = drawWrapped(page,
@@ -710,7 +757,7 @@ export const buildPartVIStatement = async (
       `${llcName} and ${ownerName}. The consideration paid, if any, may have been ` +
       `less than the fair market value of the property transferred. Each transfer is ` +
       `described below:`,
-      MARGIN + 12, cursor.y, { size: 10 }, fonts);
+      MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 10;
 
     propertyTransferTxns.forEach((tx, idx) => {
@@ -724,25 +771,25 @@ export const buildPartVIStatement = async (
       const amtText = tx.amount_usd != null && tx.amount_usd !== 0
         ? `$${tx.amount_usd.toLocaleString('en-US')} (consideration paid; FMV may differ)`
         : 'No consideration paid (gratuitous transfer or FMV not determinable)';
-      const desc    = tx.description?.trim() || '(No description provided)';
+      const desc    = tx.description?.trim();
 
       cursor.y = drawWrapped(page, `Transfer ${idx + 1}:`, MARGIN + 12, cursor.y,
-        { size: 10, font: bold }, fonts);
+        { size: FS_BODY, font: bold }, fonts);
       cursor.y -= 2;
 
       const fields: [string, string][] = [
         ['Date:',               txDate],
         ['Direction:',          dirText],
         ['Consideration:',      amtText],
-        ['Property described:', desc],
+        ...(desc ? [['Property described:', desc] as [string, string]] : []),
       ];
 
       for (const [fieldLabel, fieldValue] of fields) {
         if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
         const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
         cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
-          { size: 10, maxWidth: COL_W - 24 - labelW }, fonts);
+          { size: FS_BODY, maxWidth: COL_W - 24 - labelW }, fonts);
       }
       cursor.y -= 10;
     });
@@ -755,37 +802,37 @@ export const buildPartVIStatement = async (
     itemNo += 1;
     cursor.y = drawWrapped(page,
       `Item ${itemNo}: Other Nonmonetary Transactions (FMV Not Determinable)`,
-      MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+      MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 4;
 
     cursor.y = drawWrapped(page,
       `During the tax year, the following nonmonetary transaction(s) occurred between ` +
       `${llcName} and ${ownerName}. No consideration was exchanged and/or the fair ` +
       `market value cannot be determined:`,
-      MARGIN + 12, cursor.y, { size: 10 }, fonts);
+      MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 10;
 
     nonmonetaryOtherTxns.forEach((tx, idx) => {
       if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
       const txDate = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
-      const desc   = tx.description?.trim() || '(No description provided)';
+      const desc   = tx.description?.trim();
 
       cursor.y = drawWrapped(page, `Transaction ${idx + 1}:`, MARGIN + 12, cursor.y,
-        { size: 10, font: bold }, fonts);
+        { size: FS_BODY, font: bold }, fonts);
       cursor.y -= 2;
 
       const fields: [string, string][] = [
-        ['Date:',        txDate],
-        ['Description:', desc],
+        ['Date:', txDate],
+        ...(desc ? [['Description:', desc] as [string, string]] : []),
       ];
 
       for (const [fieldLabel, fieldValue] of fields) {
         if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
         const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: 10, font: bold, color: rgb(0, 0, 0) });
+        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
         cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
-          { size: 10, maxWidth: COL_W - 24 - labelW }, fonts);
+          { size: FS_BODY, maxWidth: COL_W - 24 - labelW }, fonts);
       }
       cursor.y -= 10;
     });
@@ -796,7 +843,7 @@ export const buildPartVIStatement = async (
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
   drawWrapped(page,
     'This statement is attached to and made a part of Form 5472 (Part VI) filed by the reporting corporation named above.',
-    MARGIN, cursor.y, { size: 9, color: rgb(0.4, 0.4, 0.4) }, fonts);
+    MARGIN, cursor.y, { size: FS_FOOTER, color: rgb(0.4, 0.4, 0.4) }, fonts);
 
   return doc;
 };
@@ -827,21 +874,21 @@ export const buildReasonableCauseLetter = async (
       : `tax years ${years.slice(0, -1).join(', ')} and ${years[years.length - 1]}`;
 
   cursor.y = drawWrapped(page, 'REASONABLE CAUSE STATEMENT', MARGIN, cursor.y,
-    { size: 13, font: bold }, fonts);
+    { size: FS_HEADING, font: bold }, fonts);
   cursor.y -= 4;
   cursor.y = drawWrapped(page,
     'Request for abatement of penalties under IRC §6038A for late-filed Form 5472',
-    MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 6;
   drawRule(page, cursor);
 
   cursor.y = drawWrapped(page,
     `Taxpayer: ${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
-    MARGIN, cursor.y, { size: 10 }, fonts);
-  cursor.y = drawWrapped(page, `Covering: ${yearsText}.`, MARGIN, cursor.y, { size: 10 }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y = drawWrapped(page, `Covering: ${yearsText}.`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 14;
 
-  cursor.y = drawWrapped(page, 'To the Internal Revenue Service:', MARGIN, cursor.y, { size: 10 }, fonts);
+  cursor.y = drawWrapped(page, 'To the Internal Revenue Service:', MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 10;
 
   const intro =
@@ -852,43 +899,63 @@ export const buildReasonableCauseLetter = async (
     `${yearsText}. The Reporting Corporation is filing these returns voluntarily and ` +
     `proactively, before any contact from the IRS, and submits the following statement ` +
     `of reasonable cause.`;
-  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: 10 }, fonts);
+  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 12;
 
   cursor.y = drawWrapped(page, 'Statement of facts and reasonable cause:', MARGIN, cursor.y,
-    { size: 10, font: bold }, fonts);
+    { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 4;
 
-  const body = (narrative && narrative.trim())
-    ? narrative.trim()
-    : 'The Reporting Corporation is owned by a non-U.S. individual with no prior ' +
-      'experience of the U.S. tax system and was not advised of the Form 5472 filing ' +
-      'obligation at the time the entity was formed. The owner acted in good faith, ' +
-      'reasonably believing that an entity with no U.S. tax liability had no U.S. ' +
-      'filing requirement. Upon learning of the obligation, the owner moved promptly ' +
-      'to prepare and file the delinquent returns for every affected year and has put ' +
-      'procedures in place to remain compliant in future years.';
-  // Allow multi-paragraph narratives (split on blank lines).
-  for (const para of body.split(/\n\s*\n/)) {
-    cursor.y = drawWrapped(page, para.trim(), MARGIN, cursor.y, { size: 10 }, fonts);
-    cursor.y -= 8;
+  const DEFAULT_BODY =
+    'The Reporting Corporation is wholly owned by a non-U.S. individual who, at the ' +
+    'time of formation, had no prior exposure to the United States federal tax system ' +
+    'and no reason to anticipate an information-reporting obligation for an entity that ' +
+    'generated no U.S. tax liability. The owner engaged a formation agent to establish ' +
+    'the entity and was not advised, at formation or thereafter, that Treasury ' +
+    'Regulation section 1.6038A-2 requires a foreign-owned disregarded entity to file ' +
+    'Form 5472 with a pro forma Form 1120 irrespective of whether any tax is due.\n\n' +
+    'The owner’s belief that no return was required was objectively reasonable and ' +
+    'held in good faith. A taxpayer exercises ordinary business care and prudence, ' +
+    'within the meaning of Treasury Regulation section 301.6651-1(c)(1), when the ' +
+    'taxpayer reasonably relies on the absence of any indication that a filing is due ' +
+    'and has no U.S. income tax to pay. There was no willful neglect and no intent to ' +
+    'disregard the filing requirement.\n\n' +
+    'Immediately upon learning of the requirement, the owner acted diligently to become ' +
+    'compliant, gathering the records necessary to prepare a complete and accurate ' +
+    'Form 5472 for each affected year and submitting these delinquent returns ' +
+    'voluntarily, before any notice, examination, or contact from the Service. The ' +
+    'owner has also implemented procedures to ensure that Form 5472 is filed timely in ' +
+    'all future years.';
+
+  const body = (narrative && narrative.trim()) ? narrative.trim() : DEFAULT_BODY;
+  // Each reason / point is its own paragraph (split on blank lines).
+  const paras = body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  paras.forEach((para) => {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
-  }
-  cursor.y -= 6;
+    cursor.y = drawWrapped(page, para, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+    cursor.y -= 10;
+  });
+  cursor.y -= 4;
 
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
   const close =
-    'The failure to file was due to reasonable cause and not willful neglect. The ' +
-    'Reporting Corporation respectfully requests that any penalties under §6038A be ' +
-    'abated in full. All required Forms 5472 and pro forma Forms 1120 are enclosed.';
-  cursor.y = drawWrapped(page, close, MARGIN, cursor.y, { size: 10 }, fonts);
+    'For the foregoing reasons, the failure to file was due to reasonable cause and not ' +
+    'to willful neglect, and abatement is warranted under Internal Revenue Code ' +
+    'section 6038A(d) and the reasonable-cause standard of Treasury Regulation section ' +
+    '301.6651-1(c). The Reporting Corporation respectfully requests that any penalties ' +
+    `asserted under section 6038A for ${yearsText} be abated in full. All required ` +
+    'Forms 5472 and accompanying pro forma Forms 1120 are enclosed. The taxpayer will ' +
+    'promptly furnish any additional information the Service may require.';
+  cursor.y = drawWrapped(page, close, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 16;
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
-  cursor.y = drawWrapped(page, 'Signed under penalties of perjury,', MARGIN, cursor.y, { size: 10 }, fonts);
+  cursor.y = drawWrapped(page, 'Signed under penalties of perjury,', MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 24;
   cursor.y = drawWrapped(page, `${filing.owner.full_name || '________________________'}`,
-    MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   drawWrapped(page, `${filing.signer_title ?? 'Managing Member'}, ${filing.llc_name ?? ''}`,
-    MARGIN, cursor.y, { size: 10 }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
 
   return doc;
 };
@@ -908,37 +975,52 @@ export const buildInstructionsPage = async (
   let { page, cursor } = newPage(doc);
 
   cursor.y = drawWrapped(page, `Filing Instructions, Tax Year ${period.year}`, MARGIN, cursor.y,
-    { size: 14, font: bold }, fonts);
+    { size: FS_HEADING, font: bold }, fonts);
   cursor.y -= 4;
   cursor.y = drawWrapped(page,
     `${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
-    MARGIN, cursor.y, { size: 10 }, fonts);
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 6;
   drawRule(page, cursor);
 
-  const lines: string[] = [
-    `This package contains your Form 5472${opts.formCount > 1 ? `s (${opts.formCount} total, one per related party)` : ''} ` +
-      `and the accompanying pro forma Form 1120 for the tax period ${period.beginText} through ${period.endText}.`,
-    opts.hasRCL
-      ? 'A Reasonable Cause Statement is included. It is enclosed once for the whole submission.'
-      : '',
-    'How to file:',
-    '1. Print the entire package.',
-    '2. The "Foreign-owned U.S. DE" label is already printed across the top of the pro forma Form 1120, so you do not need to add it.',
-    '3. Sign and date the Form 1120 where indicated.',
-    '4. Mail OR fax the package to the IRS unit for foreign-owned disregarded entities (Ogden, UT). Re-verify the current address/fax on irs.gov before sending.',
-    '5. Keep a copy and proof of mailing (USPS Certified Mail). The IRS does not send a receipt.',
+  // Preparer-style filing instructions (Lacerte / CCH ProSystem fx format:
+  // "Return / Mail to / Deadline / Other" blocks stating exactly what to do).
+  const formsLine = opts.formCount > 1
+    ? `Form 1120 (pro forma) with ${opts.formCount} Forms 5472 attached (one per related party)`
+    : 'Form 1120 (pro forma) with Form 5472 attached';
+
+  const rows: [string, string][] = [
+    ['Taxpayer', `${filing.llc_name ?? ''} (EIN ${filing.ein ?? '—'})`],
+    ['Return', `${formsLine}, for the tax period ${period.beginText} through ${period.endText}.`],
+    ['Signature', 'Sign and date the pro forma Form 1120 where indicated before mailing. The "Foreign-owned U.S. DE" notation is already printed across the top of the form.'],
   ];
-  for (const ln of lines) {
-    if (!ln) continue;
-    const isHeading = ln === 'How to file:';
-    cursor.y = drawWrapped(page, ln, MARGIN, cursor.y, { size: 10, font: isHeading ? bold : reg }, fonts);
-    cursor.y -= isHeading ? 4 : 8;
+  if (opts.hasRCL) {
+    rows.push(['Attachment', 'A Reasonable Cause Statement is enclosed once for the whole submission, placed at the front of the package.']);
+  }
+  rows.push(
+    ['Assembly', 'Do not staple. Assemble in this order: Form 1120 (pro forma) on top, then each Form 5472 with its attached statements.'],
+    ['Mail to', 'Internal Revenue Service\n1973 Rulon White Blvd., M/S 6112, Attn: PIN Unit\nOgden, UT 84201'],
+    ['Or fax to', '855-887-7737 (a foreign-owned U.S. DE may file Form 5472 by fax in lieu of mailing)'],
+    ['Deadline', 'File by the 15th day of the 4th month after the close of the tax year (April 15 for a calendar-year filer). Verify the current IRS address and fax number on irs.gov before sending.'],
+    ['Proof of filing', 'Keep a copy and proof of mailing (USPS Certified Mail). The IRS does not send a receipt.'],
+  );
+
+  const labelW = 88;
+  for (const [label, value] of rows) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+    const startY = cursor.y;
+    page.drawText(label, { x: MARGIN, y: startY, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+    // A value may contain hard line breaks (address block).
+    let vy = startY;
+    for (const seg of value.split('\n')) {
+      vy = drawWrapped(page, seg, MARGIN + labelW, vy, { size: FS_BODY, maxWidth: COL_W - labelW }, fonts);
+    }
+    cursor.y = Math.min(vy, startY - 12) - 6;
   }
 
-  cursor.y -= 10;
-  cursor.y = drawWrapped(page, 'Important notices:', MARGIN, cursor.y, { size: 10, font: bold }, fonts);
+  cursor.y -= 8;
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  cursor.y = drawWrapped(page, 'Important notices:', MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 4;
   const notices = [
     'Penalty: failing to file a correct, complete Form 5472 carries a $25,000 penalty per form, per related party, per year under IRC §6038A.',
@@ -946,9 +1028,9 @@ export const buildInstructionsPage = async (
     'State obligations: this federal filing does not cover state requirements (e.g. Delaware franchise tax, California LLC fee). Check your state of formation.',
   ];
   for (const n of notices) {
-    cursor.y = drawWrapped(page, `• ${n}`, MARGIN, cursor.y, { size: 9.5 }, fonts);
-    cursor.y -= 7;
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+    cursor.y = drawWrapped(page, `• ${n}`, MARGIN, cursor.y, { size: 9 }, fonts);
+    cursor.y -= 7;
   }
 
   void opts.isLate;
@@ -998,14 +1080,22 @@ const fill5472 = async (
   setText(doc, F.CORP_ACTIVITY,              filing.naics_description ?? filing.owner.business_activity ?? '');
   setText(doc, F.CORP_ACTIVITY_CODE,         filing.naics_code ?? '');
   setText(doc, F.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
-  // The reporting corporation is a US entity: incorporated in, resident in, and
-  // conducting business in the United States.
+  // The reporting corporation is a US entity: incorporated in and conducting
+  // business in the United States. However, Part I line 1n "country of
+  // residence" reflects where the entity's income is taxed — for a foreign-owned
+  // disregarded entity the income flows to and is taxed in the owner's home
+  // country (the U.S. only requires reporting), so 1n mirrors the owner's
+  // country of tax residence.
+  const ownerTaxCountry =
+    filing.owner.country_residence || filing.owner.country_business || 'United States';
   setText(doc, F.CORP_COUNTRY_OF_INC,        filing.country_of_incorporation ?? 'United States');
-  setText(doc, F.CORP_RESIDENT_COUNTRY,      'United States');
+  setText(doc, F.CORP_RESIDENT_COUNTRY,      ownerTaxCountry);
   setText(doc, F.CORP_COUNTRY_BUSINESS,      'United States');
 
-  // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms
-  const grossThisForm = totalReceived(txn) + totalPaid(txn);
+  // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
+  // 1f/1h aggregate the monetary transactions for this party — Part IV flows plus
+  // the monetary Part V (distributions/contributions/dividends) and Part VI amounts.
+  const grossThisForm = grossPaymentsForLines1f1h(txn);
   setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossThisForm));
   setText(doc, F.CORP_NUM_FORMS,      String(opts.numForms));
   setText(doc, F.CORP_GROSS_ALL,      fmt(opts.grossAllForms));
@@ -1017,7 +1107,8 @@ const fill5472 = async (
   checkBox(doc, F.CORP_IS_FOREIGN_OWNED_DE,  true);
 
   // ── Part II — 25 % Foreign Shareholder (this party) ──────────────────────────────
-  setText(doc, F.SHAREHOLDER_NAME,                party.full_name);
+  // The 5472 combines name + mailing address into a single field.
+  setText(doc, F.SHAREHOLDER_NAME,                buildNameAndAddress(party.full_name, party.address));
   setText(doc, F.SHAREHOLDER_US_TIN,              party.us_tin);
   setText(doc, F.SHAREHOLDER_REFERENCE_ID,        party.reference_id);
   setText(doc, F.SHAREHOLDER_FOREIGN_TIN,         party.foreign_tax_id);
@@ -1029,7 +1120,7 @@ const fill5472 = async (
   checkBox(doc, F.RP_IS_FOREIGN_PERSON, true);
   checkBox(doc, F.RP_IS_US_PERSON,      false);
 
-  setText(doc, F.RP_NAME,          party.full_name);
+  setText(doc, F.RP_NAME,          buildNameAndAddress(party.full_name, party.address));
   setText(doc, F.RP_US_TIN,        party.us_tin);
   setText(doc, F.RP_REFERENCE_ID,  party.reference_id);
   setText(doc, F.RP_FOREIGN_TIN,   party.foreign_tax_id);
@@ -1085,7 +1176,9 @@ const fill5472 = async (
   }
 
   // ── Part V — owner transactions checkbox ───────────────────────────────────────
-  if (txn.hasPartV) {
+  // Part V (and its statement) applies to the OWNER's 5472 only; additional
+  // related parties never carry Part V.
+  if (party.is_owner && txn.hasPartV) {
     checkBox(doc, F.PART_V_CHECKBOX, true);
   }
 
@@ -1097,8 +1190,10 @@ const fill5472 = async (
   //   non-monetary transaction, Part VI is not checked.
   // OTHER RELATED PARTIES: checked only when they actually had a non-monetary /
   //   below-FMV transaction.
+  // Part VI (and its statement) applies to the OWNER's 5472 only.
   const managerialOn = party.is_owner && (filing.part_vi_managerial ?? true);
-  const partVIApplies = managerialOn || txn.hasPropertyTransfer || txn.hasNonmonetaryOther;
+  const partVIApplies = party.is_owner
+    && (managerialOn || txn.hasPropertyTransfer || txn.hasNonmonetaryOther);
   checkBox(doc, F.PART_VI_CHECKBOX, partVIApplies);
 
   return doc;
@@ -1146,7 +1241,12 @@ const fill1120 = async (
   };
   setText(doc, F.BEGINNING_DATE, isCalendarYear ? '' : monthDay(period.beginISO));
   setText(doc, F.ENDING_DATE,    isCalendarYear ? '' : monthDay(period.endISO));
-  setText(doc, F.ENDING_YEAR,    String(period.year));
+  // The 1120 header pre-prints "20" before the ending-year box, so the field
+  // holds only the last two digits (e.g. "25" → "2025"). Writing the full year
+  // produced "202025". For a calendar-year filer the printed "calendar year
+  // YYYY" already carries the year, so leave the box empty; only a short/fiscal
+  // year needs the ending year filled here.
+  setText(doc, F.ENDING_YEAR, isCalendarYear ? '' : String(period.year).slice(-2));
 
   // ── Checkboxes (item E) ──────────────────────────────────────────────────────────────
   checkBox(doc, F.INITIAL_RETURN,  period.isInitial);
@@ -1256,26 +1356,72 @@ const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): stri
   if (free) return free;
   const reasons = filing.reasonable_cause_reasons as string[] | null | undefined;
   if (!reasons || reasons.length === 0) return null;
-  const phrases: Record<string, string> = {
-    first_time_filing: 'this is the owner’s first time filing in the United States, with no prior U.S. tax-compliance experience',
-    relied_on_non_us_advisor: 'the owner relied on a non-U.S. accountant or formation service that was unfamiliar with U.S. filing requirements',
-    not_informed: 'no formation agent, bank, or advisor informed the owner that Form 5472 was required',
-    no_tax_liability: 'the owner reasonably believed that having no U.S. tax liability meant no return was due',
-    minimal_activity: 'the LLC had little or no activity during the year',
-    incomplete_records: 'records and information needed to file were delayed or incomplete',
-    language_barrier: 'English is not the owner’s first language and the U.S. tax system was unfamiliar',
-    discovered_late: 'the owner only learned of the filing requirement recently, through professional review or self-research',
-    voluntary_filing: 'the owner is coming forward voluntarily and proactively, before any contact from the IRS',
-    new_procedures: 'the owner has put procedures in place to remain compliant in future years',
+  // Each reason renders as its own fully-formed paragraph, in the voice of an
+  // experienced preparer, tied to the reasonable-cause standard. Paragraphs are
+  // separated by a blank line; buildReasonableCauseLetter splits on blank lines.
+  const paragraphs: Record<string, string> = {
+    first_time_filing:
+      'This is the owner’s first filing obligation of any kind within the United States. ' +
+      'The owner had no prior experience with the U.S. federal tax system and no ' +
+      'established compliance history from which a Form 5472 obligation could reasonably ' +
+      'have been anticipated. A first-time, inadvertent omission by a taxpayer acting in ' +
+      'good faith is a classic circumstance of reasonable cause rather than willful neglect.',
+    relied_on_non_us_advisor:
+      'In forming and operating the entity, the owner relied in good faith on a non-U.S. ' +
+      'accountant and formation service. Those advisors were not conversant with the ' +
+      'information-reporting rules applicable to foreign-owned U.S. disregarded entities ' +
+      'and did not identify the Form 5472 requirement. Reasonable reliance on a competent ' +
+      'advisor is a recognized basis for reasonable cause.',
+    not_informed:
+      'Neither the formation agent, the registered agent, the bank that opened the ' +
+      'entity’s account, nor any other party involved in establishing the entity advised ' +
+      'the owner that Form 5472 was required. The owner had no notice of the obligation ' +
+      'and no reasonable means of discovering it in the ordinary course of managing the entity.',
+    no_tax_liability:
+      'The entity conducted limited activity and had no U.S. income tax liability for the ' +
+      'years at issue. The owner reasonably, if mistakenly, understood that an entity owing ' +
+      'no U.S. tax had no U.S. return to file, and was unaware that Form 5472 is an ' +
+      'information return required irrespective of any tax due. This good-faith ' +
+      'misunderstanding is precisely the kind of error the reasonable-cause standard excuses.',
+    minimal_activity:
+      'The entity carried on minimal activity during the period, which reinforced the ' +
+      'owner’s good-faith belief that no filing was due and made the reporting obligation ' +
+      'easy to overlook despite the exercise of ordinary business care.',
+    incomplete_records:
+      'The records and documentation necessary to prepare a complete and accurate return ' +
+      'were delayed or incomplete, in part because the entity was administered from ' +
+      'outside the United States. The owner did not file an incomplete or inaccurate ' +
+      'return, but instead assembled the information required to file correctly as soon as ' +
+      'it was reasonably practicable.',
+    language_barrier:
+      'English is not the owner’s first language, and the technical requirements of the ' +
+      'U.S. tax system were unfamiliar and difficult to navigate. This materially impaired ' +
+      'the owner’s ability to identify the filing obligation notwithstanding good-faith effort.',
+    discovered_late:
+      'The owner learned of the Form 5472 requirement only recently, through professional ' +
+      'review, and had no earlier awareness of it. Upon discovery, the owner did not delay.',
+    voluntary_filing:
+      'The Reporting Corporation is coming forward voluntarily. These delinquent returns ' +
+      'are being filed proactively, before any notice, examination, or other contact from ' +
+      'the Service. Voluntary compliance of this kind weighs strongly in favor of abatement.',
+    new_procedures:
+      'The owner has since implemented procedures — including engaging a qualified U.S. ' +
+      'preparer and calendaring the annual deadline — to ensure that Form 5472 is filed ' +
+      'timely in all future years. The lapse was isolated and will not recur.',
   };
-  const sentences = reasons.map((r) => phrases[r]).filter(Boolean);
-  if (sentences.length === 0) return null;
-  return `The failure to file on time was due to reasonable cause and not willful neglect: ${sentences.join('; ')}.`;
+  const chosen = reasons.map((r) => paragraphs[r]).filter(Boolean);
+  if (chosen.length === 0) return null;
+  return chosen.join('\n\n');
 };
 
-/** Whether to include Form 7004 for this filing (extension filed or requested). */
+/**
+ * Whether to include Form 7004 in the package. Only an extension FILING
+ * (include_7004) generates the form. A filing that merely records the owner
+ * already filed 7004 elsewhere (extension_filed) does not re-generate it, and
+ * we never produce a 7004-only package.
+ */
 const wants7004 = (raw: Filing): boolean =>
-  raw.extension_filed === true || raw.include_7004 === true;
+  raw.include_7004 === true;
 
 /**
  * Generate a standalone, filled Form 7004 — used both inside the package and
@@ -1295,7 +1441,7 @@ export const generateForm7004 = async (
 /** Gross of all reportable transactions for a single party (drives 1f / 1h). */
 const grossForTransactions = (txns: Transaction[]): number => {
   const agg = aggregateTransactions(txns);
-  return totalReceived(agg) + totalPaid(agg);
+  return grossPaymentsForLines1f1h(agg);
 };
 
 const PART_V_TX_TYPES = new Set<Transaction['transaction_type']>([
@@ -1353,9 +1499,14 @@ const buildYearDocs = async (filing: NormalizedFiling, period: ResolvedPeriod, t
   const partyDocs: PartyDocs[] = await Promise.all(
     partiesToFile.map(async (party): Promise<PartyDocs> => {
       const ptxns = txByParty.get(party.index) ?? [];
-      const hasPartV  = ptxns.some((t) => PART_V_TX_TYPES.has(t.transaction_type));
+      // Part V and Part VI statements are produced for the OWNER only. Additional
+      // related parties get a 5472 with Parts I–IV; their Part V/VI disclosures
+      // (owner distributions, managerial services, nonmonetary transfers) belong
+      // to the owner's return, not theirs.
+      const hasPartV  = party.is_owner && ptxns.some((t) => PART_V_TX_TYPES.has(t.transaction_type));
       const managerialOn = party.is_owner && (filing.part_vi_managerial ?? true);
-      const hasPartVI = managerialOn || ptxns.some((t) => PART_VI_TX_TYPES.has(t.transaction_type));
+      const hasPartVI = party.is_owner
+        && (managerialOn || ptxns.some((t) => PART_VI_TX_TYPES.has(t.transaction_type)));
 
       const [doc5472, docPartV, docPartVI] = await Promise.all([
         fill5472(filing, party, ptxns, period, fillOpts),

@@ -420,8 +420,8 @@ export function Dashboard() {
             <div style={cardStyle}>
               <p style={tagStyle}>For late filers</p>
               <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Catch up on past years</h3>
-              <p style={priceStyle}>from $350<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year</span></p>
-              <p style={mutedStyle}>File one or more missed years. One reasonable-cause letter covers them all.</p>
+              <p style={priceStyle}>$150<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year + one $200 letter</span></p>
+              <p style={mutedStyle}>File one or more missed years. A single reasonable-cause letter covers them all.</p>
               <button onClick={() => navigate('/catch-up')} disabled={busy !== null} style={primaryBtn(false)}>
                 Choose years
               </button>
