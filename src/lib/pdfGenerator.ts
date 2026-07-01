@@ -1566,7 +1566,13 @@ export const generateFilingPackage = async (
   const period = resolvePeriod(filing, year);
   const yd = await buildYearDocs(filing, period, transactions);
 
-  const hasRCL = !!filing.include_rcl;
+  // A reasonable-cause letter is included when the filing opted in — honoring
+  // either the canonical include_rcl flag or the older include_reasonable_cause
+  // column — but NOT when a Form 7004 extension was filed on time (then the
+  // year is not late, so no RCL applies).
+  const optedRCL =
+    !!filing.include_rcl || (filing as unknown as Record<string, unknown>)['include_reasonable_cause'] === true;
+  const hasRCL = optedRCL && filing.extension_filed !== true;
   const instructions = await buildInstructionsPage(filing, period, {
     isLate: hasRCL, hasRCL, formCount: yd.formCount,
   });

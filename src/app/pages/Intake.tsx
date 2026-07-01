@@ -798,7 +798,13 @@ export function Intake() {
   function validateStep1b(): string[] {
     const errs: string[] = [];
     if (extensionFiled === null) errs.push('Please confirm whether Form 7004 (extension) was filed.');
-    if (includeReasonableCause && reasonableCauseReasons.length === 0) errs.push('Select at least one reason for the reasonable cause letter.');
+    // Reasons are only collected here for a single-year, genuinely-late filing.
+    // Multi-year jobs collect the RCL + reasons once at job setup; when 7004 was
+    // filed the RCL section is hidden entirely.
+    const rclSectionShown = !jobId && extensionFiled !== true;
+    if (rclSectionShown && includeReasonableCause && reasonableCauseReasons.length === 0) {
+      errs.push('Select at least one reason for the reasonable cause letter.');
+    }
     return errs;
   }
 
