@@ -84,7 +84,7 @@ export function Services() {
               The IRS requires a separate Form 5472 for each foreign related party. Most single-member LLCs have only one, the foreign owner. If your LLC transacted with additional related parties such as a foreign parent company or an entity you own 25% or more of, each requires its own Form 5472.
             </p>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-              Additional forms: <strong style={{ color: "var(--tf-text)" }}>+$75/form</strong> (forms 2 and 3). Volume discount for the 4th form onwards: <strong style={{ color: "var(--tf-text)" }}>+$50/form</strong>. The eligibility check will ask about this and calculate your total automatically.
+              Each additional related party: <strong style={{ color: "var(--tf-text)" }}>+$50</strong> (one extra Form 5472 per party). The eligibility check will ask about this and calculate your total automatically.
             </p>
           </div>
 

@@ -420,8 +420,8 @@ export function Dashboard() {
             <div style={cardStyle}>
               <p style={tagStyle}>For late filers</p>
               <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Catch up on past years</h3>
-              <p style={priceStyle}>from $350<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year</span></p>
-              <p style={mutedStyle}>File one or more missed years. One reasonable-cause letter covers them all.</p>
+              <p style={priceStyle}>$150<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year + one $200 letter</span></p>
+              <p style={mutedStyle}>File one or more missed years. A single reasonable-cause letter covers them all.</p>
               <button onClick={() => navigate('/catch-up')} disabled={busy !== null} style={primaryBtn(false)}>
                 Choose years
               </button>
@@ -430,13 +430,13 @@ export function Dashboard() {
 
           {/* Secondary / additional services */}
           <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem 1.25rem', flexWrap: 'wrap', padding: '1rem 1.25rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Also available:</span>
-            <button onClick={() => startFiling('tax_classification')} disabled={busy !== null} style={linkBtnStyle}>
-              LLC tax classification change (8832 / 2553) · $50
-            </button>
+            <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Coming soon:</span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
-              IRS fax submission add-on · Form 7004, FBAR &amp; more coming soon
+              LLC tax classification change (8832 / 2553) · $50 &nbsp;·&nbsp; IRS fax submission add-on &nbsp;·&nbsp; Form 7004, FBAR &amp; more
             </span>
+            <button onClick={() => navigate('/waitlist')} style={linkBtnStyle}>
+              Join the waitlist →
+            </button>
           </div>
         </div>
         <style>{`@media (max-width: 800px) { .dash-services { grid-template-columns: 1fr !important; } }`}</style>
@@ -493,12 +493,16 @@ function FilingCard({ f }: { f: Filing }) {
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
 function JobCard({ filings }: { filings: Filing[] }) {
   const sorted = [...filings].sort((a, b) => Number(b.tax_year) - Number(a.tax_year));
+  // Chronological (ascending) order to find the EARLIEST unfilled year.
+  const chronological = [...filings].sort((a, b) => Number(a.tax_year) - Number(b.tax_year));
   const years = sorted.map((f) => f.tax_year).filter(Boolean);
   const llc = sorted.find((f) => f.llc_name)?.llc_name?.trim() || 'Catch-up filing';
   const remaining = sorted.filter((f) => f.status === 'draft' || f.status === 'in_progress').length;
   const allReady = sorted.every((f) => f.status === 'paid' || f.status === 'completed');
-  // Where the primary action should go: first unfinished year, else the most recent (download).
-  const target = sorted.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
+  // Continue → the EARLIEST year still needing work, so the catch-up is filed in
+  // chronological order. When every year is done, the action points at the job's
+  // review/download page (most-recent filing).
+  const target = chronological.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
 
   return (
     <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
@@ -515,12 +519,22 @@ function JobCard({ filings }: { filings: Filing[] }) {
             {remaining > 0 ? ` · ${remaining} year${remaining > 1 ? 's' : ''} left to complete` : allReady ? ' · all years ready' : ''}
           </p>
         </div>
-        <Link
-          to={filingPath(target)}
-          style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
-        >
-          {remaining > 0 ? 'Continue' : 'Download all'}
-        </Link>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+          <Link
+            to={filingPath(target)}
+            style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+          >
+            {remaining > 0 ? 'Continue' : 'Download all'}
+          </Link>
+          {!allReady && sorted[0]?.job_id && (
+            <Link
+              to={`/catch-up?job=${sorted[0].job_id}`}
+              style={{ color: 'var(--tf-accent)', fontSize: '0.78rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
+            >
+              Add or remove years
+            </Link>
+          )}
+        </div>
       </div>
       <div style={{ borderTop: '1px solid var(--tf-border)' }}>
         {sorted.map((f) => {

@@ -129,7 +129,7 @@ export default function FilingWizard() {
     setGenErr(null);
     try {
       const { data: job } = await supabase
-        .from('filing_jobs').select('include_rcl, rcl_narrative').eq('id', filing.job_id).single();
+        .from('filing_jobs').select('include_rcl, rcl_narrative, reasonable_cause_reasons').eq('id', filing.job_id).single();
 
       const { data: yearFilings, error: yfErr } = await supabase
         .from('filings').select('*').eq('job_id', filing.job_id);
@@ -150,10 +150,15 @@ export default function FilingWizard() {
         }),
       );
 
-      const { generateMultiYearPackage } = await import('../../lib/pdfGenerator');
+      const { generateMultiYearPackage, narrativeFromReasonCodes } = await import('../../lib/pdfGenerator');
+      // One letter covers all years: free-text narrative wins, else build it
+      // from the reasons collected once at job setup.
+      const jobNarrative =
+        (job?.rcl_narrative?.trim() || null) ||
+        narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons);
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
-        rclNarrative: job?.rcl_narrative ?? null,
+        rclNarrative: jobNarrative,
       });
 
       const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
@@ -183,10 +188,13 @@ export default function FilingWizard() {
     ['distribution', 'dividend', 'capital_contribution', 'formation_costs'].includes(t.transaction_type)
   );
   // Part VI is always generated — hardcoded true in pdfGenerator.ts
-  // Form 7004 included when the filing opted into an extension.
-  const has7004 = filing?.extension_filed === true || filing?.include_7004 === true;
+  // Form 7004 is downloadable ONLY when this filing is an extension filing
+  // (include_7004). A filing where the owner merely reports that they already
+  // filed 7004 elsewhere (extension_filed) does not re-generate the form, and we
+  // never offer a "7004 only" filing — the 7004 accompanies the full package.
+  const has7004 = filing?.include_7004 === true;
 
-  // Standalone Form 7004 download (independent extension service).
+  // Standalone Form 7004 download (accompanies an extension filing).
   const handleDownload7004 = async () => {
     if (!filing) return;
     setGenerating(true);
@@ -425,7 +433,7 @@ export default function FilingWizard() {
                     style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
                     type="button"
                   >
-                    Form 7004 only
+                    Download Form 7004 (extension)
                   </button>
                 )}
                 {!filing?.job_id && (

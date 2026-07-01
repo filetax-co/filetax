@@ -100,6 +100,45 @@ function resolveBizActivityLabel(activity: string): string {
   return activity;
 }
 
+// ── Money formatting ────────────────────────────────────────────────────────
+// Amount fields display with thousands separators (1,000,000) while storing a
+// plain numeric string in state. Only dollar amounts are formatted — never
+// EIN / TIN / reference IDs, which stay raw.
+
+/** Strip everything except digits and a single decimal point. */
+function stripMoney(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  // keep only the first decimal point
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+}
+
+// ── Fiscal period derivation ────────────────────────────────────────────────
+// A fiscal year that ENDS in month M of tax year Y runs from the first day of
+// the following month in the prior year (Y-1) through the last day of month M
+// in year Y. Returns ISO begin/end strings.
+function deriveFiscalPeriod(taxYear: string, endMonth: number): { begin: string; end: string } {
+  const y = Number(taxYear);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const lastDay = new Date(y, endMonth, 0).getDate(); // day 0 of next month = last day of endMonth
+  const end = `${y}-${pad(endMonth)}-${pad(lastDay)}`;
+  // Begin is the first day of the month AFTER endMonth, one year earlier.
+  const beginMonth = endMonth === 12 ? 1 : endMonth + 1;
+  const beginYear = endMonth === 12 ? y : y - 1;
+  const begin = `${beginYear}-${pad(beginMonth)}-01`;
+  return { begin, end };
+}
+
+/** Format a numeric string with thousands separators for display. */
+function formatMoney(value: string): string {
+  if (!value) return '';
+  const [intPart, decPart] = value.split('.');
+  const withCommas = intPart ? Number(intPart).toLocaleString('en-US') : '';
+  if (value.endsWith('.')) return `${withCommas}.`;
+  return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas;
+}
+
 function getFilingTimingStatus(
   taxYear: string,
   today: Date,
@@ -394,8 +433,10 @@ export function Intake() {
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
   const [isFiscalYear, setIsFiscalYear] = useState(false);
-  const [fiscalBegin, setFiscalBegin] = useState('');
-  const [fiscalEnd, setFiscalEnd] = useState('');
+  // For a fiscal-year filer we only collect the fiscal YEAR-END MONTH (1–12).
+  // The period is then derived deterministically from the tax year, so the user
+  // can no longer pick a year that conflicts with the filing year.
+  const [fiscalEndMonth, setFiscalEndMonth] = useState<number | ''>('');
 
   // Step 1b
   const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
@@ -413,6 +454,9 @@ export function Intake() {
   const [ownerAddress, setOwnerAddress] = useState<Address>({});
   const [ownerBizActivity, setOwnerBizActivity] = useState('');
   const [ownerBizCode, setOwnerBizCode] = useState('');
+  // Signing title (goes on the 1120 signature block + RCL). Defaults to
+  // "Managing Member", the usual role for a single-member LLC owner.
+  const [signerTitle, setSignerTitle] = useState('Managing Member');
 
   // Step 3
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
@@ -444,6 +488,11 @@ export function Intake() {
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
+  // For a multi-year job: is there another draft year AFTER this one to file?
+  const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
+  // Once a filing has been completed at least once (submitted / paid), every
+  // step is freely navigable — from step 1 the user can jump straight to step 5.
+  const [completedOnce, setCompletedOnce] = useState(false);
   // Payment-integrity state: a paid filing locks its identity fields forever
   // and allows only a capped number of corrections to other fields.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
@@ -511,6 +560,9 @@ export function Intake() {
       // than blocking the whole filing.
       setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
       setPostPaymentEdits((f as any).post_payment_edits ?? 0);
+      // A filing that has moved past 'draft' has been through every step once,
+      // so allow free step navigation on return visits.
+      setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -535,14 +587,30 @@ export function Intake() {
       setOwnerAddress((f.owner_address as Address) ?? {});
       setOwnerBizActivity(f.owner_business_activity ?? '');
       setOwnerBizCode((f as any).owner_business_code ?? '');
+      setSignerTitle((f as any).signer_title ?? 'Managing Member');
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
       setJobId((f as any).job_id ?? null);
+      // Determine whether a later draft year remains in this job (drives the
+      // submit-button label: "File next year" vs "Finish & review").
+      const thisJobId = (f as any).job_id ?? null;
+      if (thisJobId) {
+        const { data: sibs } = await supabase
+          .from('filings')
+          .select('id, tax_year, status')
+          .eq('job_id', thisJobId);
+        const remaining = (sibs ?? []).some(
+          (s: any) => s.id !== filingId && s.status === 'draft',
+        );
+        setHasNextDraftYear(remaining);
+      } else {
+        setHasNextDraftYear(false);
+      }
       setFinalReturn((f as any).final_return ?? false);
       setIsFiscalYear((f as any).is_fiscal_year ?? false);
-      setFiscalBegin((f as any).tax_period_begin ?? '');
-      setFiscalEnd((f as any).tax_period_end ?? '');
+      const storedEnd = (f as any).tax_period_end as string | null | undefined;
+      setFiscalEndMonth(storedEnd ? Number(storedEnd.split('-')[1]) : '');
 
       const { data: txns } = await supabase
         .from('reportable_transactions')
@@ -562,6 +630,28 @@ export function Intake() {
           transaction_date: t.transaction_date ?? '',
         })));
       }
+
+      // Backfill entity/owner identity from the saved profile for any field the
+      // filing row itself left empty. This matters for multi-year jobs, where a
+      // per-year row may have been seeded before the profile existed — e.g. the
+      // owner's country should carry across every year, not be re-selected each
+      // time. Only empty fields are filled; nothing the row already has is touched.
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const profile = user ? await loadProfile(user.id) : null;
+        if (profile) {
+          const bf = (val: string | null | undefined) => (setter: (u: (c: string) => string) => void) => {
+            if (val) setter((c) => (c && c.trim() ? c : (val ?? '')));
+          };
+          bf(profile.owner_country ?? profile.owner_primary_country)(setOwnerCountry);
+          bf(profile.owner_country_residence)(setOwnerCountryRes);
+          bf(profile.owner_country_citizenship)(setOwnerCountryCitizenship);
+          bf(profile.owner_full_name)(setOwnerName);
+          bf(profile.llc_name)(setLlcName);
+          bf(profile.state_of_formation)(setStateOfFormation);
+        }
+      } catch { /* profile backfill is best-effort */ }
+
       setLoadingFiling(false);
     })();
   }, [filingId]);
@@ -596,6 +686,7 @@ export function Intake() {
       setOwnerRefNumber((c) => fill(c, profile.owner_reference_id ?? profile.owner_ref_number));
       setOwnerBizActivity((c) => fill(c, profile.owner_business_activity));
       setOwnerBizCode((c) => fill(c, profile.owner_business_code ?? profile.owner_naics_code));
+      setSignerTitle((c) => (c && c !== 'Managing Member' ? c : (profile.signer_title || 'Managing Member')));
       setOwnerAddress((c) => (c && c.line1 ? c : ((profile.owner_address as Address) ?? {})));
       if (profile.related_parties && Array.isArray(profile.related_parties)) {
         setRelatedParties((c) => (c.length ? c : (profile.related_parties as RelatedParty[])));
@@ -604,6 +695,15 @@ export function Intake() {
     })();
     return () => { cancelled = true; };
   }, [filingId]);
+
+  // Auto-generate the owner reference code whenever we have an owner name but no
+  // reference code yet — covers the case where the name was prefilled from the
+  // database/profile (not typed), so the user never triggered the onChange path.
+  useEffect(() => {
+    if (ownerName.trim() && !ownerRefNumber.trim()) {
+      setOwnerRefNumber(buildOwnerRef(ownerName));
+    }
+  }, [ownerName, ownerRefNumber]);
 
   function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
     if (step === 1) return {
@@ -627,14 +727,22 @@ export function Intake() {
       // Final return + fiscal-year (non-calendar) period.
       final_return: finalReturn,
       is_fiscal_year: isFiscalYear,
-      tax_period_begin: isFiscalYear && fiscalBegin ? fiscalBegin : null,
-      tax_period_end: isFiscalYear && fiscalEnd ? fiscalEnd : null,
+      tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
+      tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
     };
-    if (step === '1b') return {
-      extension_filed: extensionFiled,
-      include_reasonable_cause: includeReasonableCause,
-      reasonable_cause_reasons: reasonableCauseReasons,
-    };
+    if (step === '1b') {
+      // A reasonable-cause letter only applies to a genuinely late filing. If the
+      // owner filed Form 7004 (extension) on time, the filing is not late, so no
+      // RCL is generated regardless of the toggle.
+      const rclApplies = includeReasonableCause && extensionFiled !== true;
+      return {
+        extension_filed: extensionFiled,
+        include_reasonable_cause: rclApplies,
+        reasonable_cause_reasons: rclApplies ? reasonableCauseReasons : [],
+        // Canonical flag the PDF generator reads.
+        include_rcl: rclApplies,
+      };
+    }
     if (step === 2) return {
       owner_full_name: ownerName.trim() || null,
       // Wizard columns (kept for resume/load compatibility)
@@ -652,6 +760,7 @@ export function Intake() {
       owner_us_tin: ownerSSN.trim() || null,
       owner_reference_id: ownerRefNumber.trim() || null,
       owner_naics_code: ownerBizCode.trim() || null,
+      signer_title: signerTitle.trim() || 'Managing Member',
     };
     if (step === 3) return { related_parties: relatedParties };
     if (step === 4) return {
@@ -695,7 +804,13 @@ export function Intake() {
   function validateStep1b(): string[] {
     const errs: string[] = [];
     if (extensionFiled === null) errs.push('Please confirm whether Form 7004 (extension) was filed.');
-    if (includeReasonableCause && reasonableCauseReasons.length === 0) errs.push('Select at least one reason for the reasonable cause letter.');
+    // Reasons are only collected here for a single-year, genuinely-late filing.
+    // Multi-year jobs collect the RCL + reasons once at job setup; when 7004 was
+    // filed the RCL section is hidden entirely.
+    const rclSectionShown = !jobId && extensionFiled !== true;
+    if (rclSectionShown && includeReasonableCause && reasonableCauseReasons.length === 0) {
+      errs.push('Select at least one reason for the reasonable cause letter.');
+    }
     return errs;
   }
 
@@ -799,6 +914,27 @@ export function Intake() {
       const validTxns = transactions.filter(
         (t) => PART_V_TYPES.has(t.transaction_type) || PART_VI_TYPES.has(t.transaction_type) || (t.amount_usd && Number(t.amount_usd) > 0),
       );
+
+      // Reconcile with what is already stored: any DB row whose id is no longer
+      // present in the current (valid) set must be DELETED, so an edited filing
+      // replaces its transactions rather than accumulating stale ones. This also
+      // clears rows that were emptied out or removed in the UI.
+      const keptIds = new Set(validTxns.map((t) => t.id).filter(Boolean) as string[]);
+      const { data: existing } = await supabase
+        .from('reportable_transactions')
+        .select('id')
+        .eq('filing_id', activeFilingId);
+      const toDelete = (existing ?? [])
+        .map((r: { id: string }) => r.id)
+        .filter((id) => !keptIds.has(id));
+      if (toDelete.length > 0) {
+        const { error: delErr } = await supabase
+          .from('reportable_transactions')
+          .delete()
+          .in('id', toDelete);
+        if (delErr) throw delErr;
+      }
+
       if (validTxns.length === 0) return true;
 
       // Translate each row from the rich UI vocabulary into the canonical
@@ -929,24 +1065,26 @@ export function Intake() {
           owner_business_code: ownerBizCode.trim() || null,
           owner_naics_code: ownerBizCode.trim() || null,
           owner_address: ownerAddress,
+          signer_title: signerTitle.trim() || 'Managing Member',
           related_parties: relatedParties,
         });
       } catch { /* profile save is non-critical */ }
 
-      // Multi-year catch-up: after finishing this year, jump to the next year
-      // in the same job that still needs work; if all years are done, go to the
-      // (most-recent) filing's package page to review/download the whole job.
+      // Multi-year catch-up: file chronologically. After finishing this year,
+      // jump forward to the EARLIEST remaining draft year (ascending), so the
+      // user walks 2022 → 2023 → 2024 → 2025. When every year is done, go to the
+      // job's package page to review/download the whole catch-up.
       if (jobId) {
         const { data: siblings } = await supabase
           .from('filings')
           .select('id, tax_year, current_step, status')
           .eq('job_id', jobId)
-          .order('tax_year', { ascending: false });
+          .order('tax_year', { ascending: true });
         const nextYear = (siblings ?? []).find(
           (s) => s.id !== filingId && s.status === 'draft',
         );
         if (nextYear) {
-          navigate(`/intake?filing_id=${nextYear.id}`);
+          navigate(`/intake?filing_id=${nextYear.id}&step=1`);
           return;
         }
       }
@@ -1175,6 +1313,25 @@ export function Intake() {
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
+        {/* Intake page header — a clean, consistent title bar above the stepper */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              style={{ background: 'none', border: 'none', color: 'var(--tf-muted)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, padding: 0, marginBottom: '0.35rem' }}
+            >
+              ← Dashboard
+            </button>
+            <h1 style={{ fontSize: '1.375rem', lineHeight: 1.2, margin: 0, color: 'var(--tf-text)' }}>
+              {llcName?.trim() || 'Your Form 5472 filing'}
+            </h1>
+            <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0.2rem 0 0' }}>
+              Form 5472 + pro forma 1120 · Tax year {taxYear}
+            </p>
+          </div>
+        </div>
+
         {jobId && (
           <div style={{ background: 'rgba(var(--tf-accent-rgb), 0.08)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: 'var(--tf-text)' }}>
             <strong>Catch-up filing for tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
@@ -1190,14 +1347,19 @@ export function Intake() {
               const isPending = idx > currentStepIdx;
               const label = STEP_LABELS[String(s)];
               const shortLabel = s === '1b' ? 'Filing Status' : label;
+              // Navigable if it's an already-completed step, OR the whole filing
+              // has been completed once (then any step — including jumping from
+              // step 1 straight to step 5 — is reachable).
+              const navigable = isDone || completedOnce;
               return (
                 <button
                   key={String(s)}
                   type="button"
                   className={['stepper-pill', isActive ? 'stepper-pill--active' : '', isDone ? 'stepper-pill--done' : '', isPending ? 'stepper-pill--pending' : ''].join(' ')}
-                  onClick={() => { if (isDone) goToStepByIndex(idx); }}
+                  onClick={() => { if (navigable && !isActive) goToStepByIndex(idx); }}
                   aria-current={isActive ? 'step' : undefined}
-                  tabIndex={isDone ? 0 : -1}
+                  tabIndex={navigable ? 0 : -1}
+                  style={navigable && !isActive ? { cursor: 'pointer' } : undefined}
                 >
                   {isDone && <span className="stepper-check" aria-hidden="true">✓</span>}
                   {typeof s === 'number' ? `${s}. ` : ''}{shortLabel}
@@ -1206,6 +1368,18 @@ export function Intake() {
             })}
           </div>
         </nav>
+
+        {completedOnce && step !== 5 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.25rem', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => goToStepByIndex(stepOrder.length - 1)}
+              style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.25rem 0' }}
+            >
+              Done editing? Jump back to review →
+            </button>
+          </div>
+        )}
 
         {isPaidLocked && (
           <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
@@ -1238,6 +1412,35 @@ export function Intake() {
               </div>
             )}
 
+            {/* Nudge toward the multi-year catch-up when this looks like it
+                should be one: a single-year filing for a PAST year, or an
+                incorporation date several years before the year being filed
+                (implying earlier years were likely missed too). */}
+            {!jobId && !isPaidLocked && (() => {
+              const currentFilable = new Date().getUTCFullYear() - 1;
+              const ty = Number(taxYear);
+              const isPastYear = ty < currentFilable;
+              const doiYear = entityDOI ? Number(entityDOI.slice(0, 4)) : null;
+              const incorpBefore = doiYear != null && doiYear < ty;
+              if (!isPastYear && !incorpBefore) return null;
+              return (
+                <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+                  <strong>Filing more than one year?</strong>{' '}
+                  {incorpBefore
+                    ? `Your LLC was incorporated in ${doiYear}, so you may owe Form 5472 for every year since. `
+                    : `You're filing a past year. If you missed other years too, `}
+                  catching up on all of them together means one reasonable-cause letter covers them all — and you don't pay the $200 letter fee per year.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/catch-up')}
+                    style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  >
+                    Switch to a multi-year catch-up →
+                  </button>
+                </div>
+              );
+            })()}
+
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
@@ -1267,7 +1470,7 @@ export function Intake() {
                   </select>
                 </Field>
                 <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
-                  <input type="number" value={totalAssets} onChange={(e) => setTotalAssets(e.target.value)} placeholder="e.g. 50000" />
+                  <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
                 </Field>
                 <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
@@ -1316,16 +1519,22 @@ export function Intake() {
               {isFiscalYear && (
                 <>
                   <div style={{ ...gridStyle, marginTop: '0.875rem' }}>
-                    <Field label="Tax period begins" required tooltip="The first day of your LLC's fiscal year for this filing.">
-                      <input type="date" value={fiscalBegin} onChange={(e) => setFiscalBegin(e.target.value)} />
-                    </Field>
-                    <Field label="Tax period ends" required tooltip="The last day of your LLC's fiscal year for this filing.">
-                      <input type="date" value={fiscalEnd} onChange={(e) => setFiscalEnd(e.target.value)} />
+                    <Field label="Fiscal year-end month" required tooltip="The month your LLC's fiscal year ends. We derive the exact tax period from your tax year, so it always lines up with the year you're filing.">
+                      <select value={fiscalEndMonth} onChange={(e) => setFiscalEndMonth(e.target.value ? Number(e.target.value) : '')}>
+                        <option value="">Select month</option>
+                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                          <option key={m} value={i + 1}>{m}</option>
+                        ))}
+                      </select>
                     </Field>
                   </div>
-                  <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
-                    <strong>Fiscal-year filing. Please review carefully.</strong> Fiscal-year returns are less common. We'll generate your forms using these dates. Double-check the period and your filing due date before submitting.
-                  </div>
+                  {fiscalEndMonth !== '' && (
+                    <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
+                      <strong>Fiscal-year filing.</strong> For tax year {taxYear}, your period runs{' '}
+                      {(() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${p.begin} through ${p.end}`; })()}.
+                      Double-check your filing due date before submitting.
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1387,6 +1596,27 @@ export function Intake() {
               </div>
             </section>
 
+            {extensionFiled === true && (
+              <section style={sectionStyle}>
+                <div className="cat-banner-green">
+                  <strong>You filed Form 7004 on time.</strong> Because a valid extension was
+                  filed before the original deadline, this year is not late — a reasonable
+                  cause letter is not needed.
+                </div>
+              </section>
+            )}
+
+            {jobId && extensionFiled !== true && (
+              <section style={sectionStyle}>
+                <div className="cat-banner-green">
+                  <strong>Your reasonable cause letter is handled for the whole catch-up.</strong> You
+                  chose whether to include it, and gave your reasons, when you selected your years — one
+                  letter covers every year, so there's nothing to repeat here.
+                </div>
+              </section>
+            )}
+
+            {!jobId && extensionFiled !== true && (
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Reasonable cause letter</h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
@@ -1412,24 +1642,31 @@ export function Intake() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {REASONABLE_CAUSE_REASONS.map((r) => {
                       const checked = reasonableCauseReasons.includes(r.value);
+                      const toggle = () => setReasonableCauseReasons((prev) => checked ? prev.filter((x) => x !== r.value) : [...prev, r.value]);
                       return (
-                        <label
+                        <div
                           key={r.value}
+                          role="checkbox"
+                          aria-checked={checked}
+                          tabIndex={0}
                           className={`select-card${checked ? ' is-selected' : ''}`}
-                          onClick={() => setReasonableCauseReasons((prev) => checked ? prev.filter((x) => x !== r.value) : [...prev, r.value])}
+                          style={{ cursor: 'pointer' }}
+                          onClick={toggle}
+                          onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } }}
                         >
-                          <input type="checkbox" checked={checked} readOnly />
+                          <input type="checkbox" checked={checked} readOnly tabIndex={-1} style={{ pointerEvents: 'none' }} />
                           <div>
                             <div className="select-card-label">{r.label}</div>
                             <div className="select-card-hint">{r.hint}</div>
                           </div>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
               )}
             </section>
+            )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
@@ -1458,6 +1695,13 @@ export function Intake() {
                     }}
                     placeholder="e.g. Rahul Sharma"
                     disabled={isPaidLocked}
+                  />
+                </Field>
+                <Field label="Your title / role" tooltip="How you'll sign the return, e.g. Managing Member, Member, President. This prints on the Form 1120 signature block and any reasonable-cause letter. Defaults to Managing Member.">
+                  <input
+                    value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="Managing Member"
                   />
                 </Field>
                 <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">
@@ -1831,11 +2075,9 @@ export function Intake() {
                     <strong>Straightforward. Nothing extra needed from you.</strong> This is a routine item between you and the LLC. Just enter the amount below and we handle the paperwork.
                   </div>
                 )}
-                {txType && txCategory === 2 && (
-                  <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
-                    <strong>Reportable, and we’ve got it.</strong> This needs to be reported, but it’s a standard case. Enter the details below and we’ll put it on the right part of the form for you.
-                  </div>
-                )}
+                {/* Category 2 (standard, reportable) shows no banner — we only
+                    surface a note when the user needs a warning or must give an
+                    explicit acknowledgment (category 3). */}
                 {txType && txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
@@ -1860,7 +2102,7 @@ export function Intake() {
                       label="Beginning balance (USD)"
                       hint="Outstanding loan balance at the START of the tax year (0 if the loan started this year)"
                     >
-                      <input type="number" min={0} value={txLoanBegin} onChange={(e) => setTxLoanBegin(e.target.value)} placeholder="0" />
+                      <input type="text" inputMode="numeric" value={formatMoney(txLoanBegin)} onChange={(e) => setTxLoanBegin(stripMoney(e.target.value))} placeholder="0" />
                     </Field>
                   )}
                   <Field
@@ -1869,7 +2111,7 @@ export function Intake() {
                     tooltip={selectedTxMeta?.amountOptional ? undefined : selectedTxMeta?.amountHint}
                     required={!selectedTxMeta?.amountOptional && !PART_V_TYPES.has(txType) && !PART_VI_TYPES.has(txType)}
                   >
-                    <input type="number" min={0} value={txAmt} onChange={(e) => setTxAmt(e.target.value)} placeholder="0" />
+                    <input type="text" inputMode="numeric" value={formatMoney(txAmt)} onChange={(e) => setTxAmt(stripMoney(e.target.value))} placeholder="0" />
                   </Field>
                   <Field label="Transaction date" status="optional">
                     <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
@@ -1936,7 +2178,7 @@ export function Intake() {
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear) ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
-                {isFiscalYear && <SummaryRow label="Fiscal year" value={`${fiscalBegin || '—'} to ${fiscalEnd || '—'}`} />}
+                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${p.begin} to ${p.end}`; })() : '—'} />}
               </div>
             </section>
 
@@ -2043,7 +2285,13 @@ export function Intake() {
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
               <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || (isPaidLocked && editsRemaining === 0)}>
-                {saving ? 'Submitting…' : isPaidLocked ? 'Save corrections & re-download' : 'Submit for processing'}
+                {saving
+                  ? 'Submitting…'
+                  : isPaidLocked
+                    ? 'Save corrections & re-download'
+                    : jobId
+                      ? (hasNextDraftYear ? 'Save & file next year →' : 'Finish & review all years')
+                      : 'Save & continue to review'}
               </button>
             </div>
           </div>
