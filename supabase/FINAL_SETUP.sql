@@ -67,10 +67,14 @@ create table if not exists public.filing_jobs (
   tax_years     int[]       not null default '{}',
   include_rcl   boolean     not null default false,
   rcl_narrative text,
+  reasonable_cause_reasons text[] default '{}',
   delivery      text        not null default 'self_mail' check (delivery in ('self_mail','fax')),
   status        text        not null default 'draft'
 );
 alter table public.filing_jobs enable row level security;
+-- Reasonable-cause reasons are collected ONCE for the whole multi-year job.
+alter table public.filing_jobs
+  add column if not exists reasonable_cause_reasons text[] default '{}';
 
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='filing_jobs' and policyname='Users manage own filing jobs') then

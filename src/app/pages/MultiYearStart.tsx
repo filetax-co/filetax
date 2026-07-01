@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { loadProfile } from '../../lib/filingProfile';
+import { REASONABLE_CAUSE_REASONS } from './intake/constants';
 
 const EARLIEST_YEAR = 2019;
 
@@ -40,15 +41,31 @@ export function MultiYearStart() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [includeRcl, setIncludeRcl] = useState(true);
+  const [rclReasons, setRclReasons] = useState<string[]>([]);
+  const [incorpDate, setIncorpDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const toggle = (y: number) =>
+  // The entity can't have a filing obligation before it existed. Once the
+  // incorporation date is known, years before that year are not selectable.
+  const incorpYear = incorpDate ? Number(incorpDate.split('-')[0]) : null;
+  const isYearEligible = (y: number) => incorpYear == null || y >= incorpYear;
+
+  const toggle = (y: number) => {
+    if (!isYearEligible(y)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       next.has(y) ? next.delete(y) : next.add(y);
       return next;
     });
+  };
+
+  // Drop any now-ineligible years if the incorporation date changes.
+  const handleIncorpChange = (v: string) => {
+    setIncorpDate(v);
+    const y = v ? Number(v.split('-')[0]) : null;
+    if (y != null) setSelected((prev) => new Set([...prev].filter((yr) => yr >= y)));
+  };
 
   async function createJob() {
     if (!user || selected.size === 0 || busy) return;
@@ -61,7 +78,13 @@ export function MultiYearStart() {
       // 1. Create the job (holds the shared RCL).
       const { data: job, error: jobErr } = await supabase
         .from('filing_jobs')
-        .insert({ user_id: user.id, tax_years: chosen, include_rcl: includeRcl, status: 'draft' })
+        .insert({
+          user_id: user.id,
+          tax_years: chosen,
+          include_rcl: includeRcl,
+          reasonable_cause_reasons: includeRcl ? rclReasons : [],
+          status: 'draft',
+        })
         .select('id')
         .single();
       if (jobErr || !job) throw new Error(jobErr?.message ?? 'Could not create the catch-up job.');
@@ -73,7 +96,7 @@ export function MultiYearStart() {
             llc_name: profile.llc_name ?? null,
             ein: profile.ein ?? null,
             state_of_formation: profile.state_of_formation ?? null,
-            date_of_incorporation: profile.date_of_incorporation ?? null,
+            date_of_incorporation: incorpDate || profile.date_of_incorporation || null,
             mailing_address: profile.mailing_address ?? null,
             naics_code: profile.naics_code ?? profile.entity_business_code ?? null,
             naics_description: profile.naics_description ?? profile.entity_business_activity ?? null,
@@ -95,9 +118,13 @@ export function MultiYearStart() {
           }
         : {};
 
-      // 3. One filing per year, linked to the job.
+      // 3. One filing per year, linked to the job. Every row carries the
+      //    incorporation date (so an initial-return short year is derived) and
+      //    the shared RCL flag. The reasonable-cause REASONS live on the job and
+      //    are collected once, not per year.
       const rows = chosen.map((y) => ({
         ...seed,
+        date_of_incorporation: incorpDate || (seed.date_of_incorporation as string | null | undefined) || null,
         user_id: user.id,
         job_id: job.id,
         service_type: 'past_year',
@@ -112,9 +139,10 @@ export function MultiYearStart() {
         .select('id, tax_year');
       if (insErr || !created) throw new Error(insErr?.message ?? 'Could not create the year filings.');
 
-      // 4. Go to the most recent year's intake first.
-      const mostRecent = created.sort((a, b) => Number(b.tax_year) - Number(a.tax_year))[0];
-      navigate(`/intake?filing_id=${mostRecent.id}`);
+      // 4. Go to the EARLIEST year's intake first, then walk forward year by
+      //    year so the catch-up is filed in chronological order.
+      const earliest = created.sort((a, b) => Number(a.tax_year) - Number(b.tax_year))[0];
+      navigate(`/intake?filing_id=${earliest.id}`);
     } catch (e) {
       setBusy(false);
       setError(e instanceof Error ? e.message : 'Something went wrong.');
@@ -138,21 +166,40 @@ export function MultiYearStart() {
           across every year. You’ll only add each year’s transactions.
         </p>
 
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.375rem' }}>
+            LLC incorporation date
+          </label>
+          <input
+            type="date"
+            value={incorpDate}
+            onChange={(e) => handleIncorpChange(e.target.value)}
+            style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-surface)', color: 'var(--tf-text)', fontSize: '0.9375rem' }}
+          />
+          <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.375rem', lineHeight: 1.5 }}>
+            We use this to lock out years before your LLC existed, so you only file the years you actually owe.
+          </p>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '0.5rem', marginBottom: '1.5rem' }}>
           {years.map((y) => {
             const on = selected.has(y);
+            const eligible = isYearEligible(y);
             return (
               <button
                 key={y}
                 type="button"
                 onClick={() => toggle(y)}
                 aria-pressed={on}
+                disabled={!eligible}
+                title={eligible ? undefined : `Your LLC was not incorporated until ${incorpYear}`}
                 style={{
                   padding: '0.75rem 0.5rem', borderRadius: '0.5rem',
                   border: `1.5px solid ${on ? 'var(--tf-accent)' : 'var(--tf-border)'}`,
                   background: on ? 'rgba(var(--tf-accent-rgb), 0.10)' : 'var(--tf-surface)',
                   color: 'var(--tf-text)', fontWeight: 700, fontSize: '1rem',
-                  cursor: 'pointer', minHeight: '48px',
+                  cursor: eligible ? 'pointer' : 'not-allowed', minHeight: '48px',
+                  opacity: eligible ? 1 : 0.4,
                 }}
               >
                 {y}
@@ -164,10 +211,47 @@ export function MultiYearStart() {
         <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: 'pointer', marginBottom: '1.5rem' }}>
           <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }} />
           <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
-            <strong>Include a reasonable-cause letter (recommended).</strong> One letter, covering every year
+            <strong>Include a reasonable-cause letter ($200, recommended).</strong> One letter, covering every year
             above, asking the IRS to waive the late-filing penalty. Strongly recommended when filing late.
           </span>
         </label>
+
+        {includeRcl && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>
+              Why were these years filed late? (select all that apply — asked once for every year)
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {REASONABLE_CAUSE_REASONS.map((r) => {
+                const checked = rclReasons.includes(r.value);
+                const toggleReason = () => setRclReasons((prev) => checked ? prev.filter((x) => x !== r.value) : [...prev, r.value]);
+                return (
+                  <div
+                    key={r.value}
+                    role="checkbox"
+                    aria-checked={checked}
+                    tabIndex={0}
+                    onClick={toggleReason}
+                    onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleReason(); } }}
+                    style={{
+                      display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+                      padding: '0.75rem 0.875rem', borderRadius: '0.5rem',
+                      border: `1px solid ${checked ? 'var(--tf-accent)' : 'var(--tf-border)'}`,
+                      background: checked ? 'rgba(var(--tf-accent-rgb), 0.08)' : 'var(--tf-surface)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input type="checkbox" checked={checked} readOnly tabIndex={-1} style={{ marginTop: 2, pointerEvents: 'none', accentColor: 'var(--tf-accent)' }} />
+                    <span>
+                      <span style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--tf-text)' }}>{r.label}</span>
+                      <span style={{ display: 'block', fontSize: '0.8125rem', color: 'var(--tf-muted)', lineHeight: 1.45 }}>{r.hint}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>{error}</div>

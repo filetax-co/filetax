@@ -485,6 +485,8 @@ export function Intake() {
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
+  // For a multi-year job: is there another draft year AFTER this one to file?
+  const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
   // Payment-integrity state: a paid filing locks its identity fields forever
   // and allows only a capped number of corrections to other fields.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
@@ -580,6 +582,21 @@ export function Intake() {
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
       setJobId((f as any).job_id ?? null);
+      // Determine whether a later draft year remains in this job (drives the
+      // submit-button label: "File next year" vs "Finish & review").
+      const thisJobId = (f as any).job_id ?? null;
+      if (thisJobId) {
+        const { data: sibs } = await supabase
+          .from('filings')
+          .select('id, tax_year, status')
+          .eq('job_id', thisJobId);
+        const remaining = (sibs ?? []).some(
+          (s: any) => s.id !== filingId && s.status === 'draft',
+        );
+        setHasNextDraftYear(remaining);
+      } else {
+        setHasNextDraftYear(false);
+      }
       setFinalReturn((f as any).final_return ?? false);
       setIsFiscalYear((f as any).is_fiscal_year ?? false);
       const storedEnd = (f as any).tax_period_end as string | null | undefined;
@@ -1034,20 +1051,21 @@ export function Intake() {
         });
       } catch { /* profile save is non-critical */ }
 
-      // Multi-year catch-up: after finishing this year, jump to the next year
-      // in the same job that still needs work; if all years are done, go to the
-      // (most-recent) filing's package page to review/download the whole job.
+      // Multi-year catch-up: file chronologically. After finishing this year,
+      // jump forward to the EARLIEST remaining draft year (ascending), so the
+      // user walks 2022 → 2023 → 2024 → 2025. When every year is done, go to the
+      // job's package page to review/download the whole catch-up.
       if (jobId) {
         const { data: siblings } = await supabase
           .from('filings')
           .select('id, tax_year, current_step, status')
           .eq('job_id', jobId)
-          .order('tax_year', { ascending: false });
+          .order('tax_year', { ascending: true });
         const nextYear = (siblings ?? []).find(
           (s) => s.id !== filingId && s.status === 'draft',
         );
         if (nextYear) {
-          navigate(`/intake?filing_id=${nextYear.id}`);
+          navigate(`/intake?filing_id=${nextYear.id}&step=1`);
           return;
         }
       }
@@ -1504,7 +1522,17 @@ export function Intake() {
               </section>
             )}
 
-            {extensionFiled !== true && (
+            {jobId && extensionFiled !== true && (
+              <section style={sectionStyle}>
+                <div className="cat-banner-green">
+                  <strong>Your reasonable cause letter is handled for the whole catch-up.</strong> You
+                  chose whether to include it, and gave your reasons, when you selected your years — one
+                  letter covers every year, so there's nothing to repeat here.
+                </div>
+              </section>
+            )}
+
+            {!jobId && extensionFiled !== true && (
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Reasonable cause letter</h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
@@ -2166,7 +2194,13 @@ export function Intake() {
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
               <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || (isPaidLocked && editsRemaining === 0)}>
-                {saving ? 'Submitting…' : isPaidLocked ? 'Save corrections & re-download' : 'Submit for processing'}
+                {saving
+                  ? 'Submitting…'
+                  : isPaidLocked
+                    ? 'Save corrections & re-download'
+                    : jobId
+                      ? (hasNextDraftYear ? 'Save & file next year →' : 'Finish & review all years')
+                      : 'Save & continue to review'}
               </button>
             </div>
           </div>

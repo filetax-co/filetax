@@ -493,12 +493,16 @@ function FilingCard({ f }: { f: Filing }) {
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
 function JobCard({ filings }: { filings: Filing[] }) {
   const sorted = [...filings].sort((a, b) => Number(b.tax_year) - Number(a.tax_year));
+  // Chronological (ascending) order to find the EARLIEST unfilled year.
+  const chronological = [...filings].sort((a, b) => Number(a.tax_year) - Number(b.tax_year));
   const years = sorted.map((f) => f.tax_year).filter(Boolean);
   const llc = sorted.find((f) => f.llc_name)?.llc_name?.trim() || 'Catch-up filing';
   const remaining = sorted.filter((f) => f.status === 'draft' || f.status === 'in_progress').length;
   const allReady = sorted.every((f) => f.status === 'paid' || f.status === 'completed');
-  // Where the primary action should go: first unfinished year, else the most recent (download).
-  const target = sorted.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
+  // Continue → the EARLIEST year still needing work, so the catch-up is filed in
+  // chronological order. When every year is done, the action points at the job's
+  // review/download page (most-recent filing).
+  const target = chronological.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
 
   return (
     <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>

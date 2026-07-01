@@ -1348,17 +1348,10 @@ export interface FilingPackage {
   formCount: number;
 }
 
-// Build a plain-language reasonable-cause narrative from the selected reason
-// codes when the user gave no free-text. Falls back to null (the letter then
-// uses its own default narrative).
-const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): string | null => {
-  const free = (filing['rcl_narrative'] as string | undefined)?.trim();
-  if (free) return free;
-  const reasons = filing.reasonable_cause_reasons as string[] | null | undefined;
-  if (!reasons || reasons.length === 0) return null;
-  // Each reason renders as its own fully-formed paragraph, in the voice of an
-  // experienced preparer, tied to the reasonable-cause standard. Paragraphs are
-  // separated by a blank line; buildReasonableCauseLetter splits on blank lines.
+// Each reason renders as its own fully-formed paragraph, in the voice of an
+// experienced preparer, tied to the reasonable-cause standard. Paragraphs are
+// separated by a blank line; buildReasonableCauseLetter splits on blank lines.
+const RCL_REASON_PARAGRAPHS: Record<string, string> = (() => {
   const paragraphs: Record<string, string> = {
     first_time_filing:
       'This is the owner’s first filing obligation of any kind within the United States. ' +
@@ -1409,9 +1402,27 @@ const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): stri
       'preparer and calendaring the annual deadline — to ensure that Form 5472 is filed ' +
       'timely in all future years. The lapse was isolated and will not recur.',
   };
-  const chosen = reasons.map((r) => paragraphs[r]).filter(Boolean);
-  if (chosen.length === 0) return null;
-  return chosen.join('\n\n');
+  return paragraphs;
+})();
+
+/**
+ * Build a professional, multi-paragraph reasonable-cause narrative (one
+ * paragraph per selected reason). Returns null when no reasons are given so the
+ * letter falls back to its own default narrative.
+ */
+export const narrativeFromReasonCodes = (
+  reasons: string[] | null | undefined,
+): string | null => {
+  if (!reasons || reasons.length === 0) return null;
+  const chosen = reasons.map((r) => RCL_REASON_PARAGRAPHS[r]).filter(Boolean);
+  return chosen.length ? chosen.join('\n\n') : null;
+};
+
+// Build the narrative for a single-year filing: free-text wins, else reason codes.
+const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): string | null => {
+  const free = (filing['rcl_narrative'] as string | undefined)?.trim();
+  if (free) return free;
+  return narrativeFromReasonCodes(filing.reasonable_cause_reasons as string[] | null | undefined);
 };
 
 /**
