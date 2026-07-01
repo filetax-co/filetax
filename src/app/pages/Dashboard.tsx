@@ -430,13 +430,13 @@ export function Dashboard() {
 
           {/* Secondary / additional services */}
           <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem 1.25rem', flexWrap: 'wrap', padding: '1rem 1.25rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Also available:</span>
-            <button onClick={() => startFiling('tax_classification')} disabled={busy !== null} style={linkBtnStyle}>
-              LLC tax classification change (8832 / 2553) · $50
-            </button>
+            <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Coming soon:</span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
-              IRS fax submission add-on · Form 7004, FBAR &amp; more coming soon
+              LLC tax classification change (8832 / 2553) · $50 &nbsp;·&nbsp; IRS fax submission add-on &nbsp;·&nbsp; Form 7004, FBAR &amp; more
             </span>
+            <button onClick={() => navigate('/waitlist')} style={linkBtnStyle}>
+              Join the waitlist →
+            </button>
           </div>
         </div>
         <style>{`@media (max-width: 800px) { .dash-services { grid-template-columns: 1fr !important; } }`}</style>
@@ -519,12 +519,22 @@ function JobCard({ filings }: { filings: Filing[] }) {
             {remaining > 0 ? ` · ${remaining} year${remaining > 1 ? 's' : ''} left to complete` : allReady ? ' · all years ready' : ''}
           </p>
         </div>
-        <Link
-          to={filingPath(target)}
-          style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
-        >
-          {remaining > 0 ? 'Continue' : 'Download all'}
-        </Link>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+          <Link
+            to={filingPath(target)}
+            style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+          >
+            {remaining > 0 ? 'Continue' : 'Download all'}
+          </Link>
+          {!allReady && sorted[0]?.job_id && (
+            <Link
+              to={`/catch-up?job=${sorted[0].job_id}`}
+              style={{ color: 'var(--tf-accent)', fontSize: '0.78rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
+            >
+              Add or remove years
+            </Link>
+          )}
+        </div>
       </div>
       <div style={{ borderTop: '1px solid var(--tf-border)' }}>
         {sorted.map((f) => {

@@ -12,8 +12,8 @@
  * began for tax years beginning on/after 2017; 2019 is our supported floor and
  * there is no statute of limitations on these penalties).
  */
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
@@ -30,6 +30,10 @@ export function MultiYearStart() {
 
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [params] = useSearchParams();
+  // When editing an existing job (before payment), we reconcile years instead of
+  // creating a new job.
+  const editJobId = params.get('job');
 
   // Most recent filable year = last completed calendar year.
   const latestYear = new Date().getUTCFullYear() - 1;
@@ -45,6 +49,38 @@ export function MultiYearStart() {
   const [incorpDate, setIncorpDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [anyYearPaid, setAnyYearPaid] = useState(false);
+
+  // When editing an existing job, prefill the selected years, RCL choice,
+  // reasons and incorporation date from the job and its filings.
+  useEffect(() => {
+    if (!editJobId || !user) return;
+    let cancelled = false;
+    (async () => {
+      const { data: job } = await supabase
+        .from('filing_jobs')
+        .select('include_rcl, reasonable_cause_reasons')
+        .eq('id', editJobId)
+        .single();
+      const { data: fs } = await supabase
+        .from('filings')
+        .select('tax_year, status, date_of_incorporation')
+        .eq('job_id', editJobId);
+      if (cancelled) return;
+      if (job) {
+        setIncludeRcl(!!job.include_rcl);
+        setRclReasons(((job as any).reasonable_cause_reasons as string[] | null) ?? []);
+      }
+      if (fs && fs.length) {
+        setSelected(new Set(fs.map((f: any) => Number(f.tax_year))));
+        const doi = fs.find((f: any) => f.date_of_incorporation)?.date_of_incorporation;
+        if (doi) setIncorpDate(doi);
+        // If any year is already paid, years can no longer be changed.
+        setAnyYearPaid(fs.some((f: any) => f.status === 'paid' || f.status === 'completed'));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editJobId, user]);
 
   // The entity can't have a filing obligation before it existed. Once the
   // incorporation date is known, years before that year are not selectable.
@@ -67,7 +103,99 @@ export function MultiYearStart() {
     if (y != null) setSelected((prev) => new Set([...prev].filter((yr) => yr >= y)));
   };
 
+  async function reconcileJob() {
+    if (!user || !editJobId || selected.size === 0 || busy || anyYearPaid) return;
+    setBusy(true);
+    setError('');
+    const chosen = [...selected].sort((a, b) => a - b);
+    try {
+      // Update the job-level choices.
+      await supabase.from('filing_jobs').update({
+        tax_years: [...chosen].sort((a, b) => b - a),
+        include_rcl: includeRcl,
+        reasonable_cause_reasons: includeRcl ? rclReasons : [],
+      }).eq('id', editJobId);
+
+      // Existing (draft) year rows for this job.
+      const { data: existing } = await supabase
+        .from('filings')
+        .select('id, tax_year, status')
+        .eq('job_id', editJobId);
+      const existingYears = new Set((existing ?? []).map((f: any) => Number(f.tax_year)));
+
+      // Delete draft rows for years no longer selected (never touch paid rows).
+      const toDelete = (existing ?? []).filter(
+        (f: any) => !selected.has(Number(f.tax_year)) && f.status === 'draft',
+      );
+      if (toDelete.length) {
+        await supabase.from('filings').delete().in('id', toDelete.map((f: any) => f.id));
+      }
+
+      // Insert rows for newly-added years, seeded from the profile.
+      const newYears = chosen.filter((y) => !existingYears.has(y));
+      if (newYears.length) {
+        const profile = await loadProfile(user.id);
+        const seed = buildSeed(profile);
+        const rows = newYears.map((y) => ({
+          ...seed,
+          date_of_incorporation: incorpDate || (seed.date_of_incorporation as string | null) || null,
+          user_id: user.id,
+          job_id: editJobId,
+          service_type: 'past_year',
+          status: 'draft',
+          current_step: 1,
+          tax_year: String(y),
+          include_rcl: includeRcl,
+        }));
+        await supabase.from('filings').insert(rows);
+      }
+
+      // Go to the earliest still-draft year.
+      const { data: after } = await supabase
+        .from('filings')
+        .select('id, tax_year, status')
+        .eq('job_id', editJobId)
+        .order('tax_year', { ascending: true });
+      const target = (after ?? []).find((f: any) => f.status === 'draft') ?? (after ?? [])[0];
+      if (target) navigate(`/intake?filing_id=${target.id}`);
+      else navigate('/dashboard');
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
+    }
+  }
+
+  function buildSeed(profile: Awaited<ReturnType<typeof loadProfile>>): Record<string, unknown> {
+    return profile
+      ? {
+          llc_name: profile.llc_name ?? null,
+          ein: profile.ein ?? null,
+          state_of_formation: profile.state_of_formation ?? null,
+          date_of_incorporation: incorpDate || profile.date_of_incorporation || null,
+          mailing_address: profile.mailing_address ?? null,
+          naics_code: profile.naics_code ?? profile.entity_business_code ?? null,
+          naics_description: profile.naics_description ?? profile.entity_business_activity ?? null,
+          entity_business_activity: profile.entity_business_activity ?? null,
+          entity_business_code: profile.entity_business_code ?? null,
+          owner_full_name: profile.owner_full_name ?? null,
+          owner_country: profile.owner_country ?? null,
+          owner_primary_country: profile.owner_primary_country ?? null,
+          owner_country_residence: profile.owner_country_residence ?? null,
+          owner_country_citizenship: profile.owner_country_citizenship ?? null,
+          owner_foreign_tax_id: profile.owner_foreign_tax_id ?? null,
+          owner_us_tin: profile.owner_us_tin ?? null,
+          owner_reference_id: profile.owner_reference_id ?? null,
+          owner_address: profile.owner_address ?? null,
+          owner_business_activity: profile.owner_business_activity ?? null,
+          owner_business_code: profile.owner_business_code ?? null,
+          owner_naics_code: profile.owner_naics_code ?? null,
+          related_parties: profile.related_parties ?? [],
+        }
+      : {};
+  }
+
   async function createJob() {
+    if (editJobId) return reconcileJob();
     if (!user || selected.size === 0 || busy) return;
     setBusy(true);
     setError('');
@@ -91,32 +219,7 @@ export function MultiYearStart() {
 
       // 2. Prefill entity/owner from the saved profile so every year carries it.
       const profile = await loadProfile(user.id);
-      const seed: Record<string, unknown> = profile
-        ? {
-            llc_name: profile.llc_name ?? null,
-            ein: profile.ein ?? null,
-            state_of_formation: profile.state_of_formation ?? null,
-            date_of_incorporation: incorpDate || profile.date_of_incorporation || null,
-            mailing_address: profile.mailing_address ?? null,
-            naics_code: profile.naics_code ?? profile.entity_business_code ?? null,
-            naics_description: profile.naics_description ?? profile.entity_business_activity ?? null,
-            entity_business_activity: profile.entity_business_activity ?? null,
-            entity_business_code: profile.entity_business_code ?? null,
-            owner_full_name: profile.owner_full_name ?? null,
-            owner_country: profile.owner_country ?? null,
-            owner_primary_country: profile.owner_primary_country ?? null,
-            owner_country_residence: profile.owner_country_residence ?? null,
-            owner_country_citizenship: profile.owner_country_citizenship ?? null,
-            owner_foreign_tax_id: profile.owner_foreign_tax_id ?? null,
-            owner_us_tin: profile.owner_us_tin ?? null,
-            owner_reference_id: profile.owner_reference_id ?? null,
-            owner_address: profile.owner_address ?? null,
-            owner_business_activity: profile.owner_business_activity ?? null,
-            owner_business_code: profile.owner_business_code ?? null,
-            owner_naics_code: profile.owner_naics_code ?? null,
-            related_parties: profile.related_parties ?? [],
-          }
-        : {};
+      const seed = buildSeed(profile);
 
       // 3. One filing per year, linked to the job. Every row carries the
       //    incorporation date (so an initial-return short year is derived) and
@@ -158,13 +261,20 @@ export function MultiYearStart() {
     <section style={{ background: 'var(--tf-bg)', minHeight: '80vh', padding: '3rem 1rem' }}>
       <div style={box}>
         <h1 style={{ fontSize: 'clamp(1.25rem, 3.5vw, 1.625rem)', marginBottom: '0.5rem' }}>
-          Which years do you need to file?
+          {editJobId ? 'Adjust the years you’re filing' : 'Which years do you need to file?'}
         </h1>
         <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
           Select every year you missed. We prepare a separate Form 5472 + pro forma 1120 for each year,
           and a single reasonable-cause letter that covers all of them. Your LLC and owner details carry
           across every year. You’ll only add each year’s transactions.
         </p>
+
+        {editJobId && anyYearPaid && (
+          <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+            <strong>Years are locked.</strong> One or more years in this catch-up have already been paid,
+            so the set of years can no longer be changed. Continue from your dashboard to finish or download.
+          </div>
+        )}
 
         <div style={{ marginBottom: '1.5rem' }}>
           <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.375rem' }}>
@@ -259,15 +369,21 @@ export function MultiYearStart() {
 
         <button
           onClick={createJob}
-          disabled={selected.size === 0 || busy}
+          disabled={selected.size === 0 || busy || (editJobId != null && anyYearPaid)}
           style={{
             background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600,
             fontSize: '0.9375rem', padding: '0.875rem 1.5rem', borderRadius: '0.5rem', border: 'none',
-            cursor: selected.size === 0 || busy ? 'not-allowed' : 'pointer',
-            opacity: selected.size === 0 || busy ? 0.5 : 1, width: '100%', minHeight: 48,
+            cursor: selected.size === 0 || busy || (editJobId != null && anyYearPaid) ? 'not-allowed' : 'pointer',
+            opacity: selected.size === 0 || busy || (editJobId != null && anyYearPaid) ? 0.5 : 1, width: '100%', minHeight: 48,
           }}
         >
-          {busy ? 'Setting up…' : selected.size === 0 ? 'Select at least one year' : `Continue with ${selected.size} year${selected.size > 1 ? 's' : ''}`}
+          {busy
+            ? 'Saving…'
+            : selected.size === 0
+              ? 'Select at least one year'
+              : editJobId
+                ? `Save ${selected.size} year${selected.size > 1 ? 's' : ''}`
+                : `Continue with ${selected.size} year${selected.size > 1 ? 's' : ''}`}
         </button>
         <button
           onClick={() => navigate('/dashboard')}

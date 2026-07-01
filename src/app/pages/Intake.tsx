@@ -487,6 +487,9 @@ export function Intake() {
   const [jobId, setJobId] = useState<string | null>(null);
   // For a multi-year job: is there another draft year AFTER this one to file?
   const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
+  // Once a filing has been completed at least once (submitted / paid), every
+  // step is freely navigable — from step 1 the user can jump straight to step 5.
+  const [completedOnce, setCompletedOnce] = useState(false);
   // Payment-integrity state: a paid filing locks its identity fields forever
   // and allows only a capped number of corrections to other fields.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
@@ -554,6 +557,9 @@ export function Intake() {
       // than blocking the whole filing.
       setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
       setPostPaymentEdits((f as any).post_payment_edits ?? 0);
+      // A filing that has moved past 'draft' has been through every step once,
+      // so allow free step navigation on return visits.
+      setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -1294,6 +1300,25 @@ export function Intake() {
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
+        {/* Intake page header — a clean, consistent title bar above the stepper */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              style={{ background: 'none', border: 'none', color: 'var(--tf-muted)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, padding: 0, marginBottom: '0.35rem' }}
+            >
+              ← Dashboard
+            </button>
+            <h1 style={{ fontSize: '1.375rem', lineHeight: 1.2, margin: 0, color: 'var(--tf-text)' }}>
+              {llcName?.trim() || 'Your Form 5472 filing'}
+            </h1>
+            <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0.2rem 0 0' }}>
+              Form 5472 + pro forma 1120 · Tax year {taxYear}
+            </p>
+          </div>
+        </div>
+
         {jobId && (
           <div style={{ background: 'rgba(var(--tf-accent-rgb), 0.08)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: 'var(--tf-text)' }}>
             <strong>Catch-up filing for tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
@@ -1309,14 +1334,19 @@ export function Intake() {
               const isPending = idx > currentStepIdx;
               const label = STEP_LABELS[String(s)];
               const shortLabel = s === '1b' ? 'Filing Status' : label;
+              // Navigable if it's an already-completed step, OR the whole filing
+              // has been completed once (then any step — including jumping from
+              // step 1 straight to step 5 — is reachable).
+              const navigable = isDone || completedOnce;
               return (
                 <button
                   key={String(s)}
                   type="button"
                   className={['stepper-pill', isActive ? 'stepper-pill--active' : '', isDone ? 'stepper-pill--done' : '', isPending ? 'stepper-pill--pending' : ''].join(' ')}
-                  onClick={() => { if (isDone) goToStepByIndex(idx); }}
+                  onClick={() => { if (navigable && !isActive) goToStepByIndex(idx); }}
                   aria-current={isActive ? 'step' : undefined}
-                  tabIndex={isDone ? 0 : -1}
+                  tabIndex={navigable ? 0 : -1}
+                  style={navigable && !isActive ? { cursor: 'pointer' } : undefined}
                 >
                   {isDone && <span className="stepper-check" aria-hidden="true">✓</span>}
                   {typeof s === 'number' ? `${s}. ` : ''}{shortLabel}
@@ -1325,6 +1355,18 @@ export function Intake() {
             })}
           </div>
         </nav>
+
+        {completedOnce && step !== 5 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.25rem', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => goToStepByIndex(stepOrder.length - 1)}
+              style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.25rem 0' }}
+            >
+              Done editing? Jump back to review →
+            </button>
+          </div>
+        )}
 
         {isPaidLocked && (
           <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
@@ -1356,6 +1398,35 @@ export function Intake() {
                 <strong>We’ve pre-filled your details from your last filing.</strong> Please review everything below and update anything that changed. Your edits here apply to this filing only.
               </div>
             )}
+
+            {/* Nudge toward the multi-year catch-up when this looks like it
+                should be one: a single-year filing for a PAST year, or an
+                incorporation date several years before the year being filed
+                (implying earlier years were likely missed too). */}
+            {!jobId && !isPaidLocked && (() => {
+              const currentFilable = new Date().getUTCFullYear() - 1;
+              const ty = Number(taxYear);
+              const isPastYear = ty < currentFilable;
+              const doiYear = entityDOI ? Number(entityDOI.slice(0, 4)) : null;
+              const incorpBefore = doiYear != null && doiYear < ty;
+              if (!isPastYear && !incorpBefore) return null;
+              return (
+                <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+                  <strong>Filing more than one year?</strong>{' '}
+                  {incorpBefore
+                    ? `Your LLC was incorporated in ${doiYear}, so you may owe Form 5472 for every year since. `
+                    : `You're filing a past year. If you missed other years too, `}
+                  catching up on all of them together means one reasonable-cause letter covers them all — and you don't pay the $200 letter fee per year.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/catch-up')}
+                    style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  >
+                    Switch to a multi-year catch-up →
+                  </button>
+                </div>
+              );
+            })()}
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
