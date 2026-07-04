@@ -11,14 +11,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    // PKCE is required for reliable password-reset and email-confirmation
-    // flows in SPAs (no server-side callback). Supabase exchanges the code
-    // verifier stored in sessionStorage with the `code` param in the URL.
-    flowType: 'pkce',
-    // Explicitly tell the client to parse tokens from the URL on page load.
-    // Critical on GitHub Pages where the app is served from a sub-path
-    // (/5472/) — without this, recovery/confirmation redirects are silently
-    // ignored and the user is never signed in.
+    flowType: 'implicit',
     detectSessionInUrl: true,
   },
 });
