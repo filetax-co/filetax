@@ -62,6 +62,15 @@ const fmtDate = (iso: string | null | undefined): string => {
   return `${monthName} ${Number(d)}, ${y}`;
 };
 
+/** Format an ISO date (YYYY-MM-DD) as numeric MM/DD/YYYY (the IRS form format). */
+const fmtDateNumeric = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const parts = iso.split('-');
+  const [y, m, d] = parts;
+  if (!y || !m || !d || parts.length !== 3) return '';
+  return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+};
+
 const loadPdf = async (url: string): Promise<PDFDocument> => {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Failed to fetch PDF: ${url} (${resp.status})`);
@@ -165,7 +174,7 @@ const buildFullAddress = (a: Address | null): string => {
  */
 const buildNameAndAddress = (name: string, a: Address | null): string => {
   const addr = buildFullAddress(a);
-  return addr ? `${name}\n${addr}` : name;
+  return addr ? `${name} - ${addr}` : name;
 };
 
 // ─── period & initial-return derivation ─────────────────────────────────────────────────
@@ -195,21 +204,24 @@ const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPerio
   const year = filing.tax_year != null ? Number(filing.tax_year) : taxYear;
 
   const incorpISO = filing.date_of_incorporation ?? null;
-  const incorpYear = incorpISO
-    ? new Date(`${incorpISO}T12:00:00`).getFullYear()
-    : 0;
 
-  // Initial return: explicit flag, or inferred when the entity was formed in
-  // the tax year itself.
-  const isInitial = filing.initial_return ?? (incorpYear > 0 && incorpYear === year);
-
-  // Short-year begin = formation date when this is an initial return AND the
-  // entity was formed during the tax year; otherwise January 1.
-  const beginISO =
-    filing.tax_period_begin ??
-    (isInitial && incorpISO && incorpYear === year ? incorpISO : `${year}-01-01`);
-
+  // The nominal period is the fiscal period if supplied, else the calendar year.
+  const nominalBegin = filing.tax_period_begin ?? `${year}-01-01`;
   const endISO = filing.tax_period_end ?? `${year}-12-31`;
+
+  // An initial return is one whose formation date falls WITHIN the nominal
+  // period (inclusive). This works for both calendar and fiscal years — a
+  // fiscal period can span two calendar years, so we compare against the period
+  // bounds, not just the tax-year number.
+  const incorpInPeriod =
+    !!incorpISO && incorpISO >= nominalBegin && incorpISO <= endISO;
+  const isInitial = filing.initial_return ?? incorpInPeriod;
+
+  // Short-year begin: an initial return begins on the formation date (the entity
+  // did not exist before it), never before the nominal period start. Take the
+  // later of the two so a fiscal filer formed mid-period gets the formation date.
+  const beginISO =
+    isInitial && incorpISO && incorpISO > nominalBegin ? incorpISO : nominalBegin;
 
   return {
     beginISO,
@@ -615,11 +627,6 @@ export const buildPartVStatement = async (
 
     const label     = PART_V_TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type;
     const txDate    = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
-    const dirText   = tx.direction === 'paid'
-      ? 'Paid by LLC to related party'
-      : tx.direction === 'received'
-        ? 'Received by LLC from related party'
-        : tx.direction;
     const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
       ? `$${tx.amount_usd.toLocaleString('en-US')}`
       : 'N/A (nonmonetary, FMV not determinable)';
@@ -629,12 +636,12 @@ export const buildPartVStatement = async (
       { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 2;
 
-    // Omit the Description line entirely when the filer gave none — the label
-    // already identifies the transaction.
+    // The transaction label already states who paid whom (e.g. "Capital
+    // Contribution by Owner"), so a separate Direction line would be redundant
+    // and can read incorrectly — it is omitted. Description is omitted when blank.
     const fields: [string, string][] = [
-      ['Date:',        txDate],
-      ['Direction:',   dirText],
-      ['Amount:',      amtText],
+      ['Date:',   txDate],
+      ['Amount:', amtText],
       ...(desc ? [['Description:', desc] as [string, string]] : []),
     ];
 
@@ -702,7 +709,7 @@ export const buildPartVIStatement = async (
 
   drawStatementHeader(
     page, cursor,
-    'STATEMENT REQUIRED UNDER FORM 5472, PART VI: NONMONETARY AND LESS-THAN-FMV TRANSACTIONS',
+    'ATTACHMENT TO FORM 5472 – PART VI: NONMONETARY AND LESS-THAN-FULL CONSIDERATION TRANSACTIONS',
     filing, periodBegin, periodEnd, period.year, fonts,
   );
 
@@ -723,22 +730,26 @@ export const buildPartVIStatement = async (
   if (managerialOn) {
     itemNo += 1;
     cursor.y = drawWrapped(page,
-      `Item ${itemNo}: Managerial and Operational Services by Foreign Owner (FMV Not Determinable)`,
+      `Item ${itemNo}: Uncompensated Managerial and Operational Services by Foreign Owner`,
       MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 4;
 
-    const managerialText =
-      `During the tax year ended ${periodEnd}, ${ownerName} (the 25% foreign shareholder and ` +
-      `related party) provided managerial, operational, and administrative services to ` +
-      `${llcName} (the reporting corporation). These services included, but were not ` +
-      `limited to, general management, strategic decision-making, business development, ` +
-      `and operational oversight. The fair market value of these services cannot be ` +
-      `determined with reasonable certainty because no arm's-length charge was established ` +
-      `and no comparable uncontrolled transactions exist for this type of owner-directed ` +
-      `management activity. Accordingly, no dollar amount is reported on Part IV of ` +
-      `Form 5472 for these services, and they are disclosed here pursuant to Part VI.`;
+    const para1 =
+      `Pursuant to Treas. Reg. § 1.6038A-2(b)(4), the Reporting Corporation hereby discloses ` +
+      `that during the tax year ended ${periodEnd}, ${ownerName} (a 25% foreign shareholder and ` +
+      `related party) provided uncompensated administrative, managerial, and operational ` +
+      `services to the Reporting Corporation.`;
+    const para2 =
+      `These services encompassed general management, strategic decision-making, business ` +
+      `development, and operational oversight. No monetary consideration was paid, accrued, or ` +
+      `otherwise exchanged between the Reporting Corporation and the related party for these ` +
+      `services. Because the transaction involved no monetary consideration, no amounts are ` +
+      `reportable on Part IV, and the transaction is fully disclosed herein in compliance with ` +
+      `Part VI requirements.`;
 
-    cursor.y = drawWrapped(page, managerialText, MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
+    cursor.y = drawWrapped(page, para1, MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
+    cursor.y -= 8;
+    cursor.y = drawWrapped(page, para2, MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 16;
   }
 
@@ -1079,7 +1090,7 @@ const fill5472 = async (
   setText(doc, F.CORP_TOTAL_ASSETS,          fmt(filing.total_assets));
   setText(doc, F.CORP_ACTIVITY,              filing.naics_description ?? filing.owner.business_activity ?? '');
   setText(doc, F.CORP_ACTIVITY_CODE,         filing.naics_code ?? '');
-  setText(doc, F.CORP_DATE_OF_INCORPORATION, fmtDate(filing.date_of_incorporation));
+  setText(doc, F.CORP_DATE_OF_INCORPORATION, fmtDateNumeric(filing.date_of_incorporation));
   // The reporting corporation is a US entity: incorporated in and conducting
   // business in the United States. However, Part I line 1n "country of
   // residence" reflects where the entity's income is taxed — for a foreign-owned
@@ -1220,7 +1231,7 @@ const fill1120 = async (
   setText(doc, F.CORP_NAME,         filing.llc_name ?? '');
   setText(doc, F.EIN,               filing.ein ?? '');
   setText(doc, F.TOTAL_ASSETS,      fmt(filing.total_assets));
-  setText(doc, F.DATE_INCORPORATED, fmtDate(filing.date_of_incorporation));
+  setText(doc, F.DATE_INCORPORATED, fmtDateNumeric(filing.date_of_incorporation));
 
   // Address — some revisions have a single combined field (2019–2024),
   // others (fallback / 2025) use split fields. We write both sets;
@@ -1360,53 +1371,93 @@ export interface FilingPackage {
 const RCL_REASON_PARAGRAPHS: Record<string, string> = (() => {
   const paragraphs: Record<string, string> = {
     first_time_filing:
-      'This is the owner’s first filing obligation of any kind within the United States. ' +
-      'The owner had no prior experience with the U.S. federal tax system and no ' +
-      'established compliance history from which a Form 5472 obligation could reasonably ' +
-      'have been anticipated. A first-time, inadvertent omission by a taxpayer acting in ' +
-      'good faith is a classic circumstance of reasonable cause rather than willful neglect.',
+      'Lack of Prior U.S. Compliance History: The years at issue represent the Reporting ' +
+      'Corporation’s initial entry into the U.S. regulatory environment. Prior to this, the ' +
+      'foreign owner had zero U.S. tax compliance history and no established baseline from ' +
+      'which an IRC §6038A information reporting obligation could reasonably have been ' +
+      'anticipated. Under Treas. Reg. § 1.6038A-4(b)(2)(ii), the Service recognizes that an ' +
+      'honest misunderstanding of fact or law may constitute reasonable cause, particularly ' +
+      'where a taxpayer possesses no prior history of U.S. tax deficiencies. This isolated, ' +
+      'first-time omission was an inadvertent error by a taxpayer acting in good faith, not ' +
+      'an act of willful neglect.',
     relied_on_non_us_advisor:
-      'In forming and operating the entity, the owner relied in good faith on a non-U.S. ' +
-      'accountant and formation service. Those advisors were not conversant with the ' +
-      'information-reporting rules applicable to foreign-owned U.S. disregarded entities ' +
-      'and did not identify the Form 5472 requirement. Reasonable reliance on a competent ' +
-      'advisor is a recognized basis for reasonable cause.',
+      'Reasonable Reliance on Tax and Formation Professionals: In establishing and structuring ' +
+      'the U.S. entity, the owner exercised ordinary business care and prudence by retaining ' +
+      'and relying upon local professional advisors, and online formation services, in their ' +
+      'home jurisdiction. Unbeknownst to the taxpayer, these advisors and services lacked the ' +
+      'specific technical competency regarding the intersection of U.S. Disregarded Entity ' +
+      '(DRE) rules and cross-border information reporting. The taxpayer reasonably relied on ' +
+      'these engaged professionals and services to advise them of all initial statutory filing ' +
+      'requirements. As recognized by standard tax jurisprudence, a taxpayer’s good-faith ' +
+      'reliance on a professional advisor to identify filing obligations constitutes ' +
+      'reasonable cause.',
     not_informed:
-      'Neither the formation agent, the registered agent, the bank that opened the ' +
-      'entity’s account, nor any other party involved in establishing the entity advised ' +
-      'the owner that Form 5472 was required. The owner had no notice of the obligation ' +
-      'and no reasonable means of discovering it in the ordinary course of managing the entity.',
+      'Absence of Statutory Notice from U.S. Agents: At no point during the entity’s lifecycle ' +
+      'did the U.S. formation agent, the commercial registered agent, or the corresponding U.S. ' +
+      'banking institution issue any notice or advisory regarding the requirements of ' +
+      'IRC §6038A. The foreign owner had no reasonable means of discovering this highly ' +
+      'specialized reporting obligation in the ordinary course of managing a dormant or ' +
+      'low-activity LLC. The complete absence of standard advisory notices from the U.S. ' +
+      'institutions facilitating the entity’s formation severely impaired the taxpayer’s ' +
+      'ability to recognize the obligation.',
     no_tax_liability:
-      'The entity conducted limited activity and had no U.S. income tax liability for the ' +
-      'years at issue. The owner reasonably, if mistakenly, understood that an entity owing ' +
-      'no U.S. tax had no U.S. return to file, and was unaware that Form 5472 is an ' +
-      'information return required irrespective of any tax due. This good-faith ' +
-      'misunderstanding is precisely the kind of error the reasonable-cause standard excuses.',
+      'Good-Faith Misunderstanding of Complex Legal Requirements: The entity possessed no U.S. ' +
+      'effectively connected income (ECI) and carried zero U.S. income tax liability for the ' +
+      'years at issue. The taxpayer operated under the logical, albeit mistaken, belief that ' +
+      'an entity bearing no U.S. tax liability did not trigger an annual federal return ' +
+      'requirement. The regulatory framework here is exceptionally complex: ' +
+      'Treas. Reg. § 301.7701-3 treats the LLC as a disregarded entity for tax purposes, while ' +
+      'Treas. Reg. § 1.6038A-1(c)(1) simultaneously treats it as a domestic corporation solely ' +
+      'for information reporting. Misunderstanding this highly technical dichotomy constitutes ' +
+      'an honest mistake of law, firmly meeting the reasonable cause standard outlined in ' +
+      'IRM 20.1.1.3.2.2.1.',
     minimal_activity:
-      'The entity carried on minimal activity during the period, which reinforced the ' +
-      'owner’s good-faith belief that no filing was due and made the reporting obligation ' +
-      'easy to overlook despite the exercise of ordinary business care.',
+      'De Minimis Operational Activity: Throughout the periods at issue, the Reporting ' +
+      'Corporation operated with negligible to zero economic activity and engaged in minimal ' +
+      'reportable transactions. This dormant or near-dormant status strongly reinforced the ' +
+      'owner’s good-faith assumption that no U.S. reporting was required. Because there was no ' +
+      'underlying U.S. operational business generating income, the oversight of this strictly ' +
+      'informational filing was highly probable despite the exercise of ordinary business care ' +
+      'and prudence.',
     incomplete_records:
-      'The records and documentation necessary to prepare a complete and accurate return ' +
-      'were delayed or incomplete, in part because the entity was administered from ' +
-      'outside the United States. The owner did not file an incomplete or inaccurate ' +
-      'return, but instead assembled the information required to file correctly as soon as ' +
-      'it was reasonably practicable.',
+      'Geographic and Administrative Impediments: The administration of the Reporting ' +
+      'Corporation was conducted entirely from outside the United States, which resulted in ' +
+      'severe administrative delays in procuring and reconciling the precise financial records ' +
+      'required for U.S. compliance. Rather than filing an incomplete, estimated, or inaccurate ' +
+      'return, the taxpayer withheld filing until the correct documentation could be secured ' +
+      'and verified, ensuring the integrity of the eventual submission.',
     language_barrier:
-      'English is not the owner’s first language, and the technical requirements of the ' +
-      'U.S. tax system were unfamiliar and difficult to navigate. This materially impaired ' +
-      'the owner’s ability to identify the filing obligation notwithstanding good-faith effort.',
+      'Linguistic and Jurisdictional Unfamiliarity: English is not the foreign owner’s primary ' +
+      'language, which created a substantial barrier to independently navigating the Internal ' +
+      'Revenue Code. The Internal Revenue Manual (IRM 20.1.1.3.2.2.1) explicitly states that a ' +
+      'taxpayer’s education, background, and language capabilities must be considered when ' +
+      'determining if they exercised ordinary business care. The combination of a language ' +
+      'barrier and the opaque nature of U.S. cross-border tax statutes materially impaired the ' +
+      'taxpayer’s ability to self-identify the Form 5472 mandate despite honest efforts.',
     discovered_late:
-      'The owner learned of the Form 5472 requirement only recently, through professional ' +
-      'review, and had no earlier awareness of it. Upon discovery, the owner did not delay.',
+      'Immediate Remediation Upon Discovery: The taxpayer only became aware of the IRC §6038A ' +
+      'filing requirement during a recent, independent review of the entity’s global ' +
+      'administrative footprint. Upon discovering this delinquency, the taxpayer did not ' +
+      'hesitate, obscure the failure, or delay action. The immediate mobilization to rectify ' +
+      'the oversight demonstrates an inherent respect for U.S. tax laws and clearly illustrates ' +
+      'that the prior failure to file was the result of innocent ignorance rather than willful ' +
+      'neglect.',
     voluntary_filing:
-      'The Reporting Corporation is coming forward voluntarily. These delinquent returns ' +
-      'are being filed proactively, before any notice, examination, or other contact from ' +
-      'the Service. Voluntary compliance of this kind weighs strongly in favor of abatement.',
+      'Voluntary and Proactive Compliance: The Reporting Corporation is curing this delinquency ' +
+      'entirely on a voluntary basis. These returns are being submitted proactively, prior to ' +
+      'the issuance of any CP215 penalty notice, examination, or other enforcement contact from ' +
+      'the Service. Treas. Reg. § 1.6038A-4(b)(2)(ii) explicitly lists “whether the reporting ' +
+      'corporation voluntarily filed” as a primary factor in determining reasonable cause. This ' +
+      'unprompted self-correction weighs heavily in favor of full penalty abatement.',
     new_procedures:
-      'The owner has since implemented procedures — including engaging a qualified U.S. ' +
-      'preparer and calendaring the annual deadline — to ensure that Form 5472 is filed ' +
-      'timely in all future years. The lapse was isolated and will not recur.',
+      'Implementation of Robust Internal Controls for Future Compliance: To guarantee strict ' +
+      'adherence to U.S. tax laws moving forward, the Reporting Corporation has completely ' +
+      'overhauled its internal administrative protocols. The foreign owner has instituted a ' +
+      'rigorous compliance framework, permanently integrating the annual Form 5472 and pro ' +
+      'forma Form 1120 deadlines into the entity’s corporate governance calendar. These newly ' +
+      'implemented control measures ensure that this was a strictly isolated, first-time lapse ' +
+      'and that all future U.S. reporting obligations will be filed accurately and on time, ' +
+      'without exception.',
   };
   return paragraphs;
 })();

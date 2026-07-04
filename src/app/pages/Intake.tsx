@@ -74,8 +74,20 @@ function isValidEIN(val: string): boolean {
  * tax year being filed. Drives the Form 5472 / 1120 "Initial return" checkbox
  * and the short-year begin date.
  */
-function isInitialReturn(doiISO: string, taxYear: string): boolean {
+// True when the entity was formed WITHIN the filing period. For a calendar-year
+// filer that's simply "formed in the tax year". For a fiscal-year filer the
+// period can span two calendar years, so we test membership in the derived
+// [begin, end] window.
+function isInitialReturn(
+  doiISO: string,
+  taxYear: string,
+  fiscalEndMonth?: number | '',
+): boolean {
   if (!doiISO) return false;
+  if (fiscalEndMonth && fiscalEndMonth !== 12) {
+    const { begin, end } = deriveFiscalPeriod(taxYear, fiscalEndMonth);
+    return doiISO >= begin && doiISO <= end;
+  }
   const y = Number(doiISO.slice(0, 4));
   return y > 0 && y === Number(taxYear);
 }
@@ -115,19 +127,31 @@ function stripMoney(raw: string): string {
 }
 
 // ── Fiscal period derivation ────────────────────────────────────────────────
-// A fiscal year that ENDS in month M of tax year Y runs from the first day of
-// the following month in the prior year (Y-1) through the last day of month M
-// in year Y. Returns ISO begin/end strings.
+// A fiscal tax year is DESIGNATED by the calendar year in which it BEGINS —
+// the IRS convention. So "tax year Y" begins on the first day of month (M+1) in
+// year Y and ends on the last day of month M in the FOLLOWING year (Y+1).
+// e.g. fiscal year ending March, tax year 2025 → April 1, 2025 through
+// March 31, 2026 (filed on the 2025 form). A December end (M=12) is the plain
+// calendar year Y.
 function deriveFiscalPeriod(taxYear: string, endMonth: number): { begin: string; end: string } {
   const y = Number(taxYear);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const lastDay = new Date(y, endMonth, 0).getDate(); // day 0 of next month = last day of endMonth
-  const end = `${y}-${pad(endMonth)}-${pad(lastDay)}`;
-  // Begin is the first day of the month AFTER endMonth, one year earlier.
-  const beginMonth = endMonth === 12 ? 1 : endMonth + 1;
-  const beginYear = endMonth === 12 ? y : y - 1;
-  const begin = `${beginYear}-${pad(beginMonth)}-01`;
+  if (endMonth === 12) {
+    return { begin: `${y}-01-01`, end: `${y}-12-31` };
+  }
+  const begin = `${y}-${pad(endMonth + 1)}-01`;
+  const endYear = y + 1;
+  const lastDay = new Date(endYear, endMonth, 0).getDate(); // last day of endMonth in Y+1
+  const end = `${endYear}-${pad(endMonth)}-${pad(lastDay)}`;
   return { begin, end };
+}
+
+/** Display an ISO date (YYYY-MM-DD) as MM/DD/YYYY. */
+function formatDateMMDDYYYY(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
 }
 
 /** Format a numeric string with thousands separators for display. */
@@ -722,8 +746,8 @@ export function Intake() {
       date_of_incorporation: entityDOI.trim() || null,
       naics_code: entityBizCode.trim() || null,
       naics_description: entityBizActivity.trim() || null,
-      // Initial return: the LLC was formed during the tax year being filed.
-      initial_return: isInitialReturn(entityDOI, taxYear),
+      // Initial return: the LLC was formed within the filing period (calendar or fiscal).
+      initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
       // Final return + fiscal-year (non-calendar) period.
       final_return: finalReturn,
       is_fiscal_year: isFiscalYear,
@@ -786,12 +810,22 @@ export function Intake() {
     if (entityDOI && taxYear) {
       const doiYear = Number(entityDOI.slice(0, 4));
       const ty = Number(taxYear);
-      // The LLC must already exist during the year being filed: it cannot be
-      // incorporated after the tax year.
-      if (doiYear > ty) {
-        errs.push(`The incorporation date (${entityDOI}) is after the ${ty} tax year. An LLC cannot be incorporated after the year it is filing for. Check the date or the tax year.`);
-      } else if (doiYear < 1900 || doiYear > ty + 1) {
-        errs.push('Check the date of incorporation. The year does not look right.');
+      if (isFiscalYear && fiscalEndMonth && fiscalEndMonth !== 12) {
+        // Fiscal filer: the period can run into the following calendar year, so
+        // validate against the derived period end rather than the tax-year number.
+        const { end } = deriveFiscalPeriod(taxYear, fiscalEndMonth);
+        if (entityDOI > end) {
+          errs.push(`The incorporation date (${entityDOI}) is after the end of the ${ty} fiscal year (${end}). An LLC cannot be incorporated after the period it is filing for. Check the date, the tax year, or the fiscal year-end.`);
+        } else if (doiYear < 1900) {
+          errs.push('Check the date of incorporation. The year does not look right.');
+        }
+      } else {
+        // Calendar filer: the LLC must exist during the tax year.
+        if (doiYear > ty) {
+          errs.push(`The incorporation date (${entityDOI}) is after the ${ty} tax year. An LLC cannot be incorporated after the year it is filing for. Check the date or the tax year.`);
+        } else if (doiYear < 1900) {
+          errs.push('Check the date of incorporation. The year does not look right.');
+        }
       }
     }
     if (!entityPrincipalCountry) errs.push('Select the principal country where business is conducted.');
@@ -1472,8 +1506,13 @@ export function Intake() {
                 <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
                 </Field>
-                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
+                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation). It prints on the forms in MM/DD/YYYY format.">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
+                  {entityDOI && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                      Prints as {formatDateMMDDYYYY(entityDOI)} (MM/DD/YYYY)
+                    </span>
+                  )}
                 </Field>
                 <Field label="Principal country where business is conducted" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
@@ -1728,7 +1767,7 @@ export function Intake() {
                 <Field label="US tax ID" hint="SSN, ITIN, or EIN, if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
-                <Field label="Your reference code" hint="Used internally on Form 5472" required tooltip="A short code that identifies you on the form (e.g. your initials + 001). We suggest one automatically, and you can keep it or change it. It just needs to be consistent.">
+                <Field label="Your reference code" required tooltip="A short code that identifies you on Form 5472 (Part II/III, 'Reference ID number'). It is printed on the form itself — the IRS uses it to match the shareholder and related party. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
                   <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. RAH001" />
                 </Field>
               </div>
@@ -1839,7 +1878,7 @@ export function Intake() {
                     <Field label="Tax ID (their country)" hint="e.g. PAN, UTR, NIF, SIN" required>
                       <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="Local tax ID" />
                     </Field>
-                    <Field label="Reference code" hint="Used internally on Form 5472" required>
+                    <Field label="Reference code" required tooltip="A short code identifying this related party on Form 5472 (Part III, 'Reference ID number'). It is printed on the form; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
                     </Field>
                     <Field label="Type of business" required>
@@ -2070,14 +2109,9 @@ export function Intake() {
                       1 → routine, nothing extra needed (green)
                       2 → reportable but straightforward, we handle it (amber/blue)
                       3 → complex, CPA review recommended + acknowledgment (red) */}
-                {txType && txCategory === 1 && (
-                  <div className="cat-banner-green" style={{ marginBottom: '1rem' }}>
-                    <strong>Straightforward. Nothing extra needed from you.</strong> This is a routine item between you and the LLC. Just enter the amount below and we handle the paperwork.
-                  </div>
-                )}
-                {/* Category 2 (standard, reportable) shows no banner — we only
-                    surface a note when the user needs a warning or must give an
-                    explicit acknowledgment (category 3). */}
+                {/* Categories 1 (routine) and 2 (standard reportable) show no
+                    banner — we only surface a note when the user needs a warning
+                    or must give an explicit acknowledgment (category 3). */}
                 {txType && txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
@@ -2171,12 +2205,12 @@ export function Intake() {
                 <SummaryRow label="State of formation" value={stateOfFormation} />
                 <SummaryRow label="Tax year" value={taxYear} />
                 <SummaryRow label="Total assets" value={totalAssets ? `USD ${Number(totalAssets).toLocaleString()}` : null} />
-                <SummaryRow label="Date of incorporation" value={entityDOI} />
+                <SummaryRow label="Date of incorporation" value={formatDateMMDDYYYY(entityDOI)} />
                 <SummaryRow label="Principal country" value={entityPrincipalCountry} />
                 <SummaryRow label="Business type" value={entityBizActivity} />
                 <SummaryRow label="Business code" value={entityBizCode} />
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
-                <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear) ? 'Yes' : 'No'} />
+                <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
                 {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${p.begin} to ${p.end}`; })() : '—'} />}
               </div>

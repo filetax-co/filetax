@@ -251,6 +251,33 @@ export function Dashboard() {
     navigate(`/intake?filing_id=${data.id}`);
   }
 
+  // Delete an unpaid (draft / in-progress) filing. Paid or completed filings are
+  // never deletable — a payment must remain auditable. Its transactions cascade
+  // (FK on delete), and if it was the last year of a multi-year job we also
+  // remove the now-empty job row.
+  async function deleteFiling(f: Filing) {
+    if (f.status === 'paid' || f.status === 'completed' || f.status === 'submitted') return;
+    if (!window.confirm(`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}? This can't be undone.`)) return;
+    setBusy(`del-${f.id}`);
+    setError('');
+    const { error } = await supabase.from('filings').delete().eq('id', f.id);
+    if (error) {
+      setBusy(null);
+      setError(error.message);
+      return;
+    }
+    // If this belonged to a multi-year job and no siblings remain, drop the job.
+    if (f.job_id) {
+      const { data: siblings } = await supabase
+        .from('filings').select('id').eq('job_id', f.job_id);
+      if (!siblings || siblings.length === 0) {
+        await supabase.from('filing_jobs').delete().eq('id', f.job_id);
+      }
+    }
+    setFilings((prev) => prev.filter((x) => x.id !== f.id));
+    setBusy(null);
+  }
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -389,7 +416,14 @@ export function Dashboard() {
                         {BUCKET_TITLE[b]}
                       </h3>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {byBucket.get(b)!.map((f) => <FilingCard key={f.id} f={f} />)}
+                        {byBucket.get(b)!.map((f) => (
+                          <FilingCard
+                            key={f.id}
+                            f={f}
+                            onDelete={deleteFiling}
+                            deleting={busy === `del-${f.id}`}
+                          />
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -455,10 +489,12 @@ export function Dashboard() {
 }
 
 // ── Filing card ──────────────────────────────────────────────────────────────
-function FilingCard({ f }: { f: Filing }) {
+function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted') ? dueState(f.tax_year) : null;
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
+  // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
+  const deletable = f.status === 'draft' || f.status === 'in_progress';
   return (
     <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
       <div style={{ minWidth: 0, flex: 1 }}>
@@ -480,12 +516,26 @@ function FilingCard({ f }: { f: Filing }) {
           {(f.status === 'draft' || f.status === 'in_progress') ? ` · Step ${f.current_step} of 5` : ''}
         </p>
       </div>
-      <Link
-        to={filingPath(f)}
-        style={{ background: f.status === 'completed' ? 'transparent' : 'var(--tf-accent)', color: f.status === 'completed' ? 'var(--tf-accent)' : 'var(--tf-on-accent)', border: f.status === 'completed' ? '1px solid var(--tf-border)' : 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
-      >
-        {actionLabel(f.status)}
-      </Link>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+        <Link
+          to={filingPath(f)}
+          style={{ background: f.status === 'completed' ? 'transparent' : 'var(--tf-accent)', color: f.status === 'completed' ? 'var(--tf-accent)' : 'var(--tf-on-accent)', border: f.status === 'completed' ? '1px solid var(--tf-border)' : 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+        >
+          {actionLabel(f.status)}
+        </Link>
+        {deletable && onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(f)}
+            disabled={deleting}
+            title="Delete this unpaid filing"
+            aria-label="Delete this unpaid filing"
+            style={{ background: 'transparent', border: '1px solid var(--tf-border)', color: 'var(--tf-muted)', fontWeight: 600, fontSize: '0.8125rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', cursor: deleting ? 'not-allowed' : 'pointer', minHeight: '40px', opacity: deleting ? 0.5 : 1 }}
+          >
+            {deleting ? '…' : 'Delete'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
