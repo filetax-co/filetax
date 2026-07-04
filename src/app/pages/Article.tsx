@@ -331,7 +331,9 @@ export function Article() {
     description: post
       ? (post.seoDescription ?? post.excerpt ?? "").slice(0, 160)
       : "This article could not be found.",
-      canonical: `https://filetax.co/resources/${slug}`,
+    canonical: slug
+      ? `https://filetax.co/resources/${slug}`
+      : "https://filetax.co/resources",
   });
 
   // Loading state
