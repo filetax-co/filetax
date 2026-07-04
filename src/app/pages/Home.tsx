@@ -7,6 +7,7 @@ export function Home() {
     title: "File Form 5472 + Pro Forma 1120 | FileTax.co",
     description:
       "Generate IRS-ready Form 5472 and Pro Forma 1120 for foreign-owned U.S. single-member LLCs. Catch up on missed years before the IRS notices. Pay per filing. Start without an account.",
+    canonical: "https://filetax.co/",
   });
 
   return (
