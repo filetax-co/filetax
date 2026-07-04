@@ -104,6 +104,7 @@ export function Pricing() {
     title: "Pricing | FileTax.co",
     description:
       "Per-filing pricing. Form 5472 + Pro Forma 1120: $150. Past year with CPA-Authored Reasonable Cause Letter: $350 per year. No subscription. No ongoing fees.",
+    canonical: "https://filetax.co/pricing",
   });
 
   return (
