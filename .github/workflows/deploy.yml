@@ -36,6 +36,12 @@ jobs:
       - name: Copy index.html to 404.html for SPA routing
         run: cp dist/index.html dist/404.html
 
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Prerender routes
+        run: npm run prerender
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
