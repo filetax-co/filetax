@@ -21,6 +21,7 @@ export function Waitlist() {
     title: "Join the Waitlist | FileTax.co",
     description:
       "Get notified when a new service launches on FileTax.co. Enter your name and email and select the services you are interested in.",
+    canonical: "https://filetax.co/waitlist",
   });
 
   const [searchParams] = useSearchParams();
