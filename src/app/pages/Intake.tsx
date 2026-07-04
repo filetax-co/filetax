@@ -1767,7 +1767,7 @@ export function Intake() {
                 <Field label="US tax ID" hint="SSN, ITIN, or EIN, if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
-                <Field label="Your reference code" required tooltip="A short code that identifies you on Form 5472 (Part II/III, 'Reference ID number'). It is printed on the form itself — the IRS uses it to match the shareholder and related party. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
+                <Field label="Your reference code" required tooltip="A short code that identifies you. It is printed on Form 5472. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
                   <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. RAH001" />
                 </Field>
               </div>
@@ -1878,7 +1878,7 @@ export function Intake() {
                     <Field label="Tax ID (their country)" hint="e.g. PAN, UTR, NIF, SIN" required>
                       <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="Local tax ID" />
                     </Field>
-                    <Field label="Reference code" required tooltip="A short code identifying this related party on Form 5472 (Part III, 'Reference ID number'). It is printed on the form; keep it consistent.">
+                    <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
                     </Field>
                     <Field label="Type of business" required>

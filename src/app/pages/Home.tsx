@@ -145,7 +145,7 @@ export function Home() {
             How it works
           </h2>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", marginBottom: "2.5rem" }}>
-            The process is designed to be fast and straightforward.
+            Four steps from start to a filing you can mail.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[

@@ -894,28 +894,29 @@ export const buildReasonableCauseLetter = async (
   drawRule(page, cursor);
 
   cursor.y = drawWrapped(page,
-    `Taxpayer: ${filing.llc_name ?? ''}    EIN: ${filing.ein ?? ''}`,
+    `Taxpayer: ${filing.llc_name ?? ''}`,
     MARGIN, cursor.y, { size: FS_BODY }, fonts);
-  cursor.y = drawWrapped(page, `Covering: ${yearsText}.`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y = drawWrapped(page, `Employer Identification Number: ${filing.ein ?? ''}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y = drawWrapped(page, `Tax year(s) covered: ${yearsText}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 14;
 
   cursor.y = drawWrapped(page, 'To the Internal Revenue Service:', MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 10;
 
   const intro =
-    `${filing.llc_name ?? 'The taxpayer'} (the "Reporting Corporation"), a U.S. limited ` +
-    `liability company treated as a foreign-owned disregarded entity, respectfully ` +
-    `requests abatement of any penalties asserted under Internal Revenue Code §6038A ` +
-    `for the late filing of Form 5472 (with the accompanying pro forma Form 1120) for ` +
-    `${yearsText}. The Reporting Corporation is filing these returns voluntarily and ` +
-    `proactively, before any contact from the IRS, and submits the following statement ` +
-    `of reasonable cause.`;
+    `${filing.llc_name ?? 'The taxpayer'} (the “Reporting Corporation”), a U.S. limited ` +
+    `liability company wholly owned by a non-U.S. person and treated as a foreign-owned ` +
+    `disregarded entity, respectfully requests that the Internal Revenue Service abate in ` +
+    `full any penalties asserted under Internal Revenue Code §6038A in connection with the ` +
+    `late filing of Form 5472, and the accompanying pro forma Form 1120, for ${yearsText}. ` +
+    `These returns are being filed voluntarily, before any notice or examination. The ` +
+    `specific facts establishing reasonable cause are set out below.`;
   cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 12;
 
-  cursor.y = drawWrapped(page, 'Statement of facts and reasonable cause:', MARGIN, cursor.y,
+  cursor.y = drawWrapped(page, 'Statement of Facts and Reasonable Cause', MARGIN, cursor.y,
     { size: FS_BODY, font: bold }, fonts);
-  cursor.y -= 4;
+  cursor.y -= 6;
 
   const DEFAULT_BODY =
     'The Reporting Corporation is wholly owned by a non-U.S. individual who, at the ' +
