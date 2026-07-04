@@ -13,31 +13,30 @@ export function AuthConfirm() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token_hash = params.get('token_hash');
-    const type = params.get('type');
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
 
-    if (!token_hash || !type) {
-      setErrorMsg('Invalid confirmation link. Please try signing up again.');
-      setStatus('error');
-      return;
-    }
+  if (!code) {
+    setErrorMsg('Invalid confirmation link. Please try signing up again.');
+    setStatus('error');
+    return;
+  }
 
-    supabase.auth
-      .verifyOtp({ token_hash, type: type as 'signup' | 'email' })
-      .then(({ error }) => {
-        if (error) {
-          setErrorMsg(
-            error.message.includes('expired') || error.message.includes('invalid')
-              ? 'This confirmation link has expired or already been used. Please sign up again or request a new link.'
-              : error.message,
-          );
-          setStatus('error');
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-      });
-  }, [navigate]);
+  supabase.auth
+    .exchangeCodeForSession(code)
+    .then(({ error }) => {
+      if (error) {
+        setErrorMsg(
+          error.message.includes('expired') || error.message.includes('invalid')
+            ? 'This confirmation link has expired or already been used. Please sign up again or request a new link.'
+            : error.message,
+        );
+        setStatus('error');
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    });
+}, [navigate]);
 
   const containerStyle: React.CSSProperties = {
     minHeight: '60vh',
