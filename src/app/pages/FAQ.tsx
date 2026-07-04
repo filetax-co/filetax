@@ -57,6 +57,7 @@ export function FAQ() {
     title: "Frequently Asked Questions | FileTax.co",
     description:
       "Common questions about Form 5472, Pro Forma 1120, IRS penalties, the CPA-Authored Reasonable Cause Letter, and how FileTax.co works. Clear answers for foreign LLC owners.",
+    canonical: "https://filetax.co/faq",
   });
 
   const [open, setOpen] = useState<number | null>(null);
