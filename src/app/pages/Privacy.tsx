@@ -39,6 +39,7 @@ export function Privacy() {
   usePageMeta({
     title: `Privacy Policy | ${COMPANY_NAME}`,
     description: `How ${COMPANY_NAME} collects, uses, and protects your personal and tax information.`,
+    canonical: "https://filetax.co/privacy",
   });
 
   return (
