@@ -39,6 +39,7 @@ export function Terms() {
   usePageMeta({
     title: `Terms of Service | ${COMPANY_NAME}`,
     description: `The terms and conditions that govern your use of ${COMPANY_NAME} services.`,
+    canonical: "https://filetax.co/terms",
   });
 
   return (
