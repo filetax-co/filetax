@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabase';
 
 /**
- * /auth/confirm — handles the email confirmation link that Supabase sends
- * after a user signs up. Supabase appends token_hash + type as query params.
- * We verify the OTP, then redirect to /dashboard on success or show an error.
+ * /auth/confirm — landing page after Supabase's email confirmation link.
+ * With implicit flow + detectSessionInUrl: true, the Supabase client
+ * automatically parses the access_token from the URL hash fragment and
+ * creates the session before this component even mounts. We just check
+ * if a session now exists and redirect accordingly.
  */
 export function AuthConfirm() {
   const navigate = useNavigate();
@@ -13,30 +15,14 @@ export function AuthConfirm() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token_hash = params.get('token_hash');
-    const type = params.get('type');
-  
-    if (!token_hash || !type) {
-      setErrorMsg('Invalid confirmation link. Please try signing up again.');
-      setStatus('error');
-      return;
-    }
-  
-    supabase.auth
-      .verifyOtp({ token_hash, type: type as 'signup' | 'email' })
-      .then(({ error }) => {
-        if (error) {
-          setErrorMsg(
-            error.message.includes('expired') || error.message.includes('invalid')
-              ? 'This confirmation link has expired or already been used. Please sign up again or request a new link.'
-              : error.message,
-          );
-          setStatus('error');
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-      });
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error || !data.session) {
+        setErrorMsg('Invalid confirmation link. Please try signing up again.');
+        setStatus('error');
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    });
   }, [navigate]);
 
   const containerStyle: React.CSSProperties = {
