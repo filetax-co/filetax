@@ -74,6 +74,7 @@ export function Resources() {
     title: "Resources | FileTax.co",
     description:
       "Guides and articles about Form 5472 filing requirements, IRS penalties, Reasonable Cause Letters, LLC formation, and U.S. tax compliance for foreign founders.",
+    canonical: "https://filetax.co/resources",
   });
 
   const [posts, setPosts] = useState<Post[]>([]);
