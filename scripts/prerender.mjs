@@ -78,13 +78,11 @@ function startStaticServer() {
         let urlPath = decodeURIComponent(req.url.split('?')[0]);
         let filePath = join(DIST_DIR, urlPath);
 
-        // Serve nested route index.html if the path has no extension
         if (!extname(filePath)) {
           filePath = join(filePath, 'index.html');
         }
 
         if (!existsSync(filePath)) {
-          // Fall back to the original SPA shell for unknown paths
           filePath = join(DIST_DIR, 'index.html');
         }
 
@@ -114,9 +112,21 @@ async function prerenderRoute(page, route) {
   const url = `${BASE_URL}${route}`;
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 
-  // Give client-side data fetches (Sanity calls) a moment to settle.
-  // Article pages depend on this since content loads after mount.
-  await page.waitForTimeout(800);
+  const isArticle = route.startsWith('/resources/') && route !== '/resources';
+
+  if (isArticle) {
+    // Wait for the breadcrumb nav, which only renders once the Sanity
+    // fetch has resolved and `post` is populated (not during loading
+    // or not-found states). This avoids baking "Loading article..." or
+    // "This article could not be found" into the static HTML.
+    try {
+      await page.waitForSelector('nav[aria-label="Breadcrumb"]', { timeout: 15000 });
+    } catch {
+      console.warn(`WARNING: ${route} never reached loaded state (still "Loading..." or "not found") after 15s`);
+    }
+  } else {
+    await page.waitForTimeout(500);
+  }
 
   const html = await page.content();
   const outPath = routeToOutputPath(route);
