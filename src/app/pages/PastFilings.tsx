@@ -13,6 +13,7 @@ export function PastFilings() {
     title: "Missed Form 5472? Fix It Now | FileTax.co",
     description:
       "Late Form 5472 filing with a CPA-Authored Reasonable Cause Letter costs $350 per year. File past-year returns and request IRS penalty abatement before the IRS notices.",
+    canonical: "https://filetax.co/past-filings",
   });
 
   return (
