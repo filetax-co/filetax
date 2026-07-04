@@ -15,6 +15,7 @@ export function Services() {
     title: "Services | FileTax.co",
     description:
       "Form 5472 + Pro Forma 1120 filing, CPA-Authored Reasonable Cause Letters, LLC tax classification changes, and IRS fax transmission for foreign-owned U.S. LLCs.",
+    canonical: "https://filetax.co/services",
   });
 
   return (
