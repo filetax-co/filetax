@@ -26,3 +26,10 @@ scripts/_supabaseStub.ts
 
 # local harness state
 .claude/
+
+# macOS metadata
+._*
+.DS_Store
+
+# git bundles
+*.bundle
