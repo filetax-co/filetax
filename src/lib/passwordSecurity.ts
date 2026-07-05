@@ -16,6 +16,41 @@
  */
 
 // ---------------------------------------------------------------------------
+// 0. Explicit character-class requirements (synchronous, for live checklist)
+// ---------------------------------------------------------------------------
+//
+// These are the rules we SHOW the user up front and tick off live as they type,
+// so they know what's expected before submitting instead of after a rejection.
+// The zxcvbn strength score and the breach check below are additional gates run
+// on submit.
+
+export const PASSWORD_MIN_LENGTH = 8;
+
+export interface PasswordRule {
+  key: string;
+  label: string;
+  test: (pw: string) => boolean;
+}
+
+export const PASSWORD_RULES: PasswordRule[] = [
+  { key: 'length', label: `At least ${PASSWORD_MIN_LENGTH} characters`, test: (p) => p.length >= PASSWORD_MIN_LENGTH },
+  { key: 'lower', label: 'One lowercase letter (a–z)', test: (p) => /[a-z]/.test(p) },
+  { key: 'upper', label: 'One uppercase letter (A–Z)', test: (p) => /[A-Z]/.test(p) },
+  { key: 'number', label: 'One number (0–9)', test: (p) => /[0-9]/.test(p) },
+  { key: 'symbol', label: 'One symbol (!?@#$…)', test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+/** True when the password satisfies every character-class requirement. */
+export function meetsAllRules(password: string): boolean {
+  return PASSWORD_RULES.every((r) => r.test(password));
+}
+
+/** Which rules currently pass — used to render the live checklist. */
+export function ruleStatus(password: string): Record<string, boolean> {
+  return Object.fromEntries(PASSWORD_RULES.map((r) => [r.key, r.test(password)]));
+}
+
+// ---------------------------------------------------------------------------
 // 1. Strength check via zxcvbn (lazy-loaded to keep initial bundle small)
 // ---------------------------------------------------------------------------
 
@@ -99,16 +134,23 @@ export interface PasswordValidationResult {
 }
 
 /**
- * Run strength check then breach check in sequence.
- * Returns { ok: true } when the password passes both, or { ok: false, error }
- * with a user-facing message on the first failure.
- *
- * Minimum length (8 chars) is checked inline in Portal.tsx before calling
- * this function, so we only need score >= 3 and not-breached here.
+ * Runs, in order: explicit character-class rules, zxcvbn strength, then the
+ * breach check. Returns { ok: true } when the password passes all, or
+ * { ok: false, error } with a user-facing message on the first failure.
  */
 export async function validatePassword(
   password: string,
 ): Promise<PasswordValidationResult> {
+  // Step 0 — explicit requirements (length + character classes). These are the
+  // same rules shown as a live checklist next to the field.
+  if (!meetsAllRules(password)) {
+    const missing = PASSWORD_RULES.filter((r) => !r.test(password)).map((r) => r.label.toLowerCase());
+    return {
+      ok: false,
+      error: `Your password still needs: ${missing.join(', ')}.`,
+    };
+  }
+
   // Step 1 — strength
   const { score, feedback } = await checkStrength(password);
   if (score < 3) {

@@ -35,8 +35,11 @@ export const EARLIEST_SUPPORTED_TAX_YEAR = 2019;
 
 // ─── helpers ───────────────────────────────────────────────────────────────────────────────
 
+// Amounts printed on Form 5472 / Form 1120 use thousands separators
+// (e.g. 1,234,567). Zero and empty values print blank so the form isn't
+// littered with 0s on lines that have no activity.
 const fmt = (n: number | null | undefined): string =>
-  n != null && n !== 0 ? String(Math.round(n)) : '';
+  n != null && n !== 0 ? Math.round(n).toLocaleString('en-US') : '';
 
 const MONTH_NAMES = [
   '', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -78,12 +81,24 @@ const loadPdf = async (url: string): Promise<PDFDocument> => {
   return PDFDocument.load(buf);
 };
 
+// Uniform font size for every value typed into an IRS AcroForm field. The blank
+// IRS templates ship every field with an auto-size default appearance (size 0),
+// which makes pdf-lib shrink each field's text independently to fit its box — so
+// a long value renders much smaller than a short one and the printed forms look
+// uneven from page to page. Pinning one size makes all entered text uniform.
+// 9pt matches the statement/letter body size (FS_BODY) so the whole package
+// reads at one scale, and fits the IRS field boxes (median height ~12pt).
+const FORM_FIELD_FONT_SIZE = 9;
+
 const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
   if (!fieldName) return;
   try {
     const field = doc.getForm().getField(fieldName);
     if (field instanceof PDFTextField) {
       field.setText(value);
+      // Force a fixed size instead of the template's auto-size (0) so text is
+      // the same size across every field and every page.
+      field.setFontSize(FORM_FIELD_FONT_SIZE);
     }
   } catch {
     // Field not present in this revision — silently skip
@@ -399,39 +414,43 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
 
 // ─── total helpers ──────────────────────────────────────────────────────────────────────
 //
-// Per the IRS Instructions for Form 5472:
-//   • Line 22 = sum of the Part IV "amounts received" MONETARY-FLOW lines.
-//   • Line 36 = sum of the Part IV "amounts paid"     MONETARY-FLOW lines.
-//   • Loan balances (lines 17a/17b borrowed, 31a/31b loaned) are OUTSTANDING
-//     BALANCES, not flows — they are reported on their own lines and are NOT
-//     part of the line 22/36 totals.
+// Line 22 = "Total" of the Part IV amounts-received lines (9–21), and line 36 =
+// "Total" of the amounts-paid lines (23–35). The loan lines (17a/17b borrowed,
+// 31a/31b loaned) fall inside those ranges on the form, so the ENDING loan
+// balance (17b into line 22, 31b into line 36) is included in the totals — the
+// beginning balance is not (it would double-count the same loan).
 //   • Capital contributions and distributions are Part V transactions (owner /
 //     DE transactions), NOT Part IV — they are disclosed on the Part V
-//     statement and are NOT part of the line 22/36 totals.
-//   • Line 1f gross payments = line 22 + line 36 (+ Part VI FMV, which here is
-//     "not determinable"). So 1f/1h are built from these same totals.
+//     statement. They are added to the 1f/1h gross-payments figure but not to
+//     the Part IV line 22/36 subtotals.
+//   • Line 1f gross payments = line 22 + line 36 (+ Part V monetary + Part VI
+//     amount). So 1f/1h build on these same totals.
 
 const totalReceived = (t: AggregatedTransactions): number =>
   t.sales_received + t.tangible_prop_received + t.rents_received +
   t.royalties_received + t.intangible_received + t.services_received +
   t.commissions_received + t.interest_received + t.insurance_received +
-  t.loan_guarantee_received + t.other_received;
+  t.loan_guarantee_received + t.other_received +
+  // Line 17b — amounts borrowed, ending balance (rolls into the line 22 total).
+  t.borrowed_end;
 
 const totalPaid = (t: AggregatedTransactions): number =>
   t.sales_paid + t.tangible_prop_paid + t.rents_paid +
   t.royalties_paid + t.intangible_paid + t.services_paid +
   t.commissions_paid + t.interest_paid + t.insurance_paid +
-  t.loan_guarantee_paid + t.other_paid;
+  t.loan_guarantee_paid + t.other_paid +
+  // Line 31b — amounts loaned, ending balance (rolls into the line 36 total).
+  t.loaned_end;
 
 /**
  * Gross payments for Form 5472 line 1f (this form) / line 1h (all forms).
  *
  * Line 1f/1h are the aggregate of the monetary transactions reported for the
- * related party. Per requirement, this includes not only the Part IV flows but
- * also the monetary Part V transactions (owner distributions, capital
- * contributions, dividends) and any monetary Part VI amounts (consideration on
- * property transfers / other nonmonetary items where an amount was recorded).
- * Loan balances (17a/17b, 31a/31b) remain balances, not flows, and are excluded.
+ * related party. This includes the Part IV totals (line 22 + line 36, which now
+ * carry the ending loan balances on 17b/31b), the monetary Part V transactions
+ * (owner distributions, capital contributions, dividends) and any monetary
+ * Part VI amounts (consideration on property transfers / other nonmonetary
+ * items where an amount was recorded).
  */
 const grossPaymentsForLines1f1h = (t: AggregatedTransactions): number =>
   totalReceived(t) + totalPaid(t) + t.distributions_paid + t.contributions_received + t.part_vi_amount;
@@ -903,14 +922,16 @@ export const buildReasonableCauseLetter = async (
   cursor.y = drawWrapped(page, 'To the Internal Revenue Service:', MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 10;
 
+  const single = years.length === 1;
+  const returnWord = single ? 'return is' : 'returns are';
   const intro =
-    `${filing.llc_name ?? 'The taxpayer'} (the “Reporting Corporation”), a U.S. limited ` +
-    `liability company wholly owned by a non-U.S. person and treated as a foreign-owned ` +
-    `disregarded entity, respectfully requests that the Internal Revenue Service abate in ` +
-    `full any penalties asserted under Internal Revenue Code §6038A in connection with the ` +
-    `late filing of Form 5472, and the accompanying pro forma Form 1120, for ${yearsText}. ` +
-    `These returns are being filed voluntarily, before any notice or examination. The ` +
-    `specific facts establishing reasonable cause are set out below.`;
+    `I am the owner of ${filing.llc_name ?? 'my company'}, a U.S. limited liability company ` +
+    `that I wholly own as a non-U.S. person and that is treated as a foreign owned ` +
+    `disregarded entity. I respectfully ask the Internal Revenue Service to abate in full ` +
+    `any penalties charged under Internal Revenue Code §6038A for the late filing of ` +
+    `Form 5472, and the accompanying pro forma Form 1120, for ${yearsText}. ` +
+    `${single ? 'This' : 'These'} ${returnWord} being filed voluntarily, before any notice ` +
+    `or examination. The facts that establish reasonable cause are set out below.`;
   cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 12;
 
@@ -919,25 +940,22 @@ export const buildReasonableCauseLetter = async (
   cursor.y -= 6;
 
   const DEFAULT_BODY =
-    'The Reporting Corporation is wholly owned by a non-U.S. individual who, at the ' +
-    'time of formation, had no prior exposure to the United States federal tax system ' +
-    'and no reason to anticipate an information-reporting obligation for an entity that ' +
-    'generated no U.S. tax liability. The owner engaged a formation agent to establish ' +
-    'the entity and was not advised, at formation or thereafter, that Treasury ' +
-    'Regulation section 1.6038A-2 requires a foreign-owned disregarded entity to file ' +
-    'Form 5472 with a pro forma Form 1120 irrespective of whether any tax is due.\n\n' +
-    'The owner’s belief that no return was required was objectively reasonable and ' +
-    'held in good faith. A taxpayer exercises ordinary business care and prudence, ' +
-    'within the meaning of Treasury Regulation section 301.6651-1(c)(1), when the ' +
-    'taxpayer reasonably relies on the absence of any indication that a filing is due ' +
-    'and has no U.S. income tax to pay. There was no willful neglect and no intent to ' +
-    'disregard the filing requirement.\n\n' +
-    'Immediately upon learning of the requirement, the owner acted diligently to become ' +
-    'compliant, gathering the records necessary to prepare a complete and accurate ' +
-    'Form 5472 for each affected year and submitting these delinquent returns ' +
-    'voluntarily, before any notice, examination, or contact from the Service. The ' +
-    'owner has also implemented procedures to ensure that Form 5472 is filed timely in ' +
-    'all future years.';
+    'I am a non-U.S. individual and the sole owner of my company. When my company was ' +
+    'formed, I had no previous experience with the U.S. federal tax system and no reason ' +
+    'to expect an information reporting obligation for a company that owed no U.S. tax. I ' +
+    'used a formation service to set up my company and was not told, at formation or later, ' +
+    'that Treasury Regulation section 1.6038A-2 requires a foreign owned disregarded entity ' +
+    'to file Form 5472 with a pro forma Form 1120 whether or not any tax is due.\n\n' +
+    'My belief that no return was required was reasonable and held in good faith. A taxpayer ' +
+    'exercises ordinary business care and prudence, within the meaning of Treasury ' +
+    'Regulation section 301.6651-1(c)(1), when they reasonably rely on the absence of any ' +
+    'indication that a filing is due and have no U.S. income tax to pay. There was no ' +
+    `willful neglect and no intent to ignore the filing requirement.\n\n` +
+    'As soon as I learned of the requirement, I acted diligently to become compliant, ' +
+    `gathering the records needed to prepare a complete and accurate Form 5472 for each ` +
+    `affected year and filing ${single ? 'this delinquent return' : 'these delinquent returns'} ` +
+    'voluntarily, before any notice, examination, or contact from the IRS. I have also put ' +
+    'procedures in place to make sure Form 5472 is filed on time in all future years.';
 
   const body = (narrative && narrative.trim()) ? narrative.trim() : DEFAULT_BODY;
   // Each reason / point is its own paragraph (split on blank lines).
@@ -951,13 +969,13 @@ export const buildReasonableCauseLetter = async (
 
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
   const close =
-    'For the foregoing reasons, the failure to file was due to reasonable cause and not ' +
-    'to willful neglect, and abatement is warranted under Internal Revenue Code ' +
-    'section 6038A(d) and the reasonable-cause standard of Treasury Regulation section ' +
-    '301.6651-1(c). The Reporting Corporation respectfully requests that any penalties ' +
-    `asserted under section 6038A for ${yearsText} be abated in full. All required ` +
-    'Forms 5472 and accompanying pro forma Forms 1120 are enclosed. The taxpayer will ' +
-    'promptly furnish any additional information the Service may require.';
+    'For these reasons, my failure to file was due to reasonable cause and not to willful ' +
+    'neglect, and abatement is warranted under Internal Revenue Code section 6038A(d) and ' +
+    'the reasonable cause standard of Treasury Regulation section 301.6651-1(c). I ' +
+    `respectfully ask that any penalties charged under section 6038A for ${yearsText} be ` +
+    `abated in full. All required ${single ? 'Form 5472 and the accompanying pro forma ' +
+    'Form 1120 are' : 'Forms 5472 and accompanying pro forma Forms 1120 are'} enclosed. I ` +
+    'will promptly provide any additional information the IRS may need.';
   cursor.y = drawWrapped(page, close, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 16;
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
@@ -1041,7 +1059,7 @@ export const buildInstructionsPage = async (
   ];
   for (const n of notices) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
-    cursor.y = drawWrapped(page, `• ${n}`, MARGIN, cursor.y, { size: 9 }, fonts);
+    cursor.y = drawWrapped(page, `• ${n}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 7;
   }
 
@@ -1260,11 +1278,14 @@ const fill1120 = async (
   setText(doc, F.BEGINNING_DATE, isCalendarYear ? '' : monthDay(period.beginISO));
   setText(doc, F.ENDING_DATE,    isCalendarYear ? '' : monthDay(period.endISO));
   // The 1120 header pre-prints "20" before the ending-year box, so the field
-  // holds only the last two digits (e.g. "25" → "2025"). Writing the full year
-  // produced "202025". For a calendar-year filer the printed "calendar year
+  // holds only the last two digits (e.g. "26" → "2026"). Writing the full year
+  // produced "202026". For a calendar-year filer the printed "calendar year
   // YYYY" already carries the year, so leave the box empty; only a short/fiscal
-  // year needs the ending year filled here.
-  setText(doc, F.ENDING_YEAR, isCalendarYear ? '' : String(period.year).slice(-2));
+  // year needs the ending year filled here. The ending year is taken from the
+  // PERIOD END, not the tax year — a fiscal year ending March 2026 (tax year
+  // 2025) must print "26", not "25".
+  const endYearTwoDigit = (period.endISO.split('-')[0] ?? String(period.year)).slice(-2);
+  setText(doc, F.ENDING_YEAR, isCalendarYear ? '' : endYearTwoDigit);
 
   // ── Checkboxes (item E) ──────────────────────────────────────────────────────────────
   checkBox(doc, F.INITIAL_RETURN,  period.isInitial);
@@ -1273,8 +1294,12 @@ const fill1120 = async (
   checkBox(doc, F.ADDRESS_CHANGE,  filing.address_change ?? false);
 
   // ── Signature block ────────────────────────────────────────────────────────────────
+  // The owner signs. The signature date is collected in intake and printed so
+  // the form is ready to print and mail as-is. Falls back to blank (owner can
+  // hand-write it) rather than inventing a date.
   setText(doc, F.SIGNATURE, filing.owner.full_name);
   setText(doc, F.TITLE,     filing.signer_title ?? 'Managing Member');
+  setText(doc, F.DATE,      fmtDateNumeric(filing.signature_date));
 
   return doc;
 };
@@ -1366,113 +1391,114 @@ export interface FilingPackage {
   formCount: number;
 }
 
-// Each reason renders as its own fully-formed paragraph, in the voice of an
-// experienced preparer, tied to the reasonable-cause standard. Paragraphs are
-// separated by a blank line; buildReasonableCauseLetter splits on blank lines.
-const RCL_REASON_PARAGRAPHS: Record<string, string> = (() => {
-  const paragraphs: Record<string, string> = {
-    first_time_filing:
-      'Lack of Prior U.S. Compliance History: The years at issue represent the Reporting ' +
-      'Corporation’s initial entry into the U.S. regulatory environment. Prior to this, the ' +
-      'foreign owner had zero U.S. tax compliance history and no established baseline from ' +
-      'which an IRC §6038A information reporting obligation could reasonably have been ' +
-      'anticipated. Under Treas. Reg. § 1.6038A-4(b)(2)(ii), the Service recognizes that an ' +
-      'honest misunderstanding of fact or law may constitute reasonable cause, particularly ' +
-      'where a taxpayer possesses no prior history of U.S. tax deficiencies. This isolated, ' +
-      'first-time omission was an inadvertent error by a taxpayer acting in good faith, not ' +
-      'an act of willful neglect.',
-    relied_on_non_us_advisor:
-      'Reasonable Reliance on Tax and Formation Professionals: In establishing and structuring ' +
-      'the U.S. entity, the owner exercised ordinary business care and prudence by retaining ' +
-      'and relying upon local professional advisors, and online formation services, in their ' +
-      'home jurisdiction. Unbeknownst to the taxpayer, these advisors and services lacked the ' +
-      'specific technical competency regarding the intersection of U.S. Disregarded Entity ' +
-      '(DRE) rules and cross-border information reporting. The taxpayer reasonably relied on ' +
-      'these engaged professionals and services to advise them of all initial statutory filing ' +
-      'requirements. As recognized by standard tax jurisprudence, a taxpayer’s good-faith ' +
-      'reliance on a professional advisor to identify filing obligations constitutes ' +
-      'reasonable cause.',
-    not_informed:
-      'Absence of Statutory Notice from U.S. Agents: At no point during the entity’s lifecycle ' +
-      'did the U.S. formation agent, the commercial registered agent, or the corresponding U.S. ' +
-      'banking institution issue any notice or advisory regarding the requirements of ' +
-      'IRC §6038A. The foreign owner had no reasonable means of discovering this highly ' +
-      'specialized reporting obligation in the ordinary course of managing a dormant or ' +
-      'low-activity LLC. The complete absence of standard advisory notices from the U.S. ' +
-      'institutions facilitating the entity’s formation severely impaired the taxpayer’s ' +
-      'ability to recognize the obligation.',
-    no_tax_liability:
-      'Good-Faith Misunderstanding of Complex Legal Requirements: The entity possessed no U.S. ' +
-      'effectively connected income (ECI) and carried zero U.S. income tax liability for the ' +
-      'years at issue. The taxpayer operated under the logical, albeit mistaken, belief that ' +
-      'an entity bearing no U.S. tax liability did not trigger an annual federal return ' +
-      'requirement. The regulatory framework here is exceptionally complex: ' +
-      'Treas. Reg. § 301.7701-3 treats the LLC as a disregarded entity for tax purposes, while ' +
-      'Treas. Reg. § 1.6038A-1(c)(1) simultaneously treats it as a domestic corporation solely ' +
-      'for information reporting. Misunderstanding this highly technical dichotomy constitutes ' +
-      'an honest mistake of law, firmly meeting the reasonable cause standard outlined in ' +
-      'IRM 20.1.1.3.2.2.1.',
-    minimal_activity:
-      'De Minimis Operational Activity: Throughout the periods at issue, the Reporting ' +
-      'Corporation operated with negligible to zero economic activity and engaged in minimal ' +
-      'reportable transactions. This dormant or near-dormant status strongly reinforced the ' +
-      'owner’s good-faith assumption that no U.S. reporting was required. Because there was no ' +
-      'underlying U.S. operational business generating income, the oversight of this strictly ' +
-      'informational filing was highly probable despite the exercise of ordinary business care ' +
-      'and prudence.',
-    incomplete_records:
-      'Geographic and Administrative Impediments: The administration of the Reporting ' +
-      'Corporation was conducted entirely from outside the United States, which resulted in ' +
-      'severe administrative delays in procuring and reconciling the precise financial records ' +
-      'required for U.S. compliance. Rather than filing an incomplete, estimated, or inaccurate ' +
-      'return, the taxpayer withheld filing until the correct documentation could be secured ' +
-      'and verified, ensuring the integrity of the eventual submission.',
-    language_barrier:
-      'Linguistic and Jurisdictional Unfamiliarity: English is not the foreign owner’s primary ' +
-      'language, which created a substantial barrier to independently navigating the Internal ' +
-      'Revenue Code. The Internal Revenue Manual (IRM 20.1.1.3.2.2.1) explicitly states that a ' +
-      'taxpayer’s education, background, and language capabilities must be considered when ' +
-      'determining if they exercised ordinary business care. The combination of a language ' +
-      'barrier and the opaque nature of U.S. cross-border tax statutes materially impaired the ' +
-      'taxpayer’s ability to self-identify the Form 5472 mandate despite honest efforts.',
-    discovered_late:
-      'Immediate Remediation Upon Discovery: The taxpayer only became aware of the IRC §6038A ' +
-      'filing requirement during a recent, independent review of the entity’s global ' +
-      'administrative footprint. Upon discovering this delinquency, the taxpayer did not ' +
-      'hesitate, obscure the failure, or delay action. The immediate mobilization to rectify ' +
-      'the oversight demonstrates an inherent respect for U.S. tax laws and clearly illustrates ' +
-      'that the prior failure to file was the result of innocent ignorance rather than willful ' +
-      'neglect.',
-    voluntary_filing:
-      'Voluntary and Proactive Compliance: The Reporting Corporation is curing this delinquency ' +
-      'entirely on a voluntary basis. These returns are being submitted proactively, prior to ' +
-      'the issuance of any CP215 penalty notice, examination, or other enforcement contact from ' +
-      'the Service. Treas. Reg. § 1.6038A-4(b)(2)(ii) explicitly lists “whether the reporting ' +
-      'corporation voluntarily filed” as a primary factor in determining reasonable cause. This ' +
-      'unprompted self-correction weighs heavily in favor of full penalty abatement.',
-    new_procedures:
-      'Implementation of Robust Internal Controls for Future Compliance: To guarantee strict ' +
-      'adherence to U.S. tax laws moving forward, the Reporting Corporation has completely ' +
-      'overhauled its internal administrative protocols. The foreign owner has instituted a ' +
-      'rigorous compliance framework, permanently integrating the annual Form 5472 and pro ' +
-      'forma Form 1120 deadlines into the entity’s corporate governance calendar. These newly ' +
-      'implemented control measures ensure that this was a strictly isolated, first-time lapse ' +
-      'and that all future U.S. reporting obligations will be filed accurately and on time, ' +
-      'without exception.',
-  };
-  return paragraphs;
-})();
+// Each reason renders as its own paragraph, written in the FIRST PERSON as the
+// owner's own statement (the letter is signed by the owner under penalty of
+// perjury). Paragraphs adapt to how many tax years the letter covers, so a
+// single-year filing reads "this year / this return" and a multi-year filing
+// reads "these years / these returns". No mini-headers, no em dashes.
+// buildReasonableCauseLetter splits the joined narrative on blank lines.
+//
+// `n` is the number of tax years the letter covers.
+const RCL_REASON_PARAGRAPHS: Record<string, (n: number) => string> = {
+  first_time_filing: (n) => {
+    const s = n === 1;
+    return (
+      `${s ? 'This year is' : 'These years are'} the first time my company has had to deal ` +
+      'with the U.S. tax system. Before this, I had no U.S. tax history and no basis on ' +
+      'which I could reasonably have known about an information reporting obligation under ' +
+      'Internal Revenue Code §6038A. The Service recognizes, under Treasury Regulation ' +
+      '§1.6038A-4(b)(2)(ii), that an honest misunderstanding of fact or law can be ' +
+      'reasonable cause, especially where the taxpayer has no prior history of U.S. tax ' +
+      'problems. My failure to file was a first time, inadvertent error made in good faith, ' +
+      'not willful neglect.'
+    );
+  },
+  // Merged reason: the owner relied on the formation service that set up the
+  // entity, and that service never mentioned the Form 5472 requirement.
+  not_informed: (_n) =>
+    'I set up my company through an online formation service and relied on that service to ' +
+    'tell me about the filing obligations that came with the entity it created for me. At ' +
+    'no point, either when my company was formed or afterward, did that formation service ' +
+    'or its agent tell me that Treasury Regulation §1.6038A-2 requires a foreign owned ' +
+    'disregarded entity to file Form 5472 together with a pro forma Form 1120, whether or ' +
+    'not any tax is owed. Because the service I hired to set up my company never mentioned ' +
+    'this, I had no reasonable way of discovering this specialized reporting obligation ' +
+    'while running a low activity LLC. My good faith reliance on the service I engaged to ' +
+    'form my company is ordinary business care and prudence, and supports reasonable cause.',
+  no_tax_liability: (n) => {
+    const s = n === 1;
+    return (
+      `My company had no U.S. effectively connected income and owed no U.S. income tax for ` +
+      `${s ? 'this year' : 'these years'}. I genuinely, though mistakenly, believed that a ` +
+      'company that owed no U.S. tax did not have to file a U.S. return. The rules here are ' +
+      'genuinely difficult: Treasury Regulation §301.7701-3 treats my LLC as a disregarded ' +
+      'entity for tax purposes, while Treasury Regulation §1.6038A-1(c)(1) at the same time ' +
+      'treats it as a domestic corporation only for information reporting. My ' +
+      'misunderstanding of this technical distinction was an honest mistake of law, which ' +
+      'meets the reasonable cause standard described in Internal Revenue Manual ' +
+      '20.1.1.3.2.2.1.'
+    );
+  },
+  minimal_activity: (n) => {
+    const s = n === 1;
+    return (
+      `${s ? 'During this year' : 'Throughout these years'} my company had little or no ` +
+      'activity and very few reportable transactions. Because my company was dormant or ' +
+      'nearly dormant, my good faith belief that no U.S. filing was required was all the ' +
+      'more understandable. With no active U.S. business generating income, it was easy to ' +
+      'overlook a purely informational filing even while exercising ordinary business care ' +
+      'and prudence.'
+    );
+  },
+  language_barrier: (_n) =>
+    'English is not my first language, which made it much harder for me to understand the ' +
+    'U.S. tax rules on my own. The Internal Revenue Manual (20.1.1.3.2.2.1) says that a ' +
+    'taxpayer’s education, background, and language ability must be taken into account ' +
+    'when deciding whether they used ordinary business care. The language barrier, together ' +
+    'with how complex the U.S. cross border tax rules are, genuinely limited my ability to ' +
+    'identify the Form 5472 requirement on my own, despite my honest efforts.',
+  discovered_late: (n) => {
+    const s = n === 1;
+    return (
+      'I only became aware of the Form 5472 requirement recently, when I reviewed my ' +
+      'company’s obligations more closely. As soon as I found out, I did not hide the ' +
+      `problem or delay. I moved quickly to prepare and file the delinquent ` +
+      `${s ? 'return' : 'returns'}. Acting immediately shows that my earlier failure to ` +
+      'file came from genuine lack of awareness, not from any intent to ignore U.S. tax law.'
+    );
+  },
+  voluntary_filing: (n) => {
+    const s = n === 1;
+    return (
+      'I am correcting this on my own, voluntarily. ' +
+      `${s ? 'This return is' : 'These returns are'} being filed before I received any ` +
+      'penalty notice, audit, or other contact from the IRS. Treasury Regulation ' +
+      '§1.6038A-4(b)(2)(ii) lists whether the taxpayer voluntarily filed as a factor in ' +
+      'deciding reasonable cause. My coming forward on my own, without being prompted, ' +
+      'weighs strongly in favor of abating the penalty in full.'
+    );
+  },
+  new_procedures: (_n) =>
+    'To make sure I stay compliant from now on, I have put proper procedures in place. I ' +
+    'have added the annual Form 5472 and pro forma Form 1120 deadlines to how I manage my ' +
+    'company, so this filing is not missed again. These steps show that the failure to file ' +
+    'was an isolated, first time lapse and that I intend to meet all future U.S. reporting ' +
+    'obligations accurately and on time.',
+};
 
 /**
- * Build a professional, multi-paragraph reasonable-cause narrative (one
- * paragraph per selected reason). Returns null when no reasons are given so the
- * letter falls back to its own default narrative.
+ * Build a first-person, multi-paragraph reasonable-cause narrative (one
+ * paragraph per selected reason). `yearCount` tunes singular vs plural wording.
+ * Returns null when no reasons are given so the letter falls back to its own
+ * default narrative.
  */
 export const narrativeFromReasonCodes = (
   reasons: string[] | null | undefined,
+  yearCount = 1,
 ): string | null => {
   if (!reasons || reasons.length === 0) return null;
-  const chosen = reasons.map((r) => RCL_REASON_PARAGRAPHS[r]).filter(Boolean);
+  const n = Math.max(1, yearCount);
+  const chosen = reasons.map((r) => RCL_REASON_PARAGRAPHS[r]?.(n)).filter(Boolean);
   return chosen.length ? chosen.join('\n\n') : null;
 };
 
@@ -1480,7 +1506,7 @@ export const narrativeFromReasonCodes = (
 const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): string | null => {
   const free = (filing['rcl_narrative'] as string | undefined)?.trim();
   if (free) return free;
-  return narrativeFromReasonCodes(filing.reasonable_cause_reasons as string[] | null | undefined);
+  return narrativeFromReasonCodes(filing.reasonable_cause_reasons as string[] | null | undefined, 1);
 };
 
 /**

@@ -155,7 +155,7 @@ export default function FilingWizard() {
       // from the reasons collected once at job setup.
       const jobNarrative =
         (job?.rcl_narrative?.trim() || null) ||
-        narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons);
+        narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons, years.length);
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
         rclNarrative: jobNarrative,

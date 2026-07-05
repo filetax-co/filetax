@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router';
-import { validatePassword } from '../../lib/passwordSecurity';
+import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
 
 const FILING_YEARS_DISPLAY: Record<string, string> = {
   '1': '1 year (current)',
@@ -66,6 +66,10 @@ export function Portal() {
   const partiesParam = searchParams.get('parties');
   const rclParam = searchParams.get('rcl');
   const newFiling = searchParams.get('new-filing') === '1';
+  // Set when the user just confirmed their email (AuthConfirm redirects here).
+  // The confirmation link only confirms the account — the user still has to log
+  // in with their password — so we surface a short "confirmed, please sign in".
+  const justConfirmed = searchParams.get('confirmed') === '1';
   // After login/signup, where should we send the user?
   const nextParam = searchParams.get('next');
 
@@ -137,9 +141,12 @@ export function Portal() {
     if (mode === 'signup') {
       if (!name.trim()) { setError('Please enter your full name.'); return; }
       if (!email.trim()) { setError('Please enter your email address.'); return; }
-      if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+      if (!meetsAllRules(password)) {
+        setError('Please meet all the password requirements shown below the field.');
+        return;
+      }
 
-      // ── Password security checks (zxcvbn strength + HIBP breach) ──────────
+      // ── Password security checks (char classes + zxcvbn strength + HIBP breach) ──────────
       setSubmitting(true);
       const pwCheck = await validatePassword(password);
       if (!pwCheck.ok) {
@@ -154,8 +161,9 @@ export function Portal() {
         password,
         options: {
           data: { full_name: name.trim() },
-          // After the user clicks the confirmation link in their email,
-          // /auth/confirm verifies the token then redirects to /dashboard.
+          // After the user clicks the confirmation link, /auth/confirm confirms
+          // the account, signs out, and sends them to the login screen (the link
+          // never logs anyone in on its own).
           emailRedirectTo: window.location.origin + BASE + '/auth/confirm',
         },
       });
@@ -418,6 +426,13 @@ export function Portal() {
             {submitted ? submittedUI : (
               <form onSubmit={handleSubmit} noValidate>
 
+                {/* Email confirmed — prompt to sign in (link only confirms; login still required) */}
+                {justConfirmed && mode === 'login' && (
+                  <p style={{ color: '#059669', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.875rem', fontWeight: 500, marginBottom: '1.125rem' }}>
+                    Your email is confirmed. Please sign in with your password to continue.
+                  </p>
+                )}
+
                 {/* Name — signup only */}
                 {mode === 'signup' && (
                   <div style={{ marginBottom: '1.125rem' }}>
@@ -443,7 +458,25 @@ export function Portal() {
                         </button>
                       )}
                     </div>
-                    <input id="portal-password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'} value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
+                    <input id="portal-password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Create a strong password' : 'Your password'} value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
+                    {/* Live requirements checklist — shown up front on signup so the
+                        user knows what's expected before submitting. */}
+                    {mode === 'signup' && (() => {
+                      const status = ruleStatus(password);
+                      return (
+                        <ul style={{ listStyle: 'none', margin: '0.625rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          {PASSWORD_RULES.map((r) => {
+                            const met = status[r.key];
+                            return (
+                              <li key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: met ? '#059669' : 'var(--tf-muted)' }}>
+                                <span aria-hidden="true" style={{ fontWeight: 700, width: '0.9rem', display: 'inline-block' }}>{met ? '✓' : '○'}</span>
+                                {r.label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      );
+                    })()}
                   </div>
                 )}
 

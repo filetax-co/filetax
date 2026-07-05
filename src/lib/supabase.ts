@@ -11,7 +11,14 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    flowType: 'implicit',
+    // PKCE is required for reliable password-reset and email-confirmation
+    // flows in SPAs (no server-side callback). Supabase exchanges the code
+    // verifier stored in sessionStorage with the `code` param in the URL.
+    flowType: 'pkce',
+    // Explicitly tell the client to parse tokens from the URL on page load.
+    // Critical on GitHub Pages where the app is served from a sub-path
+    // (/5472/) — without this, recovery/confirmation redirects are silently
+    // ignored and the user is never signed in.
     detectSessionInUrl: true,
   },
 });
@@ -157,6 +164,13 @@ export type Filing = {
    * Pro Forma 1120 and Form 5472 signature blocks.
    */
   signer_title?: string | null;
+
+  /**
+   * Date the owner signs the return (ISO YYYY-MM-DD). Printed on the Form 1120
+   * signature "Date" line for every year so the package is ready to print and
+   * mail without hand-dating.
+   */
+  signature_date?: string | null;
 
   // ── Filing options ───────────────────────────────────────────────────────
   include_irs_fax: boolean;

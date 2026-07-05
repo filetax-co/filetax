@@ -1,5 +1,5 @@
 // src/app/pages/Intake.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
@@ -444,6 +444,12 @@ export function Intake() {
   const [rpErrors, setRpErrors] = useState<string[]>([]);
   const [txErrors, setTxErrors] = useState<string[]>([]);
 
+  // Anchors for scroll management. On Continue/Back we jump to the top of the
+  // step; when validation fails we jump straight to the error summary so the
+  // user is never left guessing why the form did not advance.
+  const stepTopRef = useRef<HTMLDivElement | null>(null);
+  const errorSummaryRef = useRef<HTMLDivElement | null>(null);
+
   // Step 1
   const [llcName, setLlcName] = useState('');
   const [ein, setEin] = useState('');
@@ -454,6 +460,11 @@ export function Intake() {
   const [mailing, setMailing] = useState<Address>({ country: 'US' });
   const [entityBizActivity, setEntityBizActivity] = useState('');
   const [entityBizCode, setEntityBizCode] = useState('');
+  // Single-year multi-year nudge: when filing the latest year and the LLC was
+  // incorporated earlier, we ask whether earlier returns were already filed.
+  // null = not answered, true = already filed (no nudge), false = not filed
+  // (offer multi-year).
+  const [earlierReturnsFiled, setEarlierReturnsFiled] = useState<boolean | null>(null);
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
   const [isFiscalYear, setIsFiscalYear] = useState(false);
@@ -466,6 +477,22 @@ export function Intake() {
   const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
   const [includeReasonableCause, setIncludeReasonableCause] = useState(false);
   const [reasonableCauseReasons, setReasonableCauseReasons] = useState<string[]>([]);
+
+  // Whether THIS year's return is late for reasonable-cause purposes. The check
+  // is year-specific (each tax year has its own deadlines):
+  //   • no extension  → late once the ORIGINAL deadline has passed
+  //   • extension filed → late once the EXTENDED deadline has passed too
+  //     (a 7004 only buys until the extended date; past that the return is late)
+  // While the extension is still valid (within_extension) the filing is on time,
+  // so no reasonable-cause letter — and no "not required" message — is shown.
+  const isLateForRcl =
+    extensionFiled === true
+      ? filingTiming.extendedPassed
+      : extensionFiled === false
+        ? filingTiming.originalPassed
+        : false;
+  const onTimeViaExtension =
+    extensionFiled === true && filingTiming.originalPassed && !filingTiming.extendedPassed;
 
   // Step 2
   const [ownerName, setOwnerName] = useState('');
@@ -481,6 +508,9 @@ export function Intake() {
   // Signing title (goes on the 1120 signature block + RCL). Defaults to
   // "Managing Member", the usual role for a single-member LLC owner.
   const [signerTitle, setSignerTitle] = useState('Managing Member');
+  // Date the owner signs — printed on the Form 1120 "Date" line (all years) so
+  // the package prints ready to mail. ISO YYYY-MM-DD.
+  const [signatureDate, setSignatureDate] = useState('');
 
   // Step 3
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
@@ -562,6 +592,42 @@ export function Intake() {
     if (step === '1b' && !show1b) setStep(1);
   }, [show1b, step]);
 
+  // Continue/Back: land at the TOP of the new step, not wherever the previous
+  // step was scrolled to. Intake changes steps via a query param (?step=N), so
+  // the router's pathname-based ScrollToTop does not fire here — we do it.
+  useEffect(() => {
+    if (loadingFiling) return;
+    // Let the new step render before scrolling to it.
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      stepTopRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+  }, [step, loadingFiling]);
+
+  // When validation fails, jump straight to the error summary so the user sees
+  // exactly what needs fixing instead of a form that silently did not advance.
+  useEffect(() => {
+    if (stepErrors.length === 0 && !error && !einErr) return;
+    requestAnimationFrame(() => {
+      errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [stepErrors, error, einErr]);
+
+  // When the filing turns out to be late (deadline passed — for a 7004 filer,
+  // the EXTENDED deadline), pre-select the reasonable-cause letter so the user
+  // is asked by default. If the extension is still valid, ensure it is off.
+  const rclSectionShown = !jobId && isLateForRcl;
+  useEffect(() => {
+    if (!rclSectionShown && includeReasonableCause) {
+      setIncludeReasonableCause(false);
+      setReasonableCauseReasons([]);
+    } else if (rclSectionShown && !includeReasonableCause && reasonableCauseReasons.length === 0) {
+      // Default the offer ON for a late filing (user can still opt out).
+      setIncludeReasonableCause(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rclSectionShown]);
+
   useEffect(() => {
     const newParams = new URLSearchParams(params.toString());
     newParams.set('step', String(step));
@@ -612,6 +678,7 @@ export function Intake() {
       setOwnerBizActivity(f.owner_business_activity ?? '');
       setOwnerBizCode((f as any).owner_business_code ?? '');
       setSignerTitle((f as any).signer_title ?? 'Managing Member');
+      setSignatureDate((f as any).signature_date ?? '');
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
@@ -676,8 +743,19 @@ export function Intake() {
         }
       } catch { /* profile backfill is best-effort */ }
 
+      // Honor the step requested in the URL for this filing. When the multi-year
+      // walk sends the user to the next year at ?step=3, the component does not
+      // remount (same route, new query), so sync the step here after load.
+      const rawStep = params.get('step');
+      if (rawStep === '1b') setStep('1b');
+      else {
+        const s = Number(rawStep);
+        if (s >= 1 && s <= 5) setStep(s as IntakeStep);
+      }
+
       setLoadingFiling(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingId]);
 
   // Prefill a BRAND-NEW filing (no filing_id) from the user's saved profile so
@@ -729,6 +807,25 @@ export function Intake() {
     }
   }, [ownerName, ownerRefNumber]);
 
+  // Fields that are SPECIFIC to a single tax year and must never be copied to
+  // sibling year-rows in a multi-year job. Everything else in a Step-1/2 patch
+  // is company/owner identity that is shared across every year.
+  const YEAR_SPECIFIC_FIELDS = new Set<string>([
+    'tax_year', 'total_assets', 'initial_return', 'final_return',
+    'is_fiscal_year', 'tax_period_begin', 'tax_period_end',
+    'extension_filed', 'include_rcl', 'include_reasonable_cause',
+    'reasonable_cause_reasons',
+  ]);
+
+  /** Strip year-specific fields so only shared company/owner data propagates. */
+  function sharedJobPatch(
+    patch: Partial<Filing> & Record<string, unknown>,
+  ): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(patch).filter(([k]) => !YEAR_SPECIFIC_FIELDS.has(k)),
+    );
+  }
+
   function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
     if (step === 1) return {
       llc_name: llcName.trim() || null,
@@ -755,10 +852,11 @@ export function Intake() {
       tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
     };
     if (step === '1b') {
-      // A reasonable-cause letter only applies to a genuinely late filing. If the
-      // owner filed Form 7004 (extension) on time, the filing is not late, so no
-      // RCL is generated regardless of the toggle.
-      const rclApplies = includeReasonableCause && extensionFiled !== true;
+      // A reasonable-cause letter only applies to a genuinely late filing. The
+      // filing is late once the applicable deadline has passed — the ORIGINAL
+      // deadline with no extension, or the EXTENDED deadline for a 7004 filer.
+      // If the 7004 extension is still valid the filing is on time, so no RCL.
+      const rclApplies = includeReasonableCause && isLateForRcl;
       return {
         extension_filed: extensionFiled,
         include_reasonable_cause: rclApplies,
@@ -785,6 +883,7 @@ export function Intake() {
       owner_reference_id: ownerRefNumber.trim() || null,
       owner_naics_code: ownerBizCode.trim() || null,
       signer_title: signerTitle.trim() || 'Managing Member',
+      signature_date: signatureDate || null,
     };
     if (step === 3) return { related_parties: relatedParties };
     if (step === 4) return {
@@ -839,9 +938,8 @@ export function Intake() {
     const errs: string[] = [];
     if (extensionFiled === null) errs.push('Please confirm whether Form 7004 (extension) was filed.');
     // Reasons are only collected here for a single-year, genuinely-late filing.
-    // Multi-year jobs collect the RCL + reasons once at job setup; when 7004 was
-    // filed the RCL section is hidden entirely.
-    const rclSectionShown = !jobId && extensionFiled !== true;
+    // Multi-year jobs collect the RCL + reasons once at job setup; a filing still
+    // within its extension is on time, so the RCL section is not shown.
     if (rclSectionShown && includeReasonableCause && reasonableCauseReasons.length === 0) {
       errs.push('Select at least one reason for the reasonable cause letter.');
     }
@@ -931,6 +1029,24 @@ export function Intake() {
       }
       const { error: err } = await supabase.from('filings').update(finalPatch).eq('id', filingId);
       if (err) throw err;
+
+      // Multi-year job: Steps 1 and 2 (company + owner) are the SAME for every
+      // year, so once entered on one year they are copied to every other draft
+      // year in the job. That way the later years skip straight to Step 3 and
+      // the user never re-enters the same company/owner details. Year-specific
+      // fields (tax_year, total_assets, initial_return, fiscal period, final
+      // return, RCL) are intentionally excluded from the shared patch.
+      if (jobId && (step === 1 || step === 2)) {
+        const shared = sharedJobPatch(finalPatch);
+        if (Object.keys(shared).length > 0) {
+          await supabase
+            .from('filings')
+            .update(shared)
+            .eq('job_id', jobId)
+            .neq('id', filingId)
+            .eq('status', 'draft');
+        }
+      }
       return filingId;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e));
@@ -1045,6 +1161,44 @@ export function Intake() {
     if (prevIdx >= 0) goToStepByIndex(prevIdx);
   };
 
+  // Switch a single-year filing to the multi-year catch-up. Persist whatever
+  // company/owner details have been entered so far to the user's profile so the
+  // year picker + each year's intake prefill them — the user doesn't re-type
+  // Step 1/2. Best-effort: navigate even if the profile write fails.
+  const goToMultiYearWithDetails = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await saveProfileFromFiling(user.id, {
+          llc_name: llcName.trim() || null,
+          ein: ein.trim() || null,
+          state_of_formation: stateOfFormation.trim() || null,
+          date_of_incorporation: entityDOI.trim() || null,
+          mailing_address: mailing,
+          entity_business_activity: entityBizActivity.trim() || null,
+          entity_business_code: entityBizCode.trim() || null,
+          naics_code: entityBizCode.trim() || null,
+          naics_description: entityBizActivity.trim() || null,
+          owner_full_name: ownerName.trim() || null,
+          owner_country: ownerCountry.trim() || null,
+          owner_primary_country: ownerCountry.trim() || null,
+          owner_country_residence: ownerCountryRes.trim() || null,
+          owner_country_citizenship: ownerCountryCitizenship.trim() || null,
+          owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
+          owner_us_tin: ownerSSN.trim() || null,
+          owner_reference_id: ownerRefNumber.trim() || null,
+          owner_address: ownerAddress,
+          owner_business_activity: ownerBizActivity.trim() || null,
+          owner_business_code: ownerBizCode.trim() || null,
+          owner_naics_code: ownerBizCode.trim() || null,
+          signer_title: signerTitle.trim() || 'Managing Member',
+          related_parties: relatedParties,
+        });
+      }
+    } catch { /* best-effort: still go to the picker */ }
+    navigate('/catch-up');
+  };
+
   const handleSubmit = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
@@ -1118,7 +1272,11 @@ export function Intake() {
           (s) => s.id !== filingId && s.status === 'draft',
         );
         if (nextYear) {
-          navigate(`/intake?filing_id=${nextYear.id}&step=1`);
+          // Company + owner (Steps 1-2) were just propagated to this year, so
+          // send the user straight to Step 3 (related parties). The stepper
+          // still lets them step back to review Steps 1-2 for this year if a
+          // year-specific detail needs changing.
+          navigate(`/intake?filing_id=${nextYear.id}&step=3`);
           return;
         }
       }
@@ -1403,6 +1561,9 @@ export function Intake() {
           </div>
         </nav>
 
+        {/* Scroll anchor: Continue/Back lands here (top of the step). */}
+        <div ref={stepTopRef} aria-hidden="true" />
+
         {completedOnce && step !== 5 && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.25rem', marginBottom: '1rem' }}>
             <button
@@ -1424,15 +1585,17 @@ export function Intake() {
           </div>
         )}
 
-        {error && <div style={errorSummaryStyle}>{error}</div>}
-        {stepErrors.length > 0 && (
-          <div style={errorSummaryStyle}>
-            <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following before continuing</div>
-            <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
-              {stepErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
-            </ul>
-          </div>
-        )}
+        <div ref={errorSummaryRef}>
+          {error && <div style={errorSummaryStyle}>{error}</div>}
+          {stepErrors.length > 0 && (
+            <div style={errorSummaryStyle}>
+              <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following before continuing</div>
+              <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                {stepErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* ── Step 1: LLC Details ── */}
         {step === 1 && (
@@ -1446,33 +1609,87 @@ export function Intake() {
               </div>
             )}
 
-            {/* Nudge toward the multi-year catch-up when this looks like it
-                should be one: a single-year filing for a PAST year, or an
-                incorporation date several years before the year being filed
-                (implying earlier years were likely missed too). */}
+            {/* Single-year multi-year nudge. Two situations lead to offering a
+                multi-year catch-up:
+                  A) Filing the LATEST filable year, but the LLC was incorporated
+                     in an earlier year. We first ASK whether earlier returns
+                     were already filed. If yes → caught up, no nudge. If no →
+                     offer multi-year.
+                  B) Filing a year that is NOT the latest — earlier years are
+                     almost certainly outstanding, so offer multi-year directly. */}
             {!jobId && !isPaidLocked && (() => {
-              const currentFilable = new Date().getUTCFullYear() - 1;
+              const latestFilable = new Date().getUTCFullYear() - 1;
               const ty = Number(taxYear);
-              const isPastYear = ty < currentFilable;
               const doiYear = entityDOI ? Number(entityDOI.slice(0, 4)) : null;
               const incorpBefore = doiYear != null && doiYear < ty;
-              if (!isPastYear && !incorpBefore) return null;
-              return (
-                <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
-                  <strong>Filing more than one year?</strong>{' '}
-                  {incorpBefore
-                    ? `Your LLC was incorporated in ${doiYear}, so you may owe Form 5472 for every year since. `
-                    : `You're filing a past year. If you missed other years too, `}
-                  catching up on all of them together means one reasonable-cause letter covers them all — and you don't pay the $200 letter fee per year.{' '}
+              const isLatest = ty === latestFilable;
+
+              // Offer text + CTA, shared by both branches. Agreeing saves the
+              // current company/owner details to the profile so the multi-year
+              // form prefills them, then goes to the year picker.
+              const offer = (
+                <>
+                  Catching up on every missed year together means one
+                  reasonable-cause letter covers them all, and you don't pay the
+                  letter fee per year.{' '}
                   <button
                     type="button"
-                    onClick={() => navigate('/catch-up')}
+                    onClick={goToMultiYearWithDetails}
                     style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
                   >
-                    Switch to a multi-year catch-up →
+                    File multiple years →
                   </button>
-                </div>
+                </>
               );
+
+              // Situation B: not the latest year → offer directly.
+              if (!isLatest && ty >= 2019) {
+                return (
+                  <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+                    <strong>Filing more than one year?</strong> You're filing {ty},
+                    which isn't the most recent year. {offer}
+                  </div>
+                );
+              }
+
+              // Situation A: latest year, incorporated earlier → ask first.
+              if (isLatest && incorpBefore) {
+                return (
+                  <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+                    <strong>Have you already filed for earlier years?</strong>{' '}
+                    Your LLC was formed in {doiYear}, so Form 5472 may be due for
+                    each year since.
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setEarlierReturnsFiled(true)}
+                        className={`select-card${earlierReturnsFiled === true ? ' is-selected' : ''}`}
+                        style={{ cursor: 'pointer', flex: 1 }}
+                      >
+                        <span className="select-card-label">Yes, earlier years are filed</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEarlierReturnsFiled(false)}
+                        className={`select-card${earlierReturnsFiled === false ? ' is-selected' : ''}`}
+                        style={{ cursor: 'pointer', flex: 1 }}
+                      >
+                        <span className="select-card-label">No, not yet</span>
+                      </button>
+                    </div>
+                    {earlierReturnsFiled === false && (
+                      <div style={{ marginTop: '0.75rem' }}>{offer}</div>
+                    )}
+                    {earlierReturnsFiled === true && (
+                      <div style={{ marginTop: '0.75rem', fontSize: '0.875rem' }}>
+                        Great, you're caught up. Continue with just {ty} below.
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return null;
             })()}
 
             <section style={sectionStyle}>
@@ -1506,13 +1723,8 @@ export function Intake() {
                 <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
                 </Field>
-                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation). It prints on the forms in MM/DD/YYYY format.">
+                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
-                  {entityDOI && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
-                      Prints as {formatDateMMDDYYYY(entityDOI)} (MM/DD/YYYY)
-                    </span>
-                  )}
                 </Field>
                 <Field label="Principal country where business is conducted" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
@@ -1635,17 +1847,7 @@ export function Intake() {
               </div>
             </section>
 
-            {extensionFiled === true && (
-              <section style={sectionStyle}>
-                <div className="cat-banner-green">
-                  <strong>You filed Form 7004 on time.</strong> Because a valid extension was
-                  filed before the original deadline, this year is not late — a reasonable
-                  cause letter is not needed.
-                </div>
-              </section>
-            )}
-
-            {jobId && extensionFiled !== true && (
+            {jobId && isLateForRcl && (
               <section style={sectionStyle}>
                 <div className="cat-banner-green">
                   <strong>Your reasonable cause letter is handled for the whole catch-up.</strong> You
@@ -1655,7 +1857,7 @@ export function Intake() {
               </section>
             )}
 
-            {!jobId && extensionFiled !== true && (
+            {rclSectionShown && (
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Reasonable cause letter</h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
@@ -1741,6 +1943,13 @@ export function Intake() {
                     value={signerTitle}
                     onChange={(e) => setSignerTitle(e.target.value)}
                     placeholder="Managing Member"
+                  />
+                </Field>
+                <Field label="Signature date" hint="The date you'll sign the return" tooltip="We print this as the signature date on the Form 1120 for every year, so your forms are ready to print and mail as-is. Use the date you plan to sign and send them.">
+                  <input
+                    type="date"
+                    value={signatureDate}
+                    onChange={(e) => setSignatureDate(e.target.value)}
                   />
                 </Field>
                 <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">

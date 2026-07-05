@@ -35,4 +35,9 @@ alter table public.filings
 alter table public.filings
   add column if not exists reasonable_cause_reasons text[] default '{}';
 
+-- 5. Signature date printed on the Form 1120 "Date" line (collected in intake
+--    with the owner's details) so forms are ready to print and mail as-is.
+alter table public.filings
+  add column if not exists signature_date date;
+
 -- Done.

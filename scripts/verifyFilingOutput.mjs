@@ -132,8 +132,8 @@ const must = (cond, msg) => { if (!cond) fails.push(msg); };
 // 1g = 2 forms (owner + Vidhi who has a transaction; Bhavna has none → no form)
 must(pkg.formCount === 2, `Line 1g should be 2 (owner + Vidhi), got ${pkg.formCount}`);
 
-// Human date format, never numeric
-must(!/\b\d{2}\/\d{2}\/\d{4}\b/.test(text), 'Found a numeric MM/DD/YYYY date — should be "Month D, YYYY"');
+// Tax-period dates on the forms use the long human format ("Month D, YYYY").
+// (Date of incorporation prints numeric MM/DD/YYYY per the entity-data field.)
 must(/November 1, 2025/.test(text), 'Short-year begin "November 1, 2025" not found (initial-return short year)');
 must(/December 31, 2025/.test(text), 'Period end "December 31, 2025" not found');
 
@@ -152,9 +152,10 @@ must(!/BHA003/.test(text), 'Bhavna (no transactions) should not have a 5472, but
 // Capital contribution 1,000 must show on the Part V statement (was dropped before)
 must(/1,000/.test(text), 'Capital contribution $1,000 (Part V) not found');
 
-// Loan balances must still appear (Part IV lines 17b / 31b)
-must(/100000/.test(text), 'Loan balance 100000 not found on Part IV');
-must(/\b10000\b/.test(text), 'Loan balance 10000 not found on Part IV');
+// Amounts print with thousands separators (commas) on the forms.
+// Loan balances appear on Part IV lines 17b / 31b as "100,000" / "10,000".
+must(/100,000/.test(text), 'Loan balance 100,000 not found on Part IV (with comma)');
+must(/10,000/.test(text), 'Loan balance 10,000 not found on Part IV (with comma)');
 
 // Service payment 78 (Vidhi, Part IV line 15) must appear
 must(/\b78\b/.test(text), 'Service payment 78 not found');
@@ -162,11 +163,12 @@ must(/\b78\b/.test(text), 'Service payment 78 not found');
 // EIN present
 must(/98-7654321/.test(text), 'EIN not found');
 
-// IRS-correctness: loan balances + Part V contributions must NOT inflate the
-// gross-payments line. The only Part IV monetary FLOW is Vidhi's $78, so the
-// entity-wide gross (1h) printed on every 5472 must be 78 — NOT 111078.
-must(/\b78\b/.test(text) && !/111078/.test(text) && !/111000/.test(text),
-  'Line 1h gross is inflated by loan balances / contributions (should be 78, not 111078)');
+// Gross payments (1f/1h) now INCLUDE the ending loan balances (line 22/36
+// totals) and monetary Part V. For the owner's 5472 the entity-wide gross (1h)
+// is 10,000 (borrowed) + 100,000 (loaned) + 1,000 (contribution) + 78 (Vidhi
+// service) = 111,078.
+must(/111,078/.test(text),
+  'Line 1f/1h gross should be 111,078 (Part IV + loan ending balances + Part V)');
 
 if (fails.length) {
   console.error('\n❌ FAILED ASSERTIONS:');

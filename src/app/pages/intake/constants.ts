@@ -39,14 +39,9 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
     hint: 'No prior US tax compliance experience as a foreign-owned LLC.',
   },
   {
-    value: 'relied_on_non_us_advisor',
-    label: 'I relied on a non-US accountant or formation service',
-    hint: 'Was guided by someone unfamiliar with US filing requirements.',
-  },
-  {
     value: 'not_informed',
-    label: 'Nobody told me Form 5472 was required',
-    hint: 'Formation agent, bank, or advisor did not mention this filing.',
+    label: 'The formation service that set up my LLC never told me Form 5472 was required',
+    hint: 'You relied on the online service or agent that formed the entity, and it did not mention this filing.',
   },
   {
     value: 'no_tax_liability',
@@ -57,11 +52,6 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
     value: 'minimal_activity',
     label: 'The LLC had little or no activity during the year',
     hint: 'Business was dormant or had very limited transactions.',
-  },
-  {
-    value: 'incomplete_records',
-    label: 'Records or information were delayed or incomplete',
-    hint: 'Could not file on time due to missing or late documentation.',
   },
   {
     value: 'language_barrier',

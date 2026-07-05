@@ -107,9 +107,9 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
 // Mirrors how pdfGenerator.aggregateTransactions + totalReceived/totalPaid map
 // transactions onto Form 5472, so the figures shown to the user reconcile with
 // the generated form:
-//   • formGross   = Part IV monetary FLOWS only (Form 5472 line 1f / 1h). This
-//                   EXCLUDES loan balances and Part V contributions/
-//                   distributions, which sit on their own lines/statements.
+//   • formGross   = Form 5472 gross payments (line 1f / 1h): Part IV flows plus
+//                   the ending loan balances (17b/31b) and the monetary Part V
+//                   contributions/distributions/dividends.
 //   • totalEntered= every reportable amount the user entered, any type — shown
 //                   alongside formGross so nothing looks "missing".
 //   • buckets     = friendly Money in / Money out / Other split.
@@ -117,17 +117,23 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
 /** UI-vocabulary classification (works on the codes the wizard stores pre-translation). */
 const MONEY_IN_UI = new Set(['capital_contribution', 'loan_to_llc', 'formation_costs', 'formation_tx', 'acquisition_tx']);
 const MONEY_OUT_UI = new Set(['distribution', 'dividend', 'loan_from_llc', 'dissolution_tx', 'disposition_tx']);
-// Everything else (services, rent, royalty, interest, goods, IP, etc.) is an
-// "other dealing" — and these are exactly the Part IV gross-payment flows.
-const PART_IV_FLOW_CANONICAL = new Set<CanonicalTxType>([
+// Canonical types that contribute to Form 5472 gross payments (line 1f / 1h).
+// Mirrors grossPaymentsForLines1f1h in pdfGenerator.ts: the Part IV flows, the
+// ending loan balances (17b/31b, which now roll into the line 22/36 totals),
+// and the monetary Part V transactions (distributions, contributions,
+// dividends). Loan rows carry the closing balance in amount_usd, which
+// summarizeTransactions already reads.
+const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
   'sales', 'tangible_property', 'rent_royalty', 'intangible', 'service_payment',
   'commission', 'interest', 'insurance', 'loan_guarantee', 'other',
+  'loan_to_llc', 'loan_from_llc',
+  'distribution', 'dividend', 'capital_contribution',
 ]);
 
 export interface TxMoneySummary {
   /** Sum of every reportable amount entered (any type). */
   totalEntered: number;
-  /** Form 5472 gross payments (1f/1h) — Part IV flows only. */
+  /** Form 5472 gross payments (1f/1h) — Part IV flows + loan balances + Part V. */
   formGross: number;
   bucketIn: { count: number; total: number };
   bucketOut: { count: number; total: number };
@@ -167,8 +173,8 @@ export function summarizeTransactions(
       s.bucketOther.count++; s.bucketOther.total += a;
     }
 
-    // Form gross (1f/1h) = Part IV monetary flows only.
-    if (PART_IV_FLOW_CANONICAL.has(toCanonicalTxType(r.transaction_type))) {
+    // Form gross (1f/1h) — Part IV flows + ending loan balances + monetary Part V.
+    if (GROSS_PAYMENT_CANONICAL.has(toCanonicalTxType(r.transaction_type))) {
       s.formGross += a;
     }
   }

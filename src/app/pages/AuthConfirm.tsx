@@ -3,11 +3,15 @@ import { useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabase';
 
 /**
- * /auth/confirm — landing page after Supabase's email confirmation link.
- * With implicit flow + detectSessionInUrl: true, the Supabase client
- * automatically parses the access_token from the URL hash fragment and
- * creates the session before this component even mounts. We just check
- * if a session now exists and redirect accordingly.
+ * /auth/confirm — handles the email confirmation link that Supabase sends
+ * after a user signs up. Supabase appends token_hash + type as query params.
+ *
+ * IMPORTANT: the confirmation link CONFIRMS the account only — it must never
+ * log the user in. `verifyOtp` establishes a full session as a side effect (it
+ * returns and persists access/refresh tokens), which would mean anyone who
+ * opens the link — including a forwarded copy — is signed in, bypassing the
+ * password. So immediately after verifying, we sign that session out and send
+ * the user to the login screen. Access always requires the password.
  */
 export function AuthConfirm() {
   const navigate = useNavigate();
@@ -15,14 +19,79 @@ export function AuthConfirm() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error || !data.session) {
-        setErrorMsg('Invalid confirmation link. Please try signing up again.');
+    const params = new URLSearchParams(window.location.search);
+    const token_hash = params.get('token_hash');
+    const type = params.get('type');
+    // PKCE / default {{ .ConfirmationURL }} links arrive with a `code` param
+    // (and an `error*` param when the link is bad/expired). The Supabase client
+    // is configured with detectSessionInUrl, so it auto-exchanges `code` for a
+    // session on load — we account for that below by signing out afterward.
+    const code = params.get('code');
+    const urlError = params.get('error_description') || params.get('error');
+
+    const expired = () => {
+      setErrorMsg(
+        'This confirmation link has expired or already been used. Please sign up again or request a new link.',
+      );
+      setStatus('error');
+    };
+
+    (async () => {
+      // A confirmation must never grant access. Whichever flow the link uses,
+      // we confirm the account, then immediately sign out so only a real
+      // password login can reach the app — even if the link is forwarded.
+      try {
+        if (urlError) {
+          expired();
+          return;
+        }
+
+        if (token_hash && type) {
+          // Custom {{ .TokenHash }} template — verify explicitly.
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash,
+            type: type as 'signup' | 'email',
+          });
+          if (error) {
+            if (error.message.includes('expired') || error.message.includes('invalid')) {
+              expired();
+            } else {
+              setErrorMsg(error.message);
+              setStatus('error');
+            }
+            return;
+          }
+        } else if (code) {
+          // PKCE / default link — detectSessionInUrl exchanges the code for a
+          // session asynchronously on load, so poll briefly for the session to
+          // appear rather than failing a valid link on a race.
+          let session = (await supabase.auth.getSession()).data.session;
+          for (let i = 0; i < 10 && !session; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+            session = (await supabase.auth.getSession()).data.session;
+          }
+          if (!session) {
+            // No session means the exchange failed (e.g. link opened in a
+            // different browser without the PKCE verifier) — treat as invalid.
+            expired();
+            return;
+          }
+        } else {
+          setErrorMsg('Invalid confirmation link. Please try signing up again.');
+          setStatus('error');
+          return;
+        }
+
+        // Confirmed. Destroy any session the link created, then go to login.
+        await supabase.auth.signOut();
+        navigate('/portal?mode=login&confirmed=1', { replace: true });
+      } catch {
+        // Never leave a session behind on an unexpected failure.
+        await supabase.auth.signOut().catch(() => {});
+        setErrorMsg('We could not confirm your email. Please try the link again or sign up.');
         setStatus('error');
-      } else {
-        navigate('/dashboard', { replace: true });
       }
-    });
+    })();
   }, [navigate]);
 
   const containerStyle: React.CSSProperties = {
