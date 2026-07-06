@@ -423,10 +423,6 @@ export function Intake() {
   const [localFilingId, setLocalFilingId] = useState<string | null>(params.get('filing_id'));
   const filingId = localFilingId ?? params.get('filing_id');
 
-  // Dev-only test data loader. Active in local dev, or in any environment via
-  // ?debug=1 — remove or gate behind a stronger check before production launch.
-  const isDebugMode = import.meta.env.DEV || params.get('debug') === '1';
-
   const [taxYear, setTaxYear] = useState('2024');
   const today = new Date();
   const filingTiming = getFilingTimingStatus(taxYear, today);
@@ -570,13 +566,6 @@ export function Intake() {
   const [showDetailedTx, setShowDetailedTx] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
 
-  // ── Dev-only test data loader state ────────────────────────────────────
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
-  const [debugJsonText, setDebugJsonText] = useState('');
-  const [debugScenarios, setDebugScenarios] = useState<any[]>([]);
-  const [debugSelectedIdx, setDebugSelectedIdx] = useState<number>(0);
-  const [debugError, setDebugError] = useState<string | null>(null);
-
   const allPartyLabels = [
     ownerName || 'Primary owner',
     ...relatedParties.map((rp, i) => rp.name || `Related party ${i + 1}`),
@@ -597,85 +586,6 @@ export function Intake() {
     newParams.set('step', String(target));
     if (resolvedFilingId) newParams.set('filing_id', resolvedFilingId);
     navigate(`?${newParams.toString()}`, { replace: true });
-  };
-
-  // ── Dev-only test data loader functions ────────────────────────────────
-  // Parses pasted JSON (either the full { scenarios: [...] } test file or a
-  // single scenario object) into the dropdown list.
-  const parseDebugJson = () => {
-    setDebugError(null);
-    try {
-      const parsed = JSON.parse(debugJsonText);
-      const scenarios = Array.isArray(parsed?.scenarios) ? parsed.scenarios : [parsed];
-      setDebugScenarios(scenarios);
-      setDebugSelectedIdx(0);
-    } catch (e) {
-      setDebugError('Could not parse JSON. Check for a trailing comma or unmatched bracket.');
-      setDebugScenarios([]);
-    }
-  };
-
-  // Populates every wizard field from a scenario object, then resets to a
-  // fresh Step 1 so the whole flow (including validation and banners) can be
-  // walked through by hand, exactly like a real user filling the form.
-  const loadDebugScenario = (scenario: any) => {
-    setDebugError(null);
-    if (!scenario) return;
-
-    // Scenarios that need real Supabase rows (multi-year job, or a paid /
-    // locked filing) can't be simulated by populating client-side state —
-    // those come from the loader effect reading the DB. Use the insert
-    // script for those instead.
-    if (scenario.job_id || scenario.filing_status === 'paid') {
-      setDebugError('This scenario needs real Supabase rows (multi-year job or paid-lock state). Use the insert script instead — this loader only covers single-filing, unpaid scenarios.');
-      return;
-    }
-
-    const f = scenario.filing ?? {};
-    const o = scenario.owner ?? {};
-
-    setLlcName(f.llc_name ?? '');
-    setEin(f.ein ?? '');
-    setStateOfFormation(f.state_of_formation ?? '');
-    setTaxYear(f.tax_year ?? '2024');
-    setTotalAssets(f.total_assets != null ? String(f.total_assets) : '');
-    setEntityDOI(f.date_of_incorporation ?? '');
-    setEntityPrincipalCountry(f.entity_principal_country ?? '');
-    setMailing(f.mailing_address ?? { country: 'US' });
-    setEntityBizActivity(f.naics_description ?? '');
-    setEntityBizCode(f.naics_code ?? '');
-    setFinalReturn(!!f.final_return);
-    setIsFiscalYear(!!f.is_fiscal_year);
-    setFiscalEndMonth(f.fiscal_end_month ?? '');
-    setExtensionFiled(f.extension_filed ?? null);
-    setIncludeReasonableCause(!!f.include_reasonable_cause);
-    setReasonableCauseReasons(f.reasonable_cause_reasons ?? []);
-
-    setOwnerName(o.owner_full_name ?? '');
-    setOwnerCountry(o.owner_primary_country ?? '');
-    setOwnerCountryRes(o.owner_country_residence ?? '');
-    setOwnerCountryCitizenship(o.owner_country_citizenship ?? '');
-    setOwnerSSN(o.owner_us_tin ?? '');
-    setOwnerForeignTaxId(o.owner_foreign_tax_id ?? '');
-    setOwnerRefNumber(o.owner_reference_id ?? '');
-    setOwnerAddress(o.owner_address ?? {});
-    setOwnerBizActivity(o.owner_business_activity ?? '');
-    setOwnerBizCode(o.owner_naics_code ?? '');
-    setSignerTitle(o.signer_title ?? 'Managing Member');
-    setSignatureDate(o.signature_date ?? '');
-
-    setRelatedParties(scenario.related_parties ?? []);
-    setTransactions(scenario.transactions ?? []);
-    setNoTransactionsConfirmed(!!scenario.no_transactions_confirmed);
-    setPartViManagerial(scenario.part_vi_managerial !== false);
-
-    // Reset to a clean step 1 so you walk the whole flow, and clear any
-    // leftover local filing id so Continue creates a brand-new row.
-    setLocalFilingId(null);
-    setStep(1);
-    setStepErrors([]);
-    setError(null);
-    setDebugPanelOpen(false);
   };
 
   useEffect(() => {
@@ -1101,8 +1011,7 @@ export function Intake() {
       if (!filingId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not signed in');
-        console.log('INSERT PAYLOAD:', JSON.stringify({ ...patch, user_id: user.id }, null, 2));
-        const { data, error: err } = await supabase.from('filings').insert({ ...patch, user_id: user.id, status: 'draft' }).select('id').single();
+        const { data, error: err } = await supabase.from('filings').insert({ ...patch, user_id: user.id }).select('id').single();
         if (err) throw err;
         const newId = data.id as string;
         setLocalFilingId(newId);
@@ -1651,52 +1560,6 @@ export function Intake() {
             })}
           </div>
         </nav>
-
-        {/* ── Dev-only test scenario loader panel ── */}
-        {isDebugMode && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            <button
-              type="button"
-              onClick={() => setDebugPanelOpen((v) => !v)}
-              style={{ ...secondaryBtnStyle, fontSize: '0.75rem', padding: '0.3rem 0.75rem', borderColor: '#f59e0b', color: '#f59e0b' }}
-            >
-              🧪 {debugPanelOpen ? 'Hide' : 'Load'} test scenario
-            </button>
-
-            {debugPanelOpen && (
-              <div style={{ ...groupedCardStyle, padding: '1rem', marginTop: '0.75rem', borderColor: '#f59e0b' }}>
-                <textarea
-                  value={debugJsonText}
-                  onChange={(e) => setDebugJsonText(e.target.value)}
-                  placeholder="Paste the full scenarios JSON (or a single scenario object) here"
-                  style={{ width: '100%', minHeight: '120px', fontFamily: 'monospace', fontSize: '0.75rem' }}
-                />
-                {debugError && <div className="field-error" style={{ marginTop: '0.5rem' }}>{debugError}</div>}
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button type="button" style={secondaryBtnStyle} onClick={parseDebugJson}>Parse JSON</button>
-                  {debugScenarios.length > 0 && (
-                    <>
-                      <select
-                        value={debugSelectedIdx}
-                        onChange={(e) => setDebugSelectedIdx(Number(e.target.value))}
-                        style={{ flex: 1, minWidth: '200px' }}
-                      >
-                        {debugScenarios.map((s, i) => (
-                          <option key={i} value={i}>
-                            {s.scenario_id ? `#${s.scenario_id} — ` : ''}{s.title ?? `Scenario ${i + 1}`}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" style={primaryBtnStyle} onClick={() => loadDebugScenario(debugScenarios[debugSelectedIdx])}>
-                        Load into form
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Scroll anchor: Continue/Back lands here (top of the step). */}
         <div ref={stepTopRef} aria-hidden="true" />
