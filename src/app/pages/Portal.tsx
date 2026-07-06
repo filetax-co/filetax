@@ -38,7 +38,7 @@ const howItWorksSteps = [
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
 
-const BASE = import.meta.env.BASE_URL.replace(/\\/$/, '');
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const RESEND_COOLDOWN = 60;
 
