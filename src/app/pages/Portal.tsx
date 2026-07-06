@@ -38,12 +38,12 @@ const howItWorksSteps = [
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+const BASE = import.meta.env.BASE_URL.replace(/\\/$/, '');
 
 const RESEND_COOLDOWN = 60;
 
 function friendlyError(msg: string): string {
-  if (/security purposes|rate.?limit|too many|after \d+ second/i.test(msg)) {
+  if (/security purposes|rate.?limit|too many|after \\d+ second/i.test(msg)) {
     return 'Please wait a moment before requesting another email. Check your inbox (and spam folder) first.';
   }
   return msg;
@@ -163,6 +163,14 @@ export function Portal() {
 
       if (signUpError) {
         setError(friendlyError(signUpError.message));
+        setSubmitting(false);
+        return;
+      }
+
+      // NEW: Supabase returns a fake success (empty identities array) when the
+      // email is already registered and email confirmations are enabled.
+      if (signUpData?.user?.identities?.length === 0) {
+        setError('This email is already registered. Please sign in instead.');
         setSubmitting(false);
         return;
       }
@@ -457,7 +465,23 @@ export function Portal() {
 
                 {mode === 'forgot' && <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }} />}
 
-                {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
+                {error && (
+                  <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>
+                    {error}
+                    {error.includes('already registered') && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => { setMode('login'); setError(''); }}
+                          style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                        >
+                          Sign in instead
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
 
                 <button type="submit" disabled={submitting} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', minHeight: '44px', marginBottom: '0.875rem', opacity: submitting ? 0.7 : 1 }}>
                   {submitting
