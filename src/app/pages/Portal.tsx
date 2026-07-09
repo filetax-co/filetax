@@ -43,10 +43,14 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 const RESEND_COOLDOWN = 60;
 
 function friendlyError(msg: string): string {
-  if (/security purposes|rate.?limit|too many|after \\d+ second/i.test(msg)) {
+  if (/security purposes|rate.?limit|too many|after \d+ second/i.test(msg)) {
     return 'Please wait a moment before requesting another email. Check your inbox (and spam folder) first.';
   }
   return msg;
+}
+
+function isDuplicateEmailError(msg: string): boolean {
+  return /already registered|already exists|user_already_exists/i.test(msg);
 }
 
 export function Portal() {
@@ -162,13 +166,17 @@ export function Portal() {
       });
 
       if (signUpError) {
-        setError(friendlyError(signUpError.message));
+        if (isDuplicateEmailError(signUpError.message)) {
+          setError('This email is already registered. Please sign in instead.');
+        } else {
+          setError(friendlyError(signUpError.message));
+        }
         setSubmitting(false);
         return;
       }
 
-      // NEW: Supabase returns a fake success (empty identities array) when the
-      // email is already registered and email confirmations are enabled.
+      // Fallback: Supabase can still return a fake success (empty identities array)
+      // for an already-registered, already-confirmed email even without an explicit error.
       if (signUpData?.user?.identities?.length === 0) {
         setError('This email is already registered. Please sign in instead.');
         setSubmitting(false);
