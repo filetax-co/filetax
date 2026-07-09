@@ -123,6 +123,7 @@ export function Portal() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSubmitted(false);
 
     if (mode === 'forgot') {
       if (!email.trim()) { setError('Please enter your email address.'); return; }
