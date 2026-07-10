@@ -122,6 +122,7 @@ export function Portal() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     setSubmitted(false);
 
@@ -166,7 +167,12 @@ export function Portal() {
         },
       });
 
+      console.log('DEBUG signUpError:', signUpError);
+      console.log('DEBUG signUpData:', JSON.stringify(signUpData, null, 2));
+      console.log('DEBUG identities length:', signUpData?.user?.identities?.length);
+
       if (signUpError) {
+        console.log('DEBUG: entered signUpError branch');
         if (isDuplicateEmailError(signUpError.message)) {
           setError('This email is already registered. Please sign in instead.');
         } else {
@@ -176,13 +182,14 @@ export function Portal() {
         return;
       }
 
-      // Fallback: Supabase can still return a fake success (empty identities array)
-      // for an already-registered, already-confirmed email even without an explicit error.
       if (signUpData?.user?.identities?.length === 0) {
+        console.log('DEBUG: entered identities===0 branch, duplicate error should show now');
         setError('This email is already registered. Please sign in instead.');
         setSubmitting(false);
         return;
       }
+
+      console.log('DEBUG: fell through to success/submitted branch');
 
       const hasEligibilityConfig = years || sectionsParam || parties > 1 || includeRCL;
       if (hasEligibilityConfig) {
