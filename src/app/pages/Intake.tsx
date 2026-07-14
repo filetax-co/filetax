@@ -1215,17 +1215,14 @@ export function Intake() {
         // Paid filing: this submit is a correction round. Increment the edit
         // counter (DB enforces the cap) and go straight to the download page —
         // do NOT touch status (it stays paid/completed).
-        if (editsRemaining > 0) {
-          await supabase.from('filings')
-            .update({ post_payment_edits: postPaymentEdits + 1 })
-            .eq('id', filingId);
+      if (editsRemaining > 0) {
+        const { error: incErr } = await supabase.rpc('increment_post_payment_edit', {
+        p_filing_id: filingId,
+        });
+        if (incErr) throw incErr;
         }
         navigate(`/filing/${filingId}`);
-        return;
-      }
-
-      const { error: err } = await supabase.from('filings').update({ status: 'in_progress' }).eq('id', filingId);
-      if (err) throw err;
+      return;
 
       // Remember entity + owner details so the next year's filing prefills.
       // Best-effort: never block submission on a profile write.
