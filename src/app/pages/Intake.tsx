@@ -1223,7 +1223,8 @@ export function Intake() {
         }
         navigate(`/filing/${filingId}`);
       return;
-
+      }
+      
       // Remember entity + owner details so the next year's filing prefills.
       // Best-effort: never block submission on a profile write.
       try {
