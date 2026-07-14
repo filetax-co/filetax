@@ -172,7 +172,6 @@ export function Portal() {
       console.log('DEBUG identities length:', signUpData?.user?.identities?.length);
 
       if (signUpError) {
-        console.log('DEBUG: entered signUpError branch');
         if (isDuplicateEmailError(signUpError.message)) {
           setError('This email is already registered. Please sign in instead.');
         } else {
@@ -182,14 +181,14 @@ export function Portal() {
         return;
       }
 
-      if (signUpData?.user?.identities?.length === 0) {
-        console.log('DEBUG: entered identities===0 branch, duplicate error should show now');
+      // Handle both obfuscation shapes Supabase uses for existing accounts:
+      // either identities:[] on a returned user, or user:null with no session at all.
+      if (!signUpData?.user || signUpData?.user?.identities?.length === 0) {
+        console.log('DEBUG: duplicate detected via null-user or empty-identities check');
         setError('This email is already registered. Please sign in instead.');
         setSubmitting(false);
         return;
       }
-
-      console.log('DEBUG: fell through to success/submitted branch');
 
       const hasEligibilityConfig = years || sectionsParam || parties > 1 || includeRCL;
       if (hasEligibilityConfig) {
