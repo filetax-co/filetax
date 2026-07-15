@@ -1142,7 +1142,7 @@ const fill5472 = async (
   // foreign-owned DE often operates from the owner's country. Honor the user's
   // answer, falling back to the US only when none was given.
   const principalCountry =
-    (filing['entity_principal_country'] as string | undefined)?.trim() || 'United States';
+    ((filing as unknown as Record<string, unknown>)['entity_principal_country'] as string | undefined)?.trim() || 'United States';
   setText(doc, F.CORP_COUNTRY_BUSINESS,      principalCountry);
 
   // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
