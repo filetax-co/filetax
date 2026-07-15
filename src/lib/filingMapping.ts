@@ -76,10 +76,14 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   distribution:         'distribution',
   dividend:             'dividend',
   formation_costs:      'formation_costs',
-  // Structural events map to the nearest monetary Part V concept; the Part V
-  // statement narrates the specifics from the description.
+  // Structural events map to the nearest monetary concept; the statement
+  // narrates the specifics from the description.
   formation_tx:         'capital_contribution',
-  dissolution_tx:       'distribution',
+  // A dissolution / wind-down payout is reported as an "other amount paid"
+  // (Form 5472 Part IV, line 35). Part IV renders per related party, so a
+  // dissolution distribution to a related party's trust actually prints on
+  // that party's 5472 — unlike Part V, which is generated for the owner only.
+  dissolution_tx:       'other',
   acquisition_tx:       'capital_contribution',
   disposition_tx:       'distribution',
   other_part_v:         'capital_contribution',

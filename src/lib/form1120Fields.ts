@@ -131,8 +131,11 @@ const F1120_2023: F1120Map = {
   BEGINNING_DATE: 'BeginnningDate',
 };
 
-// 2024 PDF was re-authored with an entirely different naming scheme. It does
-// expose EndingDate and EndingYear, but NOT BeginningDate.
+// 2024 PDF uses a distinct naming scheme (CompanyName/CompanyEIN/etc.). As of
+// the updated template it exposes THREE separate masthead date fields —
+// BeginningDate, EndingDate, EndingYear — so the fiscal/short-year beginning
+// date now fills its own box (previously the beginning blank shared the
+// EndingDate field and printed the ending date).
 const F1120_2024: F1120Map = {
   ...emptyMap(),
   CORP_NAME:           'CompanyName',
@@ -148,6 +151,7 @@ const F1120_2024: F1120Map = {
   SIGNATURE:           'OfficerSignature',
   DATE:                'Date',
   TITLE:               'OfficerTitle',
+  BEGINNING_DATE:      'BeginningDate',
   ENDING_DATE:         'EndingDate',
   ENDING_YEAR:         'EndingYear',
 };

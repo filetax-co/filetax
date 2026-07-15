@@ -86,9 +86,10 @@ const loadPdf = async (url: string): Promise<PDFDocument> => {
 // which makes pdf-lib shrink each field's text independently to fit its box — so
 // a long value renders much smaller than a short one and the printed forms look
 // uneven from page to page. Pinning one size makes all entered text uniform.
-// 9pt matches the statement/letter body size (FS_BODY) so the whole package
-// reads at one scale, and fits the IRS field boxes (median height ~12pt).
-const FORM_FIELD_FONT_SIZE = 9;
+// 8pt sits one point below the statement/letter body size (FS_BODY) so entered
+// values sit comfortably inside the IRS field boxes (median height ~12pt) and
+// long values no longer crowd or clip when printed on the actual forms.
+const FORM_FIELD_FONT_SIZE = 8;
 
 const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
   if (!fieldName) return;
@@ -283,6 +284,10 @@ export interface AggregatedTransactions {
   // Part V — Distributions / contributions / nonmonetary owner transactions
   distributions_paid: number;
   contributions_received: number;
+  // Part V — Formation / start-up costs the owner paid on behalf of the LLC.
+  // Tracked in its own bucket so it feeds both the Part V summary and the
+  // 1f/1h gross, without being relabeled as a capital contribution.
+  formation_costs_paid: number;
   // Part VI — monetary consideration recorded on nonmonetary / below-FMV items
   part_vi_amount: number;
   // flags
@@ -327,6 +332,7 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
     borrowed_begin: 0, borrowed_end: 0,
     loaned_begin: 0, loaned_end: 0,
     distributions_paid: 0, contributions_received: 0,
+    formation_costs_paid: 0,
     part_vi_amount: 0,
     hasPartIV: false,
     // Part V: only monetary owner transactions (distributions, contributions, dividends)
@@ -401,8 +407,11 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
         t.hasPropertyTransfer = true; t.part_vi_amount += amt; break;
       case 'nonmonetary_other':
         t.hasNonmonetaryOther = true; t.part_vi_amount += amt; break;
-      // formation_costs: owner paid something on behalf of LLC — Part V disclosure
+      // formation_costs: owner paid something on behalf of LLC — Part V disclosure.
+      // Accumulate the amount so it feeds the Part V summary and the 1f/1h gross;
+      // previously only the flag was set and the dollar amount was dropped.
       case 'formation_costs':
+        t.formation_costs_paid += amt;
         t.hasPartV = true; break;
       default:
         break;
@@ -453,7 +462,8 @@ const totalPaid = (t: AggregatedTransactions): number =>
  * items where an amount was recorded).
  */
 const grossPaymentsForLines1f1h = (t: AggregatedTransactions): number =>
-  totalReceived(t) + totalPaid(t) + t.distributions_paid + t.contributions_received + t.part_vi_amount;
+  totalReceived(t) + totalPaid(t) + t.distributions_paid + t.contributions_received +
+  t.formation_costs_paid + t.part_vi_amount;
 
 // ─── shared statement page utilities ─────────────────────────────────────────────────────────
 
@@ -608,16 +618,14 @@ export const buildPartVStatement = async (
     'This statement is furnished under Internal Revenue Code section 6038A and '
     + 'Treasury Regulation section 1.6038A-2, and supports Part V of Form 5472. '
     + 'During the tax year identified above, the reporting corporation engaged in the '
-    + 'following reportable transactions with its 25% foreign owner (a related party '
-    + 'within the meaning of section 6038A(c)) — including owner distributions and '
-    + 'withdrawals, capital contributions, dividends, and amounts paid by the owner on '
-    + 'behalf of the reporting corporation. Each such transaction is described below.';
+    + 'following reportable transactions with its foreign owner. '
+    + 'Each such transaction is described below.';
   cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 14;
 
   // ── Aggregated monetary totals block ──────────────────────────────────────────
   const txn = aggregateTransactions(txns);
-  if (txn.distributions_paid > 0 || txn.contributions_received > 0) {
+  if (txn.distributions_paid > 0 || txn.contributions_received > 0 || txn.formation_costs_paid > 0) {
     cursor.y = drawWrapped(page, 'Summary of Monetary Part V Transactions:', MARGIN, cursor.y,
       { size: FS_BODY, font: bold }, fonts);
     cursor.y -= 2;
@@ -629,6 +637,11 @@ export const buildPartVStatement = async (
     if (txn.contributions_received > 0) {
       cursor.y = drawWrapped(page,
         `Total Capital Contributions received from Owner:  $${txn.contributions_received.toLocaleString('en-US')}`,
+        MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
+    }
+    if (txn.formation_costs_paid > 0) {
+      cursor.y = drawWrapped(page,
+        `Total Formation / Start-up Costs paid by Owner on behalf of LLC:  $${txn.formation_costs_paid.toLocaleString('en-US')}`,
         MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     }
     cursor.y -= 12;
@@ -762,9 +775,7 @@ export const buildPartVIStatement = async (
       `These services encompassed general management, strategic decision-making, business ` +
       `development, and operational oversight. No monetary consideration was paid, accrued, or ` +
       `otherwise exchanged between the Reporting Corporation and the related party for these ` +
-      `services. Because the transaction involved no monetary consideration, no amounts are ` +
-      `reportable on Part IV, and the transaction is fully disclosed herein in compliance with ` +
-      `Part VI requirements.`;
+      `services.`;
 
     cursor.y = drawWrapped(page, para1, MARGIN + 12, cursor.y, { size: FS_BODY }, fonts);
     cursor.y -= 8;
@@ -923,15 +934,17 @@ export const buildReasonableCauseLetter = async (
   cursor.y -= 10;
 
   const single = years.length === 1;
-  const returnWord = single ? 'return is' : 'returns are';
+  // NOTE: The intro no longer asserts that the return is being filed
+  // "voluntarily, before any notice or examination." Voluntariness is only
+  // claimed when the filer actually selects the voluntary-filing reason, which
+  // contributes its own paragraph via RCL_REASON_PARAGRAPHS.voluntary_filing.
   const intro =
     `I am the owner of ${filing.llc_name ?? 'my company'}, a U.S. limited liability company ` +
     `that I wholly own as a non-U.S. person and that is treated as a foreign owned ` +
     `disregarded entity. I respectfully ask the Internal Revenue Service to abate in full ` +
     `any penalties charged under Internal Revenue Code §6038A for the late filing of ` +
     `Form 5472, and the accompanying pro forma Form 1120, for ${yearsText}. ` +
-    `${single ? 'This' : 'These'} ${returnWord} being filed voluntarily, before any notice ` +
-    `or examination. The facts that establish reasonable cause are set out below.`;
+    `The facts that establish reasonable cause are set out below.`;
   cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 12;
 
@@ -954,7 +967,7 @@ export const buildReasonableCauseLetter = async (
     'As soon as I learned of the requirement, I acted diligently to become compliant, ' +
     `gathering the records needed to prepare a complete and accurate Form 5472 for each ` +
     `affected year and filing ${single ? 'this delinquent return' : 'these delinquent returns'} ` +
-    'voluntarily, before any notice, examination, or contact from the IRS. I have also put ' +
+    'as promptly as I was able. I have also put ' +
     'procedures in place to make sure Form 5472 is filed on time in all future years.';
 
   const body = (narrative && narrative.trim()) ? narrative.trim() : DEFAULT_BODY;
@@ -1019,10 +1032,12 @@ export const buildInstructionsPage = async (
     ? `Form 1120 (pro forma) with ${opts.formCount} Forms 5472 attached (one per related party)`
     : 'Form 1120 (pro forma) with Form 5472 attached';
 
+  // NOTE: No "Signature" instruction. The owner's signature and date are
+  // collected during intake and already printed on the pro forma Form 1120
+  // (see the signature block below), so the filer does not need to sign again.
   const rows: [string, string][] = [
     ['Taxpayer', `${filing.llc_name ?? ''} (EIN ${filing.ein ?? '—'})`],
     ['Return', `${formsLine}, for the tax period ${period.beginText} through ${period.endText}.`],
-    ['Signature', 'Sign and date the pro forma Form 1120 where indicated before mailing. The "Foreign-owned U.S. DE" notation is already printed across the top of the form.'],
   ];
   if (opts.hasRCL) {
     rows.push(['Attachment', 'A Reasonable Cause Statement is enclosed once for the whole submission, placed at the front of the package.']);
@@ -1093,12 +1108,14 @@ const fill5472 = async (
   // human month name ("November 1") and the four-digit year. The combined
   // human string ("November 1, 2025") is what the statements use.
   const [pbY, pbM, pbD] = period.beginISO.split('-');
-  const [peY] = period.endISO.split('-');
+  const [peY, peM, peD] = period.endISO.split('-');
   const beginMonthName = pbM ? (MONTH_NAMES[Number(pbM)] ?? pbM) : '';
-  const endMonthName = period.endISO.split('-')[1];
+  const endMonthName = peM ? (MONTH_NAMES[Number(peM)] ?? peM) : '';
   setText(doc, F.TAX_YEAR_BEGIN,      pbD ? `${beginMonthName} ${Number(pbD)}` : period.beginText);
   setText(doc, F.TAX_YEAR_BEGIN_YEAR, pbY ?? '');
-  setText(doc, F.TAX_YEAR_END,        endMonthName ? `${MONTH_NAMES[Number(endMonthName)]} 31` : period.endText);
+  // Use the ACTUAL end day from the period, not a hardcoded "31". A June
+  // fiscal-year-end must print "June 30", not the impossible "June 31".
+  setText(doc, F.TAX_YEAR_END,        (endMonthName && peD) ? `${endMonthName} ${Number(peD)}` : period.endText);
   setText(doc, F.TAX_YEAR_END_YEAR,   peY ?? '');
 
   // ── Part I — Reporting Corporation (the US LLC) ──────────────────────────────────
@@ -1120,7 +1137,13 @@ const fill5472 = async (
     filing.owner.country_residence || filing.owner.country_business || 'United States';
   setText(doc, F.CORP_COUNTRY_OF_INC,        filing.country_of_incorporation ?? 'United States');
   setText(doc, F.CORP_RESIDENT_COUNTRY,      ownerTaxCountry);
-  setText(doc, F.CORP_COUNTRY_BUSINESS,      'United States');
+  // Principal country(ies) where the business is conducted. The filer supplies
+  // this in intake (entity_principal_country); it is NOT always the US — a
+  // foreign-owned DE often operates from the owner's country. Honor the user's
+  // answer, falling back to the US only when none was given.
+  const principalCountry =
+    (filing['entity_principal_country'] as string | undefined)?.trim() || 'United States';
+  setText(doc, F.CORP_COUNTRY_BUSINESS,      principalCountry);
 
   // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
   // 1f/1h aggregate the monetary transactions for this party — Part IV flows plus
@@ -1510,13 +1533,13 @@ const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): stri
 };
 
 /**
- * Whether to include Form 7004 in the package. Only an extension FILING
- * (include_7004) generates the form. A filing that merely records the owner
- * already filed 7004 elsewhere (extension_filed) does not re-generate it, and
- * we never produce a 7004-only package.
+ * Whether to include Form 7004 in the package. The form is produced when the
+ * filer either explicitly requests it (include_7004) OR indicates they filed an
+ * extension (extension_filed) — in both cases the completed 7004 belongs in the
+ * package so the filer has a copy of what was/should be filed.
  */
 const wants7004 = (raw: Filing): boolean =>
-  raw.include_7004 === true;
+  raw.include_7004 === true || (raw as Filing & { extension_filed?: boolean }).extension_filed === true;
 
 /**
  * Generate a standalone, filled Form 7004 — used both inside the package and
@@ -1619,11 +1642,19 @@ const buildYearDocs = async (filing: NormalizedFiling, period: ResolvedPeriod, t
 const assembleYear = async (
   yd: YearDocs,
   prefix: PDFDocument[],
+  // Optional Form 7004, inserted immediately after the 1120 and before the
+  // 5472s so the package reads: [prefix] → 1120 → 7004 → owner 5472 + its
+  // Part V/VI statements → other parties' 5472s.
+  form7004Doc?: PDFDocument | null,
 ): Promise<PDFDocument> => {
   const merged = await PDFDocument.create();
   for (const p of prefix) await mergeInto(merged, p);
   await mergeInto(merged, yd.doc1120);
-  for (const pd of yd.partyDocs) {
+  if (form7004Doc) await mergeInto(merged, form7004Doc);
+  // Owner (index 0) first, then additional related parties — each 5472 followed
+  // by its own Part V / Part VI statements.
+  const ordered = [...yd.partyDocs].sort((a, b) => Number(b.party.is_owner) - Number(a.party.is_owner));
+  for (const pd of ordered) {
     await mergeInto(merged, pd.doc5472);
     if (pd.docPartV)  await mergeInto(merged, pd.docPartV);
     if (pd.docPartVI) await mergeInto(merged, pd.docPartVI);
@@ -1671,22 +1702,24 @@ export const generateFilingPackage = async (
     reasonableCauseLetter = await rclDoc.save();
   }
 
-  // Combined order: RCL (if any) → instructions → 1120 → 5472s/statements.
-  const prefix: PDFDocument[] = [];
-  if (rclDoc) prefix.push(await PDFDocument.load(reasonableCauseLetter!));
-  prefix.push(instructions);
-  const merged = await assembleYear(yd, prefix);
-
-  // Form 7004 — included when the filing opted into an extension. Appended to
-  // the end of the combined package AND returned standalone.
+  // Form 7004 — included when the filing opted into an extension (or marked one
+  // as filed). Generated up front so it can be placed in the package right after
+  // the 1120, and also returned standalone.
   const include7004 = wants7004(rawFiling);
   let form7004: Uint8Array | undefined;
+  let form7004Doc: PDFDocument | null = null;
   if (include7004) {
     const doc7004 = await fill7004(filing, period);
     form7004 = await doc7004.save();
-    // Append a fresh copy to the combined PDF (mergeInto flattens its source).
-    await mergeInto(merged, await PDFDocument.load(form7004));
+    // A fresh copy for the combined package (mergeInto flattens its source).
+    form7004Doc = await PDFDocument.load(form7004);
   }
+
+  // Combined order (per spec): Instructions → RCL (if any) → 1120 → 7004 (if any)
+  // → owner 5472 + its Part V/VI statements → other parties' 5472s.
+  const prefix: PDFDocument[] = [instructions];
+  if (rclDoc) prefix.push(await PDFDocument.load(reasonableCauseLetter!));
+  const merged = await assembleYear(yd, prefix, form7004Doc);
 
   const ownerDocs = yd.partyDocs.find((pd) => pd.party.is_owner) ?? yd.partyDocs[0];
   const [form1120, combined, form5472, statement_partVI, statement_partV] = await Promise.all([
@@ -1766,7 +1799,8 @@ export const generateMultiYearPackage = async (
     const instructions = await buildInstructionsPage(yd.filing, yd.period, {
       isLate: opts.includeRCL, hasRCL: opts.includeRCL, formCount: yd.formCount,
     });
-    const merged = await assembleYear(yd, [instructions]);
+    const y7004 = wants7004(yd.filing) ? await PDFDocument.load(await (await fill7004(yd.filing, yd.period)).save()) : null;
+    const merged = await assembleYear(yd, [instructions], y7004);
     perYear.push({ taxYear: yd.period.year, pdf: await merged.save(), formCount: yd.formCount });
   }
 
@@ -1785,7 +1819,8 @@ export const generateMultiYearPackage = async (
     const rebuilt = await buildYearDocs(yd.filing, yd.period,
       // reconstruct this year's transactions from the input list
       sorted.find((s) => s.taxYear === yd.period.year)!.transactions);
-    const yearMerged = await assembleYear(rebuilt, [instructions]);
+    const y7004 = wants7004(yd.filing) ? await PDFDocument.load(await (await fill7004(yd.filing, yd.period)).save()) : null;
+    const yearMerged = await assembleYear(rebuilt, [instructions], y7004);
     const yearCopy = await PDFDocument.load(await yearMerged.save());
     await mergeInto(bundle, yearCopy);
   }

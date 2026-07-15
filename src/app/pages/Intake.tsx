@@ -182,7 +182,11 @@ function getFilingTimingStatus(
 function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   if (!address.line1?.trim()) return false;
   if (!address.city?.trim()) return false;
-  if (!address.region?.trim()) return false;
+  // State / region is required only for US addresses. Many countries (e.g.
+  // Singapore and other city-states) have no state or province, so a foreign
+  // address without a region is still complete.
+  const isUS = forceUS || isUSCountry(address.country);
+  if (isUS && !address.region?.trim()) return false;
   if (!address.postal_code?.trim()) return false;
   if (!forceUS && !address.country?.trim()) return false;
   return true;
@@ -218,9 +222,11 @@ function InfoTooltip({ text, label }: { text: string; label?: string }) {
         onMouseLeave={() => setOpen(false)}
         onBlur={() => setOpen(false)}
         style={{
-          width: '15px', height: '15px', borderRadius: '9999px',
-          border: '1px solid var(--tf-border)', background: 'var(--tf-offset)',
-          color: 'var(--tf-muted)', fontSize: '10px', fontWeight: 700,
+          // Filled accent circle so the info affordance is easy to spot
+          // (previously a low-contrast outlined "i" that was hard to find).
+          width: '16px', height: '16px', borderRadius: '9999px',
+          border: 'none', background: 'var(--tf-accent)',
+          color: 'var(--tf-on-accent)', fontSize: '11px', fontWeight: 700,
           lineHeight: 1, cursor: 'pointer', padding: 0,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           marginLeft: '0.35rem',
@@ -285,6 +291,51 @@ function Field({
   );
 }
 
+/**
+ * One collapsible section of the vertical intake accordion. The trigger shows
+ * the step number, its label, and a progress dot (complete vs still-needed);
+ * the body renders only when open. Styled with the page's --tf-* tokens.
+ */
+function AccordionSection({
+  numberLabel,
+  label,
+  open,
+  complete,
+  onToggle,
+  anchorRef,
+  children,
+}: {
+  numberLabel: string;
+  label: string;
+  open: boolean;
+  complete: boolean;
+  onToggle: () => void;
+  anchorRef?: (el: HTMLDivElement | null) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="acc-section" ref={anchorRef}>
+      <button
+        type="button"
+        className="acc-trigger"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={`acc-progress-dot${complete ? ' is-complete' : ''}`} aria-hidden="true">
+          {complete ? '✓' : ''}
+        </span>
+        <span className="acc-trigger-label">{numberLabel}{label}</span>
+        <span className={`acc-trigger-chevron${open ? ' is-open' : ''}`} aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
+            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+          </svg>
+        </span>
+      </button>
+      {open && <div className="acc-body">{children}</div>}
+    </section>
+  );
+}
+
 function AddressFields({
   value,
   onChange,
@@ -297,48 +348,70 @@ function AddressFields({
   const set = (k: keyof Address, v: string) => onChange({ ...value, [k]: v });
   const effectiveCountry = forceUS ? 'US' : value.country;
   const isUS = isUSCountry(effectiveCountry);
+  // State / region is required only for US addresses. Many countries have no
+  // state or province, so it is optional (and clearly labeled so) for the rest.
+  const regionRequired = isUS;
+
+  // Two-column rows: row 1 = street (full width), row 2 = city + postal code,
+  // row 3 = state/region + country.
+  const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-      <Field label="Street address" style={{ gridColumn: '1 / -1' }} required>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {/* Row 1 — street */}
+      <Field label="Street address" required>
         <input placeholder="Street address" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} />
       </Field>
-      <Field label="City" required>
-        <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
-      </Field>
-      <Field label="State / Region" required>
-        {isUS ? (
-          <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
-            <option value="">Select state</option>
-            {US_STATES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        ) : (
-          <input placeholder="State / Region" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
-        )}
-      </Field>
-      <Field label="Postal code" required>
-        <input placeholder="Postal code" value={value.postal_code ?? ''} onChange={(e) => set('postal_code', e.target.value)} />
-      </Field>
-      {!forceUS && (
-        <Field label="Country" required>
-          <select
-            value={value.country ?? ''}
-            onChange={(e) => {
-              const nextCountry = e.target.value;
-              const wasUS = isUSCountry(value.country);
-              const nextIsUS = isUSCountry(nextCountry);
-              onChange({ ...value, country: nextCountry, region: wasUS !== nextIsUS ? '' : value.region });
-            }}
-          >
-            <option value="">Select country</option>
-            {COUNTRIES.map((c) => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
+
+      {/* Row 2 — city + postal code */}
+      <div style={rows}>
+        <Field label="City" required>
+          <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
         </Field>
-      )}
+        <Field label="Postal code" required>
+          <input placeholder="Postal code" value={value.postal_code ?? ''} onChange={(e) => set('postal_code', e.target.value)} />
+        </Field>
+      </div>
+
+      {/* Row 3 — state/region + country */}
+      <div style={rows}>
+        <Field
+          label={isUS ? 'State' : 'State or region'}
+          required={regionRequired}
+          status={regionRequired ? undefined : 'optional'}
+        >
+          {isUS ? (
+            <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
+              <option value="">Select state</option>
+              {US_STATES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input placeholder="Leave blank if your country has none" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
+          )}
+        </Field>
+        {forceUS ? (
+          <div />
+        ) : (
+          <Field label="Country" required>
+            <select
+              value={value.country ?? ''}
+              onChange={(e) => {
+                const nextCountry = e.target.value;
+                const wasUS = isUSCountry(value.country);
+                const nextIsUS = isUSCountry(nextCountry);
+                onChange({ ...value, country: nextCountry, region: wasUS !== nextIsUS ? '' : value.region });
+              }}
+            >
+              <option value="">Select country</option>
+              {COUNTRIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+      </div>
     </div>
   );
 }
@@ -394,7 +467,7 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
       <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
         The “gross payments” figure (Form 5472 line 1f/1h) counts service, rent, royalty and goods dealings. Money you put in or took out, and loan balances, are reported on their own lines, so the two numbers can differ. That is expected.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
         {bucket('Money out', summary.bucketOut, 'var(--tf-accent)')}
         {bucket('Other dealings', summary.bucketOther, 'var(--tf-text)')}
@@ -436,6 +509,13 @@ export function Intake() {
     return (s >= 1 && s <= 5 ? s : 1) as IntakeStep;
   });
 
+  // Vertical-accordion model: every step is a section on one page. openSections
+  // holds which are expanded; the intake opens all sections so the filer can
+  // scroll the whole form and always see where they are.
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    () => new Set<string>(['1', '1b', '2', '3', '4', '5']),
+  );
+
   const [loadingFiling, setLoadingFiling] = useState(!!params.get('filing_id'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -449,6 +529,9 @@ export function Intake() {
   // user is never left guessing why the form did not advance.
   const stepTopRef = useRef<HTMLDivElement | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement | null>(null);
+  // Per-accordion-section anchors, keyed by step ('1','1b','2','3','4','5'),
+  // so "Save & continue" can scroll to the next section.
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Step 1
   const [llcName, setLlcName] = useState('');
@@ -527,6 +610,9 @@ export function Intake() {
   });
   const [showRpForm, setShowRpForm] = useState(false);
   const [editingRpIdx, setEditingRpIdx] = useState<number | null>(null);
+  // When editing an existing transaction from the list, this holds its index so
+  // the left-hand form saves back into that row instead of appending a new one.
+  const [editingTxIdx, setEditingTxIdx] = useState<number | null>(null);
 
   // Step 4
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
@@ -544,6 +630,8 @@ export function Intake() {
   const [jobId, setJobId] = useState<string | null>(null);
   // For a multi-year job: is there another draft year AFTER this one to file?
   const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
+  // Sibling year filings in the same catch-up job — drives the year tab strip.
+  const [jobYears, setJobYears] = useState<{ id: string; tax_year: string; status: string }[]>([]);
   // Once a filing has been completed at least once (submitted / paid), every
   // step is freely navigable — from step 1 the user can jump straight to step 5.
   const [completedOnce, setCompletedOnce] = useState(false);
@@ -565,6 +653,9 @@ export function Intake() {
   // the user asks for it (the quick list covers the common ~90%).
   const [showDetailedTx, setShowDetailedTx] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
+  // Free-text search for the "What happened?" combo box — filters across ALL
+  // transaction types by label/plain-English sentence.
+  const [txSearch, setTxSearch] = useState('');
 
   const allPartyLabels = [
     ownerName || 'Primary owner',
@@ -695,8 +786,15 @@ export function Intake() {
           (s: any) => s.id !== filingId && s.status === 'draft',
         );
         setHasNextDraftYear(remaining);
+        // Keep the year tabs in sync (sorted ascending by tax year).
+        setJobYears(
+          (sibs ?? [])
+            .map((s: any) => ({ id: s.id as string, tax_year: String(s.tax_year), status: s.status as string }))
+            .sort((a, b) => Number(a.tax_year) - Number(b.tax_year)),
+        );
       } else {
         setHasNextDraftYear(false);
+        setJobYears([]);
       }
       setFinalReturn((f as any).final_return ?? false);
       setIsFiscalYear((f as any).is_fiscal_year ?? false);
@@ -893,6 +991,73 @@ export function Intake() {
     return {};
   }
 
+  // The whole-form patch — the union of every step's fields. In the accordion
+  // model all field state is in memory at once, so we persist everything on
+  // section-collapse and at submit instead of one step at a time. Built by
+  // temporarily reading each step's subset via patchFromCurrentStep.
+  function patchAll(): Partial<Filing> & Record<string, unknown> {
+    const rclApplies = includeReasonableCause && isLateForRcl;
+    return {
+      // Step 1 — LLC
+      llc_name: llcName.trim() || null,
+      ein: ein.trim() || null,
+      state_of_formation: stateOfFormation.trim() || null,
+      tax_year: taxYear,
+      total_assets: totalAssets ? Number(totalAssets) : null,
+      entity_date_of_incorporation: entityDOI.trim() || null,
+      entity_principal_country: entityPrincipalCountry.trim() || null,
+      mailing_address: mailing,
+      entity_business_activity: entityBizActivity.trim() || null,
+      entity_business_code: entityBizCode.trim() || null,
+      date_of_incorporation: entityDOI.trim() || null,
+      naics_code: entityBizCode.trim() || null,
+      naics_description: entityBizActivity.trim() || null,
+      initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
+      final_return: finalReturn,
+      is_fiscal_year: isFiscalYear,
+      tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
+      tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
+      // Step 1b — filing status
+      extension_filed: extensionFiled,
+      include_reasonable_cause: rclApplies,
+      reasonable_cause_reasons: rclApplies ? reasonableCauseReasons : [],
+      include_rcl: rclApplies,
+      // Step 2 — owner
+      owner_full_name: ownerName.trim() || null,
+      owner_country: ownerCountry.trim() || null,
+      owner_country_residence: ownerCountryRes.trim() || null,
+      owner_ssn: ownerSSN.trim() || null,
+      owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
+      owner_ref_number: ownerRefNumber.trim() || null,
+      owner_address: ownerAddress,
+      owner_business_activity: ownerBizActivity.trim() || null,
+      owner_business_code: ownerBizCode.trim() || null,
+      owner_primary_country: ownerCountry.trim() || null,
+      owner_country_citizenship: ownerCountryCitizenship.trim() || null,
+      owner_us_tin: ownerSSN.trim() || null,
+      owner_reference_id: ownerRefNumber.trim() || null,
+      owner_naics_code: ownerBizCode.trim() || null,
+      signer_title: signerTitle.trim() || 'Managing Member',
+      signature_date: signatureDate || null,
+      // Step 3 — related parties
+      related_parties: relatedParties,
+      // Step 4 — transactions meta
+      no_transactions_confirmed: noTransactionsConfirmed,
+      part_vi_managerial: partViManagerial,
+    };
+  }
+
+  // Validation status of one accordion section, used for the progress dot.
+  function sectionProgress(s: IntakeStep): 'complete' | 'incomplete' {
+    let errs: string[] = [];
+    if (s === 1) errs = validateStep1();
+    else if (s === '1b') errs = validateStep1b();
+    else if (s === 2) errs = validateStep2();
+    else if (s === 3) errs = showRpForm ? ['open'] : [];
+    else if (s === 4) errs = (transactions.length === 0 && !noTransactionsConfirmed) ? ['none'] : [];
+    return errs.length === 0 ? 'complete' : 'incomplete';
+  }
+
   const handleEinBlur = () => {
     if (ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
     else setEinErr(null);
@@ -900,12 +1065,12 @@ export function Intake() {
 
   function validateStep1(): string[] {
     const errs: string[] = [];
-    if (!llcName.trim()) errs.push('Enter the LLC / Corporation name.');
-    if (!ein.trim()) errs.push('Enter the EIN.');
+    if (!llcName.trim()) errs.push('Enter your LLC or corporation name.');
+    if (!ein.trim()) errs.push("Enter your LLC's EIN.");
     if (ein.trim() && !isValidEIN(ein)) errs.push('Enter a valid EIN in XX-XXXXXXX format.');
-    if (!stateOfFormation) errs.push('Select the state of formation.');
-    if (!taxYear) errs.push('Select the tax year.');
-    if (!entityDOI) errs.push('Enter the date of incorporation.');
+    if (!stateOfFormation) errs.push('Select the state where your LLC was formed.');
+    if (!taxYear) errs.push("Select the tax year you're filing for.");
+    if (!entityDOI) errs.push('Enter the date your LLC was formed.');
     if (entityDOI && taxYear) {
       const doiYear = Number(entityDOI.slice(0, 4));
       const ty = Number(taxYear);
@@ -914,23 +1079,23 @@ export function Intake() {
         // validate against the derived period end rather than the tax-year number.
         const { end } = deriveFiscalPeriod(taxYear, fiscalEndMonth);
         if (entityDOI > end) {
-          errs.push(`The incorporation date (${entityDOI}) is after the end of the ${ty} fiscal year (${end}). An LLC cannot be incorporated after the period it is filing for. Check the date, the tax year, or the fiscal year-end.`);
+          errs.push(`The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the end of the ${ty} fiscal year (${formatDateMMDDYYYY(end)}). An LLC cannot be formed after the period it is filing for. Check the date, the tax year, or the fiscal year-end.`);
         } else if (doiYear < 1900) {
           errs.push('Check the date of incorporation. The year does not look right.');
         }
       } else {
         // Calendar filer: the LLC must exist during the tax year.
         if (doiYear > ty) {
-          errs.push(`The incorporation date (${entityDOI}) is after the ${ty} tax year. An LLC cannot be incorporated after the year it is filing for. Check the date or the tax year.`);
+          errs.push(`The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the ${ty} tax year. An LLC cannot be formed after the year it is filing for. Check the date or the tax year.`);
         } else if (doiYear < 1900) {
           errs.push('Check the date of incorporation. The year does not look right.');
         }
       }
     }
-    if (!entityPrincipalCountry) errs.push('Select the principal country where business is conducted.');
-    if (!entityBizActivity) errs.push('Select the LLC principal business activity.');
-    if (!entityBizCode.trim()) errs.push('Enter the LLC business activity code.');
-    if (!isAddressComplete(mailing, true)) errs.push('Complete the LLC mailing address.');
+    if (!entityPrincipalCountry) errs.push('Select the main country where the LLC does business.');
+    if (!entityBizActivity) errs.push("Select your LLC's type of business.");
+    if (!entityBizCode.trim()) errs.push("Enter your LLC's business code.");
+    if (!isAddressComplete(mailing, true)) errs.push("Complete your LLC's mailing address.");
     return errs;
   }
 
@@ -962,14 +1127,14 @@ export function Intake() {
 
   function validateRelatedPartyDraft(draft: RelatedParty): string[] {
     const errs: string[] = [];
-    if (!draft.name.trim()) errs.push('Enter the related party full legal name.');
+    if (!draft.name.trim()) errs.push("Enter the related party's full legal name.");
     if (!draft.country) errs.push('Select the country where they do business.');
     if (!draft.country_residence) errs.push('Select the country where they pay taxes.');
-    if (!draft.foreign_tax_id.trim()) errs.push('Enter the related party tax ID (their country).');
-    if (!draft.ref_number.trim()) errs.push('Enter the related party reference code.');
-    if (!draft.biz_activity) errs.push('Select the related party type of business.');
-    if (!draft.biz_code.trim()) errs.push('Enter the related party business code.');
-    if (!isAddressComplete(draft.address, false)) errs.push('Complete the related party address.');
+    if (!draft.foreign_tax_id.trim()) errs.push("Enter the related party's foreign tax ID.");
+    if (!draft.ref_number.trim()) errs.push("Enter the related party's reference code.");
+    if (!draft.biz_activity) errs.push("Select the related party's type of business.");
+    if (!draft.biz_code.trim()) errs.push("Enter the related party's business code.");
+    if (!isAddressComplete(draft.address, false)) errs.push("Complete the related party's address.");
     return errs;
   }
 
@@ -997,17 +1162,23 @@ export function Intake() {
     }
     if (step === 4) {
       if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
-      if (transactions.length === 0 && !noTransactionsConfirmed) return ['Confirm that the LLC had no reportable transactions this year, or add at least one.'];
+      if (transactions.length === 0 && !noTransactionsConfirmed) return ['Confirm the LLC had no money dealings this year, or add at least one.'];
       return [];
     }
     return [];
   }
 
-  const saveStep = async (): Promise<string | null> => {
+  // Persist a field patch to the current filing (creating the row on first
+  // save). When propagateShared is true, company/owner fields are also copied to
+  // the job's other draft years. Shared by saveStep (legacy per-step) and
+  // saveAll (accordion whole-form save).
+  const persistPatch = async (
+    patch: Partial<Filing> & Record<string, unknown>,
+    propagateShared: boolean,
+  ): Promise<string | null> => {
     setSaving(true);
     setError(null);
     try {
-      const patch = patchFromCurrentStep();
       if (!filingId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not signed in');
@@ -1030,13 +1201,11 @@ export function Intake() {
       const { error: err } = await supabase.from('filings').update(finalPatch).eq('id', filingId);
       if (err) throw err;
 
-      // Multi-year job: Steps 1 and 2 (company + owner) are the SAME for every
-      // year, so once entered on one year they are copied to every other draft
-      // year in the job. That way the later years skip straight to Step 3 and
-      // the user never re-enters the same company/owner details. Year-specific
+      // Multi-year job: company + owner fields are the SAME for every year, so
+      // they are copied to every other draft year in the job. Year-specific
       // fields (tax_year, total_assets, initial_return, fiscal period, final
-      // return, RCL) are intentionally excluded from the shared patch.
-      if (jobId && (step === 1 || step === 2)) {
+      // return, RCL) are excluded by sharedJobPatch.
+      if (jobId && propagateShared) {
         const shared = sharedJobPatch(finalPatch);
         if (Object.keys(shared).length > 0) {
           await supabase
@@ -1049,10 +1218,73 @@ export function Intake() {
       }
       return filingId;
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e));
+      console.error(e);
+      setError('Something went wrong saving your filing. Please try again — if it keeps happening, email support@filetax.co.');
       return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveStep = (): Promise<string | null> =>
+    persistPatch(patchFromCurrentStep(), jobId != null && (step === 1 || step === 2));
+
+  // Whole-form save for the accordion: persists every field and propagates the
+  // shared company/owner fields to the job's other years.
+  const saveAll = (): Promise<string | null> => persistPatch(patchAll(), jobId != null);
+
+  // Expand/collapse an accordion section. Collapsing persists the whole form so
+  // the draft is saved as the filer moves through the page (unless paid-locked
+  // with no edits left, or nothing has been entered yet).
+  const toggleSection = (key: string) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        if (!saving && (filingId || llcName.trim())) void saveAll();
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Switch to another year in the catch-up job: save the current year first,
+  // then load that sibling filing (the load effect re-hydrates every field).
+  const switchYear = async (siblingId: string) => {
+    if (saving || siblingId === filingId) return;
+    if (filingId || llcName.trim()) await saveAll();
+    const newParams = new URLSearchParams(params.toString());
+    newParams.set('filing_id', siblingId);
+    setLocalFilingId(siblingId);
+    navigate(`?${newParams.toString()}`, { replace: true });
+  };
+
+  // "Save & continue" inside a section: validate it, save the whole form, then
+  // collapse this section and open the next one, scrolling to it.
+  const continueFromSection = async (key: string) => {
+    const s = key === '1b' ? ('1b' as IntakeStep) : (Number(key) as IntakeStep);
+    // Reuse the per-step validators by pointing `step` context at this section.
+    let errs: string[] = [];
+    if (s === 1) errs = validateStep1();
+    else if (s === '1b') errs = validateStep1b();
+    else if (s === 2) errs = validateStep2();
+    else if (s === 3 && showRpForm) errs = ['Finish or cancel the related party form before continuing.'];
+    else if (s === 4 && showRpForm) errs = ['Finish or cancel the related party form before continuing.'];
+    setStepErrors(errs);
+    if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (!saving && (filingId || llcName.trim())) await saveAll();
+    const idx = stepOrder.indexOf(s);
+    const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      if (nextKey) next.add(nextKey);
+      return next;
+    });
+    if (nextKey) {
+      setStep(stepOrder[idx + 1]);
+      requestAnimationFrame(() => sectionRefs.current[nextKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
   };
 
@@ -1128,7 +1360,8 @@ export function Intake() {
       }
       return true;
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save transactions');
+      console.error(e);
+      setError('Something went wrong saving your transactions. Please try again — if it keeps happening, email support@filetax.co.');
       return false;
     }
   };
@@ -1203,7 +1436,7 @@ export function Intake() {
     const errs = validateCurrentStep();
     setStepErrors(errs);
     if (errs.length > 0) return;
-    if (!filingId) { setError('Missing filing ID.'); return; }
+    if (!filingId) { setError('Something went wrong loading this filing. Please refresh and try again.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -1281,7 +1514,8 @@ export function Intake() {
 
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Submit failed');
+      console.error(e);
+      setError('Something went wrong submitting your filing. Please try again — if it keeps happening, email support@filetax.co.');
     } finally {
       setSaving(false);
     }
@@ -1322,11 +1556,29 @@ export function Intake() {
     );
   };
 
+  // Reset the left-hand transaction form back to a blank "add" state.
+  const clearTxForm = () => {
+    setTxAmt('');
+    setTxLoanBegin('');
+    setTxDesc('');
+    setTxDate('');
+    setTxType('');
+    setTxDir('received');
+    setTxRelatedPartyIdx(0);
+    setShowDetailedTx(false);
+    setOpenCategory(null);
+    setTxSearch('');
+    setCat3Acknowledged(false);
+    setTxErrors([]);
+    setEditingTxIdx(null);
+  };
+
+  // Add a new transaction, or save edits back into the row being edited.
   const addTransaction = () => {
     const errs = validateTransactionDraft();
     setTxErrors(errs);
     if (errs.length > 0) return;
-    setTransactions((prev) => [...prev, {
+    const row = {
       related_party_index: txRelatedPartyIdx,
       transaction_type: txType,
       direction: txDir,
@@ -1334,22 +1586,38 @@ export function Intake() {
       loan_begin_usd: LOAN_TYPES.has(txType) ? txLoanBegin : '',
       description: txDesc,
       transaction_date: txDate,
-    }]);
-    setTxAmt('');
-    setTxLoanBegin('');
-    setTxDesc('');
-    setTxDate('');
-    setTxType('');
-    setShowDetailedTx(false);
-    setOpenCategory(null);
-    setCat3Acknowledged(false);
-    setTxErrors([]);
+    };
+    setTransactions((prev) =>
+      editingTxIdx !== null
+        ? prev.map((t, i) => (i === editingTxIdx ? row : t))
+        : [...prev, row],
+    );
+    clearTxForm();
     setStepErrors([]);
     setNoTransactionsConfirmed(false);
   };
 
+  // Load an existing transaction into the left-hand form for editing.
+  const startEditTransaction = (i: number) => {
+    const t = transactions[i];
+    if (!t) return;
+    setEditingTxIdx(i);
+    setTxRelatedPartyIdx(t.related_party_index);
+    setTxType(t.transaction_type);
+    setTxDir(t.direction ?? 'received');
+    setTxAmt(t.amount_usd ?? '');
+    setTxLoanBegin(t.loan_begin_usd ?? '');
+    setTxDesc(t.description ?? '');
+    setTxDate(t.transaction_date ?? '');
+    setTxSearch('');
+    setShowDetailedTx(false);
+    setTxErrors([]);
+  };
+
   const removeTransaction = (i: number) => {
     setTransactions((prev) => prev.filter((_, idx) => idx !== i));
+    // If the row being edited was removed, reset the form back to "add" mode.
+    setEditingTxIdx((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur));
   };
 
   if (loadingFiling) {
@@ -1371,14 +1639,23 @@ export function Intake() {
           width: 100%;
           padding: 0.5rem 0.75rem;
           border: 1px solid var(--tf-border, #d1d5db);
-          border-radius: 0.375rem;
+          border-radius: 0.5rem;
           font-size: 0.9375rem;
           font-family: inherit;
           background: var(--tf-input-bg, var(--tf-surface, #fff));
           color: var(--tf-text, #111);
           outline: none;
           box-sizing: border-box;
-          transition: border-color 0.15s, box-shadow 0.15s;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        /* Custom dropdown chevron with consistent right padding, so the arrow
+           isn't crowded against the edge (varies by browser otherwise). */
+        .intake-form select {
+          appearance: none; -webkit-appearance: none; -moz-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 0.85rem center;
+          padding-right: 2.25rem;
         }
         .intake-form input:focus,
         .intake-form select:focus,
@@ -1420,17 +1697,56 @@ export function Intake() {
         .stepper-pill--pending { color: var(--tf-muted); cursor: default; }
         .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: var(--tf-accent); color: var(--tf-on-accent); font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
 
+        /* ── Vertical accordion (steps as sections) ── */
+        .acc-section {
+          border: 1px solid var(--tf-border);
+          border-radius: 0.75rem;
+          background: var(--tf-surface);
+          margin-bottom: 0.875rem;
+          overflow: hidden;
+        }
+        .acc-trigger {
+          display: flex; align-items: center; gap: 0.75rem; width: 100%;
+          padding: 1rem 1.25rem; background: transparent; border: none;
+          cursor: pointer; text-align: left; font-family: inherit;
+          transition: background 0.18s ease;
+        }
+        .acc-trigger:hover { background: var(--tf-offset); }
+        .acc-trigger[aria-expanded="true"] { border-bottom: 1px solid var(--tf-border); }
+        .acc-trigger-label { flex: 1; font-weight: 700; font-size: 1rem; color: var(--tf-text); }
+        .acc-progress-dot {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 1.35rem; height: 1.35rem; border-radius: 50%; flex-shrink: 0;
+          border: 1.5px solid var(--tf-border); background: var(--tf-surface);
+          color: var(--tf-on-accent); font-size: 0.7rem; font-weight: 800; line-height: 1;
+        }
+        .acc-progress-dot.is-complete { background: var(--tf-accent); border-color: var(--tf-accent); }
+        .acc-trigger-chevron { color: var(--tf-muted); display: flex; transition: transform 0.2s ease; flex-shrink: 0; }
+        .acc-trigger-chevron.is-open { transform: rotate(180deg); }
+        .acc-body { padding: 1.25rem; }
+
+        /* ── Year tabs (multi-year catch-up) ── */
+        .year-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .year-tab {
+          padding: 0.4rem 0.9rem; border-radius: 2rem; font-size: 0.85rem; font-weight: 600;
+          border: 1.5px solid var(--tf-border); background: var(--tf-surface);
+          color: var(--tf-muted); cursor: pointer; font-family: inherit;
+          transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+        .year-tab:hover { border-color: var(--tf-accent-soft); }
+        .year-tab--active { background: var(--tf-accent); border-color: var(--tf-accent); color: var(--tf-on-accent); cursor: default; }
+
         /* ── Radio / checkbox selection cards ── */
         .select-card {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 0.875rem 1rem;
           border: 1px solid var(--tf-border);
-          border-radius: 0.5rem; cursor: pointer;
+          border-radius: 0.625rem; cursor: pointer;
           background: var(--tf-surface);
-          transition: border-color 0.12s, background 0.12s;
+          transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
         }
-        .select-card:hover { border-color: var(--tf-accent-soft); background: var(--tf-offset); }
-        .select-card.is-selected { border-color: var(--tf-accent); background: rgba(var(--tf-accent-rgb), 0.08); }
+        .select-card:hover { border-color: var(--tf-accent-soft); box-shadow: 0 1px 6px rgba(var(--tf-accent-rgb), 0.10); }
+        .select-card.is-selected { border-color: var(--tf-accent); background: rgba(var(--tf-accent-rgb), 0.06); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.10); }
         .select-card input[type="radio"],
         .select-card input[type="checkbox"] {
           width: 1.1rem !important; height: 1.1rem !important;
@@ -1447,7 +1763,7 @@ export function Intake() {
           display: flex; align-items: center; justify-content: space-between;
           padding: 0.875rem 1rem; cursor: pointer; user-select: none;
           background: var(--tf-surface);
-          transition: background 0.12s;
+          transition: background 0.18s ease;
         }
         .tx-cat-header:hover { background: var(--tf-offset); }
         .tx-cat-header.is-open { background: rgba(var(--tf-accent-rgb), 0.08); }
@@ -1467,14 +1783,26 @@ export function Intake() {
         }
         .tx-type-card {
           text-align: left; border: 1px solid var(--tf-border);
-          border-radius: 0.5rem; padding: 0.75rem 0.875rem;
+          border-radius: 0.625rem; padding: 0.75rem 0.875rem;
           background: var(--tf-surface); cursor: pointer; width: 100%;
-          transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
-        .tx-type-card:hover { border-color: var(--tf-accent-soft); background: var(--tf-offset); }
-        .tx-type-card.is-selected { border-color: var(--tf-accent); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.12); background: rgba(var(--tf-accent-rgb), 0.08); }
+        .tx-type-card:hover { border-color: var(--tf-accent-soft); box-shadow: 0 1px 6px rgba(var(--tf-accent-rgb), 0.10); }
+        .tx-type-card.is-selected { border-color: var(--tf-accent); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.10); background: rgba(var(--tf-accent-rgb), 0.06); }
         .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text); }
         .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-muted); line-height: 1.45; }
+
+        /* ── Transactions split: Add form (left) + live list (right) ── */
+        .tx-split {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.25rem;
+          align-items: start;
+          margin-top: 1.5rem;
+        }
+        @media (max-width: 640px) {
+          .tx-split { grid-template-columns: 1fr; }
+        }
 
         /* ── Confirm no-transactions row ── */
         .confirm-check-row {
@@ -1513,11 +1841,14 @@ export function Intake() {
             >
               ← Dashboard
             </button>
+            {/* The page title names the section the filer is on (e.g. "1. LLC
+                details"), so the whole page reads as that step. The company name
+                and form context move to the subtitle line below. */}
             <h1 style={{ fontSize: '1.375rem', lineHeight: 1.2, margin: 0, color: 'var(--tf-text)' }}>
-              {llcName?.trim() || 'Your Form 5472 filing'}
+              {`${currentStepIdx + 1}. ${STEP_LABELS[String(step)] ?? 'Filing'}`}
             </h1>
             <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0.2rem 0 0' }}>
-              Form 5472 + pro forma 1120 · Tax year {taxYear}
+              {(llcName?.trim() ? `${llcName.trim()} · ` : '')}Form 5472 + Pro Forma 1120 · Tax year {taxYear}
             </p>
           </div>
         </div>
@@ -1528,51 +1859,35 @@ export function Intake() {
           </div>
         )}
 
-        {/* Stepper */}
-        <nav aria-label="Form steps">
-          <div className="stepper-track">
-            {visibleSteps.map((s, idx) => {
-              const isDone = idx < currentStepIdx;
-              const isActive = s === step;
-              const isPending = idx > currentStepIdx;
-              const label = STEP_LABELS[String(s)];
-              const shortLabel = s === '1b' ? 'Filing Status' : label;
-              // Navigable if it's an already-completed step, OR the whole filing
-              // has been completed once (then any step — including jumping from
-              // step 1 straight to step 5 — is reachable).
-              const navigable = isDone || completedOnce;
-              return (
-                <button
-                  key={String(s)}
-                  type="button"
-                  className={['stepper-pill', isActive ? 'stepper-pill--active' : '', isDone ? 'stepper-pill--done' : '', isPending ? 'stepper-pill--pending' : ''].join(' ')}
-                  onClick={() => { if (navigable && !isActive) goToStepByIndex(idx); }}
-                  aria-current={isActive ? 'step' : undefined}
-                  tabIndex={navigable ? 0 : -1}
-                  style={navigable && !isActive ? { cursor: 'pointer' } : undefined}
-                >
-                  {isDone && <span className="stepper-check" aria-hidden="true">✓</span>}
-                  {typeof s === 'number' ? `${s}. ` : ''}{shortLabel}
-                </button>
-              );
-            })}
-          </div>
-        </nav>
-
-        {/* Scroll anchor: Continue/Back lands here (top of the step). */}
-        <div ref={stepTopRef} aria-hidden="true" />
-
-        {completedOnce && step !== 5 && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.25rem', marginBottom: '1rem' }}>
-            <button
-              type="button"
-              onClick={() => goToStepByIndex(stepOrder.length - 1)}
-              style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.25rem 0' }}
-            >
-              Done editing? Jump back to review →
-            </button>
+        {/* Year tabs — switch between the years selected for this catch-up job. */}
+        {jobId && jobYears.length > 1 && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div className="year-tabs" role="tablist" aria-label="Tax years in this catch-up">
+              {jobYears.map((y) => {
+                const active = y.tax_year === String(taxYear);
+                return (
+                  <button
+                    key={y.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`year-tab${active ? ' year-tab--active' : ''}`}
+                    onClick={() => switchYear(y.id)}
+                    disabled={saving}
+                  >
+                    {y.tax_year}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0', lineHeight: 1.5 }}>
+              Your company and owner details are shared across every year. Only the tax period and each year’s transactions change per year.
+            </p>
           </div>
         )}
+
+        {/* Scroll anchor kept for error-summary focus. */}
+        <div ref={stepTopRef} aria-hidden="true" />
 
         {isPaidLocked && (
           <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
@@ -1596,10 +1911,10 @@ export function Intake() {
         </div>
 
         {/* ── Step 1: LLC Details ── */}
-        {step === 1 && (
+        <AccordionSection numberLabel="1. " label={STEP_LABELS['1']} open={openSections.has('1')} complete={sectionProgress(1) === 'complete'} onToggle={() => toggleSection('1')} anchorRef={(el) => { sectionRefs.current['1'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
-            <p style={stepSubheadStyle}>Basic information about the US company. This goes on the pro forma 1120 and all Form 5472 filings.</p>
+            <p style={stepSubheadStyle}>Basic information about the U.S. company. This goes on the Pro Forma 1120 and all Form 5472 filings.</p>
 
             {prefilledFromProfile && (
               <div className="cat-banner-green" style={{ marginBottom: '1.5rem' }}>
@@ -1713,8 +2028,16 @@ export function Intake() {
                     {US_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Tax year" required status={isPaidLocked ? 'locked after payment' : undefined}>
-                  <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} disabled={isPaidLocked}>
+                <Field
+                  label="Tax year"
+                  required
+                  status={isPaidLocked ? 'locked after payment' : jobId ? 'set by your multi-year selection' : undefined}
+                >
+                  {/* In a multi-year catch-up each year's filing is created with a
+                      fixed tax year, and the intake walks the years in order, so
+                      the tax year can't be changed here. It's also locked once
+                      the filing is paid. */}
+                  <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} disabled={isPaidLocked || !!jobId}>
                     {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
@@ -1724,27 +2047,57 @@ export function Intake() {
                 <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
                 </Field>
-                <Field label="Principal country where business is conducted" required>
+                <Field label="Main country where the LLC does business" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Type of business" required>
-                  <select
-                    value={entityBizActivity}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEntityBizActivity(val);
-                      const match = BIZ_ACTIVITIES.find((a) => a.label === val);
-                      if (match) setEntityBizCode(match.code);
-                    }}
-                  >
-                    <option value="">Select activity</option>
-                    {BIZ_ACTIVITIES.map((a) => <option key={a.label} value={a.label}>{a.label}</option>)}
-                  </select>
+                <Field label="Type of business" required tooltip="Pick the closest match, or choose “Other” to type your own. This sets the IRS business code that describes what your LLC does.">
+                  {(() => {
+                    // The dropdown value is "Other" when the current activity is a
+                    // custom entry not in the preset list. Picking a preset also
+                    // fills the NAICS code; picking "Other" lets the filer type
+                    // both the activity and the code by hand.
+                    const isPreset = BIZ_ACTIVITIES.some((a) => a.label === entityBizActivity);
+                    const selectValue = entityBizActivity === '' ? '' : (isPreset ? entityBizActivity : '__other__');
+                    return (
+                      <select
+                        value={selectValue}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__other__') {
+                            // Switch to manual entry: clear so the free-text input shows.
+                            setEntityBizActivity(' ');
+                            return;
+                          }
+                          setEntityBizActivity(val);
+                          const match = BIZ_ACTIVITIES.find((a) => a.label === val);
+                          if (match) setEntityBizCode(match.code);
+                        }}
+                      >
+                        <option value="">Select activity</option>
+                        {BIZ_ACTIVITIES.map((a) => (
+                          // Show the NAICS code next to each activity.
+                          <option key={`${a.label}-${a.code}`} value={a.label}>{a.label} ({a.code})</option>
+                        ))}
+                        <option value="__other__">Other (enter manually)</option>
+                      </select>
+                    );
+                  })()}
                 </Field>
-                <Field label="Business code" required tooltip="The 6-digit NAICS code that best matches what your LLC does. We fill this in automatically when you pick a type of business.">
+                {/* When "Other" is selected (activity is set but not a preset), let
+                    the filer type the activity description directly. */}
+                {entityBizActivity !== '' && !BIZ_ACTIVITIES.some((a) => a.label === entityBizActivity) && (
+                  <Field label="Business activity" required>
+                    <input
+                      value={entityBizActivity.trim()}
+                      onChange={(e) => setEntityBizActivity(e.target.value)}
+                      placeholder="Describe what your LLC does"
+                    />
+                  </Field>
+                )}
+                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code that matches what your LLC does. We fill it in automatically when you pick a type of business above — you can also type it yourself.">
                   <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
@@ -1780,7 +2133,7 @@ export function Intake() {
                   {fiscalEndMonth !== '' && (
                     <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
                       <strong>Fiscal-year filing.</strong> For tax year {taxYear}, your period runs{' '}
-                      {(() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${p.begin} through ${p.end}`; })()}.
+                      {(() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} through ${formatDateMMDDYYYY(p.end)}`; })()}.
                       Double-check your filing due date before submitting.
                     </div>
                   )}
@@ -1802,20 +2155,21 @@ export function Intake() {
             </section>
 
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>LLC mailing address (US)</h3>
+              <h3 style={sectionLabelStyle}>LLC mailing address (U.S.)</h3>
               <AddressFields value={mailing} onChange={setMailing} forceUS />
             </section>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>
-                {saving ? 'Saving…' : 'Continue'}
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('1')} disabled={saving}>
+                {saving ? 'Saving…' : 'Save & continue'}
               </button>
             </div>
           </div>
-        )}
+        </AccordionSection>
 
-        {/* ── Step 1b: Filing Status ── */}
-        {step === '1b' && (
+        {/* ── Step 1b: Filing Status (only when the filing is late) ── */}
+        {show1b && (
+        <AccordionSection numberLabel="" label={STEP_LABELS['1b']} open={openSections.has('1b')} complete={sectionProgress('1b') === 'complete'} onToggle={() => toggleSection('1b')} anchorRef={(el) => { sectionRefs.current['1b'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Filing status</h2>
             <p style={stepSubheadStyle}>
@@ -1826,8 +2180,8 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>Extension</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {[
-                  { val: true, label: 'Yes, Form 7004 was filed before the original deadline' },
-                  { val: false, label: 'No, no extension was filed' },
+                  { val: true, label: 'Yes, I filed an extension (Form 7004) before the original deadline' },
+                  { val: false, label: "No, I didn't file an extension" },
                 ].map(({ val, label }) => (
                   <label
                     key={String(val)}
@@ -1869,7 +2223,7 @@ export function Intake() {
                 />
                 <div>
                   <div className="select-card-label">Yes, include a reasonable cause letter (+$200)</div>
-                  <div className="select-card-hint">We will draft a personalised letter to the IRS on your behalf.</div>
+                  <div className="select-card-hint">We will draft a personalized letter to the IRS on your behalf.</div>
                 </div>
               </label>
 
@@ -1908,17 +2262,17 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
-              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>{saving ? 'Saving…' : 'Continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('1b')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
             </div>
           </div>
+        </AccordionSection>
         )}
 
         {/* ── Step 2: Owner Details ── */}
-        {step === 2 && (
+        <AccordionSection numberLabel="2. " label={STEP_LABELS['2']} open={openSections.has('2')} complete={sectionProgress(2) === 'complete'} onToggle={() => toggleSection('2')} anchorRef={(el) => { sectionRefs.current['2'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Your details as the foreign owner</h2>
-            <p style={stepSubheadStyle}>Details about you as the individual or entity that owns 25%+ of this LLC. This goes directly on Form 5472, Part II.</p>
+            <p style={stepSubheadStyle}>Details about you as the person (or entity) that owns 25% or more of this LLC. This goes on your Form 5472.</p>
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your identity</h3>
@@ -1943,7 +2297,7 @@ export function Intake() {
                     placeholder="Managing Member"
                   />
                 </Field>
-                <Field label="Signature date" hint="The date you'll sign the return" tooltip="We print this as the signature date on the Form 1120 for every year, so your forms are ready to print and mail as-is. Use the date you plan to sign and send them.">
+                <Field label="Signature date" tooltip="We print this as the signature date on the Form 1120 for every year, so your forms are ready to print and mail as-is. Use the date you plan to sign and send them.">
                   <input
                     type="date"
                     value={signatureDate}
@@ -1962,7 +2316,7 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Country of citizenship" hint="The country on your passport" required tooltip="The country that issued your passport. If you hold more than one, use the one you'll list on the form.">
+                <Field label="Country of citizenship" required tooltip="The country that issued your passport. If you hold more than one, use the one you'll list on the form.">
                   <select value={ownerCountryCitizenship} onChange={(e) => setOwnerCountryCitizenship(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1971,7 +2325,7 @@ export function Intake() {
                 <Field label="Your foreign tax ID" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="The tax ID number your home country issues you, such as PAN (India), UTR (UK), NIF (Spain), or SIN (Canada). If your country does not issue one, enter 'None'.">
                   <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Your local tax ID" disabled={isPaidLocked} />
                 </Field>
-                <Field label="US tax ID" hint="SSN, ITIN, or EIN, if you have one" tooltip="Only if you happen to have a US tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
+                <Field label="U.S. tax ID" tooltip="Only if you happen to have a U.S. tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
                 <Field label="Your reference code" required tooltip="A short code that identifies you. It is printed on Form 5472. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
@@ -1998,25 +2352,24 @@ export function Intake() {
                     }}
                   >
                     <option value="">Select type</option>
-                    {RP_NAICS.map((n) => <option key={n.code} value={n.code}>{n.label}</option>)}
+                    {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.label} ({n.code})</option>)}
                   </select>
                 </Field>
               </div>
             </section>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
-              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>{saving ? 'Saving…' : 'Continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('2')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
             </div>
           </div>
-        )}
+        </AccordionSection>
 
         {/* ── Step 3: Related Parties ── */}
-        {step === 3 && (
+        <AccordionSection numberLabel="3. " label={STEP_LABELS['3']} open={openSections.has('3')} complete={sectionProgress(3) === 'complete'} onToggle={() => toggleSection('3')} anchorRef={(el) => { sectionRefs.current['3'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Related parties</h2>
             <p style={stepSubheadStyle}>
-              Add any other foreign individuals or entities that had reportable transactions with this LLC. Each one generates a separate Form 5472. If it's just you and the LLC, you can skip this step.
+              Add any other foreign individuals or entities that had money dealings with this LLC (loans, payments, transfers). Each one gets its own Form 5472. If it's just you and the LLC, you can skip this step.
             </p>
 
             {relatedParties.length > 0 && (
@@ -2079,10 +2432,10 @@ export function Intake() {
                         {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="US TIN" hint="If any (EIN or ITIN)">
+                    <Field label="U.S. tax ID" hint="If they have one (EIN or ITIN)">
                       <input value={rpDraft.us_tin ?? ''} onChange={(e) => setRpDraft((p) => ({ ...p, us_tin: e.target.value }))} placeholder="XX-XXXXXXX or XXX-XX-XXXX" />
                     </Field>
-                    <Field label="Tax ID (their country)" hint="e.g. PAN, UTR, NIF, SIN" required>
+                    <Field label="Their foreign tax ID" hint="e.g. PAN, UTR, NIF, SIN" required>
                       <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="Local tax ID" />
                     </Field>
                     <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
@@ -2097,7 +2450,7 @@ export function Intake() {
                         }}
                       >
                         <option value="">Select type</option>
-                        {RP_NAICS.map((n) => <option key={n.code} value={n.code}>{n.label}</option>)}
+                        {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.label} ({n.code})</option>)}
                       </select>
                     </Field>
                   </div>
@@ -2109,7 +2462,7 @@ export function Intake() {
 
                   <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                     <button type="button" style={secondaryBtnStyle} onClick={() => { setShowRpForm(false); setEditingRpIdx(null); setRpErrors([]); }}>Cancel</button>
-                    <button type="button" style={primaryBtnStyle} onClick={saveRpDraft}>{editingRpIdx !== null ? 'Save changes' : 'Add party'}</button>
+                    <button type="button" style={primaryBtnStyle} onClick={saveRpDraft}>{editingRpIdx !== null ? 'Save changes' : 'Add related party'}</button>
                   </div>
                 </div>
               </div>
@@ -2121,19 +2474,18 @@ export function Intake() {
             {!showRpForm && isPaidLocked && (
               <div className="cat-banner-amber" style={{ marginTop: '0.5rem' }}>
                 Adding another related party after payment generates an additional Form 5472 and is a paid add-on. Email{' '}
-                <a href="mailto:hello@filetax.co" style={{ color: 'inherit', fontWeight: 700 }}>hello@filetax.co</a> to add a party to this filing.
+                <a href="mailto:support@filetax.co" style={{ color: 'inherit', fontWeight: 700 }}>support@filetax.co</a> to add a party to this filing.
               </div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
-              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>{saving ? 'Saving…' : 'Continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('3')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
             </div>
           </div>
-        )}
+        </AccordionSection>
 
         {/* ── Step 4: Transactions ── */}
-        {step === 4 && (
+        <AccordionSection numberLabel="4. " label={STEP_LABELS['4']} open={openSections.has('4')} complete={sectionProgress(4) === 'complete'} onToggle={() => toggleSection('4')} anchorRef={(el) => { sectionRefs.current['4'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Money between you and the LLC</h2>
             <p style={stepSubheadStyle}>
@@ -2146,7 +2498,7 @@ export function Intake() {
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
                   I run the LLC myself (include the standard owner-services note)
-                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on Form 5472 Part VI. We include a standard statement for you. Untick only if this does not apply, and then no Part VI statement is generated." label="About owner services" />
+                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on your Form 5472, and we include a standard statement for you. Untick only if this does not apply — then no such statement is generated." label="About owner services" />
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
                   Recommended for almost all single-owner LLCs. Untick if it doesn’t apply.
@@ -2154,41 +2506,15 @@ export function Intake() {
               </div>
             </label>
 
-            {transactions.length > 0 && (
-              <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div style={sectionLabelStyle}>Added transactions</div>
-                {transactions.map((t, i) => {
-                  const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
-                  const partyLabel = allPartyLabels[t.related_party_index] || 'Unknown party';
-                  const isOwner = t.related_party_index === 0;
-                  return (
-                    <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{meta?.label ?? t.transaction_type}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.15rem' }}>
-                          {partyLabel}
-                          {t.amount_usd && Number(t.amount_usd) > 0 ? ` · USD ${Number(t.amount_usd).toLocaleString()}` : ''}
-                          {DIRECTION_TYPES.has(t.transaction_type) ? ` · ${t.direction}` : ''}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        style={{ ...secondaryBtnStyle, fontSize: '0.8rem', padding: '0.3rem 0.75rem', color: 'var(--tf-error-text)', borderColor: 'var(--tf-error-border)' }}
-                        onClick={() => removeTransaction(i)}
-                      >
-                        Remove
-                      </button>
-         
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
             <TxSummaryPanel summary={txSummary} count={transactions.length} />
 
-            <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Add a transaction</h3>
+            {/* Two-column split: the Add/Edit form on the left, and the live
+                Transactions list on the right. Stacks (form first) on narrow
+                screens via the tx-split responsive rule in the style block. */}
+            <div className="tx-split">
+            <div>
+            <section style={{ ...sectionStyle, marginBottom: 0 }}>
+              <h3 style={sectionLabelStyle}>{editingTxIdx !== null ? 'Edit transaction' : 'Add a transaction'}</h3>
 
               <Field label="Who was this transaction with?" required style={{ marginBottom: '1rem' }}>
                 <select value={txRelatedPartyIdx} onChange={(e) => setTxRelatedPartyIdx(Number(e.target.value))}>
@@ -2208,6 +2534,21 @@ export function Intake() {
                   setShowDetailedTx(false);
                   setTxErrors([]);
                 };
+                const partyWord = isOwnerParty ? 'you' : (allPartyLabels[txRelatedPartyIdx] || 'the related party');
+                // Combo-box search across every transaction type (label + plain
+                // sentence). Lets the filer type "royalty", "loan", "dissolution"
+                // and jump straight to it instead of hunting the accordion.
+                const q = txSearch.trim().toLowerCase();
+                const searchResults = q
+                  ? TX_TYPES.filter((t) =>
+                      t.label.toLowerCase().includes(q) ||
+                      t.sentence.toLowerCase().includes(q))
+                  : [];
+                const selectType = (value: string) => {
+                  setTxType(value);
+                  setTxErrors([]);
+                  if (!DIRECTION_TYPES.has(value)) setTxDir('received');
+                };
                 return (
                   <>
                     <div style={{ ...sectionLabelStyle, marginBottom: '0.5rem' }}>
@@ -2217,6 +2558,37 @@ export function Intake() {
                       <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Choose an option below.</div>
                     )}
 
+                    {/* Searchable combo box — type to filter every transaction type. */}
+                    <input
+                      type="text"
+                      value={txSearch}
+                      onChange={(e) => setTxSearch(e.target.value)}
+                      placeholder="Search transaction types (e.g. royalty, loan, dividend)…"
+                      style={{ marginBottom: '0.75rem' }}
+                    />
+
+                    {q ? (
+                      searchResults.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {searchResults.map((item) => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={`tx-type-card${txType === item.value ? ' is-selected' : ''}`}
+                              onClick={() => selectType(item.value)}
+                            >
+                              <span className="tx-type-label">{item.label}</span>
+                              <span className="tx-type-sentence">{item.sentence.replace('{party}', partyWord)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', padding: '0.5rem 0' }}>
+                          No transaction types match “{txSearch.trim()}”. Try a different word, or browse the options below.
+                        </div>
+                      )
+                    ) : (
+                    <>
                     {/* Quick options — owner gets first-person shortcuts;
                         a related party gets neutral, LLC<->party wording. */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
@@ -2294,6 +2666,8 @@ export function Intake() {
                         })}
                       </div>
                     )}
+                    </>
+                    )}
                   </>
                 );
               })()}
@@ -2362,16 +2736,80 @@ export function Intake() {
                   </Field>
                 </div>
 
-                <button
-                  type="button"
-                  style={{ ...primaryBtnStyle, marginTop: '1rem' }}
-                  onClick={addTransaction}
-                  disabled={txCategory === 3 && !cat3Acknowledged}
-                >
-                  Add transaction
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    style={primaryBtnStyle}
+                    onClick={addTransaction}
+                    disabled={txCategory === 3 && !cat3Acknowledged}
+                  >
+                    {editingTxIdx !== null ? 'Save changes' : 'Add transaction'}
+                  </button>
+                  {editingTxIdx !== null && (
+                    <button type="button" style={secondaryBtnStyle} onClick={clearTxForm}>
+                      Cancel edit
+                    </button>
+                  )}
+                </div>
               </section>
             )}
+            </div>
+
+            {/* Right column — live list of everything added this year. */}
+            <section style={{ ...sectionStyle, marginBottom: 0 }}>
+              <div style={{ ...sectionLabelStyle, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                Transactions
+                {transactions.length > 0 && (
+                  <span style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontSize: '0.72rem', fontWeight: 700, padding: '0.05rem 0.5rem', borderRadius: '999px', letterSpacing: 0 }}>
+                    {transactions.length}
+                  </span>
+                )}
+              </div>
+              {transactions.length === 0 ? (
+                <div style={{ border: '1px dashed var(--tf-border)', borderRadius: '0.625rem', padding: '1.5rem 1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.5 }}>
+                  No transactions yet. Fill in the form and select “Add transaction” — each one you add shows up here.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {transactions.map((t, i) => {
+                    const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
+                    const partyLabel = allPartyLabels[t.related_party_index] || 'Unknown party';
+                    const isEditing = editingTxIdx === i;
+                    return (
+                      <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{meta?.label ?? t.transaction_type}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                            {partyLabel}
+                            {t.amount_usd && Number(t.amount_usd) > 0 ? ` · USD ${Number(t.amount_usd).toLocaleString()}` : ''}
+                            {DIRECTION_TYPES.has(t.transaction_type) ? ` · ${t.direction}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            aria-label="Edit transaction"
+                            style={{ ...secondaryBtnStyle, fontSize: '0.8rem', padding: '0.3rem 0.65rem' }}
+                            onClick={() => startEditTransaction(i)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete transaction"
+                            style={{ ...secondaryBtnStyle, fontSize: '0.8rem', padding: '0.3rem 0.65rem', color: 'var(--tf-error-text)', borderColor: 'var(--tf-error-border)' }}
+                            onClick={() => removeTransaction(i)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+            </div>
 
             {transactions.length === 0 && (
               <label className={`confirm-check-row${noTransactionsConfirmed ? ' is-selected' : ''}`} style={{ cursor: 'pointer' }}>
@@ -2382,24 +2820,23 @@ export function Intake() {
                 />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text, #111)' }}>
-                    The LLC had no reportable transactions this year
+                    The LLC had no money dealings with you or a related party this year
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', marginTop: '0.15rem' }}>
-                    This is uncommon. If the LLC received any capital contributions or made any payments, those are reportable.
+                    This is uncommon. If you put any money into the LLC, or it made any payments to you, those count.
                   </div>
                 </div>
               </label>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
-              <button type="button" style={primaryBtnStyle} onClick={handleNext} disabled={saving}>{saving ? 'Saving…' : 'Continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('4')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
             </div>
           </div>
-        )}
+        </AccordionSection>
 
         {/* ── Step 5: Review ── */}
-        {step === 5 && (
+        <AccordionSection numberLabel="5. " label={STEP_LABELS['5']} open={openSections.has('5')} complete onToggle={() => toggleSection('5')} anchorRef={(el) => { sectionRefs.current['5'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Review & submit</h2>
             <p style={stepSubheadStyle}>Check everything below before we start preparing your forms.</p>
@@ -2419,7 +2856,7 @@ export function Intake() {
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
-                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${p.begin} to ${p.end}`; })() : '—'} />}
+                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : '—'} />}
               </div>
             </section>
 
@@ -2451,15 +2888,17 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>Primary owner</h3>
               <div style={reviewGridStyle}>
                 <SummaryRow label="Name" value={ownerName} />
-                <SummaryRow label="Country of business" value={ownerCountry} />
-                <SummaryRow label="Tax residence" value={ownerCountryRes} />
+                <SummaryRow label="Country where you do business" value={ownerCountry} />
+                <SummaryRow label="Country where you pay taxes" value={ownerCountryRes} />
                 <SummaryRow label="Citizenship" value={ownerCountryCitizenship} />
                 <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
-                <SummaryRow label="US tax ID" value={ownerSSN} />
+                <SummaryRow label="U.S. tax ID" value={ownerSSN} />
                 <SummaryRow label="Reference code" value={ownerRefNumber} />
                 <SummaryRow label="Business type" value={ownerBizActivity || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
                 <SummaryRow label="Business code" value={ownerBizCode} />
                 <SummaryRow label="Address" value={formatAddress(ownerAddress)} />
+                <SummaryRow label="Signing as" value={signerTitle} />
+                <SummaryRow label="Signature date" value={formatDateMMDDYYYY(signatureDate)} />
               </div>
             </section>
 
@@ -2469,10 +2908,10 @@ export function Intake() {
                 {relatedParties.map((rp, i) => (
                   <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.75rem' }}>
                     <SummaryRow label="Name" value={rp.name} />
-                    <SummaryRow label="Country of business" value={rp.country} />
-                    <SummaryRow label="Tax residence" value={rp.country_residence} />
+                    <SummaryRow label="Country where they do business" value={rp.country} />
+                    <SummaryRow label="Country where they pay taxes" value={rp.country_residence} />
                     <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
-                    <SummaryRow label="US tax ID" value={rp.us_tin} />
+                    <SummaryRow label="U.S. tax ID" value={rp.us_tin} />
                     <SummaryRow label="Reference code" value={rp.ref_number} />
                     <SummaryRow label="Business type" value={rp.biz_activity} />
                     <SummaryRow label="Business code" value={rp.biz_code} />
@@ -2505,9 +2944,9 @@ export function Intake() {
             )}
 
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>Owner services (Part VI)</h3>
+              <h3 style={sectionLabelStyle}>Owner services</h3>
               <div style={reviewGridStyle}>
-                <SummaryRow label="Include managerial-services statement" value={partViManagerial ? 'Yes' : 'No'} />
+                <SummaryRow label="Standard owner-services statement included" value={partViManagerial ? 'Yes' : 'No'} />
               </div>
             </section>
 
@@ -2524,19 +2963,18 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button type="button" style={secondaryBtnStyle} onClick={handleBack}>Back</button>
               <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || (isPaidLocked && editsRemaining === 0)}>
                 {saving
                   ? 'Submitting…'
                   : isPaidLocked
                     ? 'Save corrections & re-download'
                     : jobId
-                      ? (hasNextDraftYear ? 'Save & file next year →' : 'Finish & review all years')
-                      : 'Save & continue to review'}
+                      ? (hasNextDraftYear ? 'Save & file next year →' : 'Finish & generate all years →')
+                      : 'Submit & generate my forms →'}
               </button>
             </div>
           </div>
-        )}
+        </AccordionSection>
       </div>
     </>
   );
