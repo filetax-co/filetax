@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
+import { PdfPreviewModal } from '../../components/PdfPreviewModal';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,8 +24,11 @@ const TAX_YEARS = Array.from(
 // It is reached via /filing/:id, which the Dashboard routes to for
 // paid / completed filings. Data entry (steps 1-3) lives in Intake (/intake/:id).
 //
-// Combined PDF order:
-//   Pro Forma 1120 → Form 5472 → statement_partV (if hasPartV) → statement_partVI (always)
+// Combined PDF order is owned by generateFilingPackage() in pdfGenerator.ts —
+// Instructions → reasonable-cause letter (if any) → Pro Forma 1120 → Form 7004
+// (if any) → owner's Form 5472 with its Part V / Part VI statements → a Form
+// 5472 per remaining related party. Do not restate it here; the previous copy
+// of this comment had drifted and described a sequence no longer produced.
 //
 // statement_partVI is always included (hardcoded true in pdfGenerator.ts).
 // statement_partV is included only when distributions, contributions, dividends,
@@ -44,6 +48,17 @@ export default function FilingWizard() {
   const [generating,   setGenerating]   = useState(false);
   const [genErr,       setGenErr]       = useState<string | null>(null);
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
+  // Generated single-year package: kept as a blob URL so the filer can preview
+  // it in the overlay and download the same bytes without regenerating.
+  const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
+  // Whether the preview overlay is showing. Kept separate from `preview` so the
+  // generated package can persist on the page after the overlay is dismissed.
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Revoke the preview blob URL when it changes or the component unmounts.
+  useEffect(() => {
+    return () => { if (preview?.url) URL.revokeObjectURL(preview.url); };
+  }, [preview]);
 
   // ── load filing + transactions ────────────────────────────────────────────
 
@@ -78,27 +93,20 @@ export default function FilingWizard() {
         .from('reportable_transactions').select('*').eq('filing_id', id);
       if (txErr2) throw txErr2;
 
-      if (!txns || txns.length === 0) {
-        throw new Error('No transactions found. Please add at least one reportable transaction before generating.');
-      }
-
+      // A filing with no reportable transactions is still valid and worth
+      // generating: the foreign owner's managerial services are always
+      // disclosed in Part VI, and filing on time avoids the $25,000 penalty
+      // even when no Part IV/V transaction occurred.
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
-      const pkg = await generateFilingPackage(fi, txns);
+      const pkg = await generateFilingPackage(fi, txns ?? []);
 
-      // Download the single combined PDF:
-      //   pkg.combined = Pro Forma 1120 + Form 5472
-      //                + pkg.statement_partV  (appended only when hasPartV is true)
-      //                + pkg.statement_partVI (always appended — hardcoded in pdfGenerator.ts)
+      // The button says "Generate & preview", so open the overlay straight away;
+      // the package card stays on the page once it is dismissed.
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Defer revocation — browsers fetch blob asynchronously after click().
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const filename = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
+      setPreview({ url, filename });
+      setPreviewOpen(true);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -110,6 +118,17 @@ export default function FilingWizard() {
   // When this filing belongs to a catch-up job, build the whole job: one
   // reasonable-cause letter + one print-ready PDF per year + an optional
   // single bundled PDF. `mode` selects which artifact to download.
+
+  // Download the already-generated single-year preview without regenerating.
+  const downloadPreview = () => {
+    if (!preview) return;
+    const a = document.createElement('a');
+    a.href = preview.url;
+    a.download = preview.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const triggerDownload = (bytes: Uint8Array, filename: string) => {
     const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -378,7 +397,8 @@ export default function FilingWizard() {
               </section>
             )}
 
-            {/* No transactions warning */}
+            {/* No transactions — informational, not a blocker. A return with no
+                reportable transactions is still valid and worth filing. */}
             {transactions.length === 0 && (
               <div style={{
                 textAlign: 'center',
@@ -389,15 +409,17 @@ export default function FilingWizard() {
                 marginBottom: '1.5rem',
                 fontSize: '0.9rem',
               }}>
-                <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>No transactions found.</p>
+                <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>No reportable transactions this year.</p>
                 <p style={{ fontSize: '0.8125rem' }}>
-                  Go back to the intake form to add at least one reportable transaction before generating.
+                  That is fine — you can still generate and file. Your Form 5472 discloses the
+                  managerial services you provide as the owner, and filing on time protects you
+                  from the $25,000 penalty even in a year with no transactions.
                 </p>
                 <button
                   onClick={() => id && navigate(`/intake?filing_id=${id}`)}
                   style={{ ...secondaryBtnStyle, marginTop: '1rem', display: 'inline-block' }}
                 >
-                  ← Back to Intake
+                  ← Back to intake to add transactions
                 </button>
               </div>
             )}
@@ -439,19 +461,65 @@ export default function FilingWizard() {
                 {!filing?.job_id && (
                   <button
                     onClick={handleGenerate}
-                    disabled={generating || transactions.length === 0}
+                    disabled={generating}
                     style={{
                       ...primaryBtnStyle,
-                      opacity: generating || transactions.length === 0 ? 0.55 : 1,
-                      cursor: generating || transactions.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: generating ? 0.55 : 1,
+                      cursor: generating ? 'not-allowed' : 'pointer',
                     }}
                     type="button"
                   >
-                    {generating ? 'Generating…' : 'Download Complete Filing'}
+                    {generating ? 'Generating…' : preview ? 'Regenerate' : 'Generate & preview'}
                   </button>
                 )}
               </div>
             </div>
+
+            {/* ── Generated package: open in the preview overlay ──────────────
+                The PDF used to sit inline at 75vh, which handed the page to the
+                browser's own viewer (toolbar, zoom, thumbnail rail) and read as
+                if the app had been replaced by Adobe. It now opens in the shared
+                overlay, so the filing page stays put behind it. */}
+            {preview && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: '0.75rem', flexWrap: 'wrap',
+                  padding: '1rem 1.25rem',
+                  border: '1px solid var(--tf-border)', borderRadius: '0.625rem',
+                  background: 'var(--tf-surface)',
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, color: 'var(--tf-text)' }}>
+                      Your filing package is ready
+                    </p>
+                    <p style={{
+                      fontSize: '0.8125rem', color: 'var(--tf-muted)', margin: '0.15rem 0 0',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {preview.filename}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button onClick={() => setPreviewOpen(true)} style={secondaryBtnStyle} type="button">
+                      Preview
+                    </button>
+                    <button onClick={downloadPreview} style={primaryBtnStyle} type="button">
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {previewOpen && preview && (
+              <PdfPreviewModal
+                target={preview}
+                onClose={() => setPreviewOpen(false)}
+                onDownload={downloadPreview}
+                footnote="Review every page. When it looks right, download the PDF, then print and mail (or fax) it to the IRS using the instructions on the first page."
+              />
+            )}
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
             {filing?.job_id && (

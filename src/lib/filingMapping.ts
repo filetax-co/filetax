@@ -76,10 +76,14 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   distribution:         'distribution',
   dividend:             'dividend',
   formation_costs:      'formation_costs',
-  // Structural events map to the nearest monetary Part V concept; the Part V
-  // statement narrates the specifics from the description.
+  // Structural events map to the nearest monetary concept; the statement
+  // narrates the specifics from the description.
   formation_tx:         'capital_contribution',
-  dissolution_tx:       'distribution',
+  // A dissolution / wind-down payout is reported as an "other amount paid"
+  // (Form 5472 Part IV, line 35). Part IV renders per related party, so a
+  // dissolution distribution to a related party's trust actually prints on
+  // that party's 5472 — unlike Part V, which is generated for the owner only.
+  dissolution_tx:       'other',
   acquisition_tx:       'capital_contribution',
   disposition_tx:       'distribution',
   other_part_v:         'capital_contribution',
@@ -118,16 +122,30 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
 const MONEY_IN_UI = new Set(['capital_contribution', 'loan_to_llc', 'formation_costs', 'formation_tx', 'acquisition_tx']);
 const MONEY_OUT_UI = new Set(['distribution', 'dividend', 'loan_from_llc', 'dissolution_tx', 'disposition_tx']);
 // Canonical types that contribute to Form 5472 gross payments (line 1f / 1h).
-// Mirrors grossPaymentsForLines1f1h in pdfGenerator.ts: the Part IV flows, the
-// ending loan balances (17b/31b, which now roll into the line 22/36 totals),
-// and the monetary Part V transactions (distributions, contributions,
-// dividends). Loan rows carry the closing balance in amount_usd, which
-// summarizeTransactions already reads.
+// Mirrors grossPaymentsForLines1f1h in pdfGenerator.ts, which sums:
+//   totalReceived + totalPaid            → the Part IV flows and the ending loan
+//                                          balances (17b/31b, which roll into
+//                                          the line 22/36 totals)
+//   + distributions_paid                 → Part V distributions and dividends
+//   + contributions_received             → Part V capital contributions
+//   + formation_costs_paid               → Part V formation / start-up costs the
+//                                          owner paid on behalf of the LLC
+//   + part_vi_amount                     → any monetary amount recorded against a
+//                                          Part VI property / nonmonetary item
+// Loan rows carry the closing balance in amount_usd, which summarizeTransactions
+// already reads. Every term above must be represented here or the "On Form 5472
+// (gross payments)" figure shown in the wizard undercounts what the generated
+// form actually reports.
 const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
   'sales', 'tangible_property', 'rent_royalty', 'intangible', 'service_payment',
   'commission', 'interest', 'insurance', 'loan_guarantee', 'other',
   'loan_to_llc', 'loan_from_llc',
   'distribution', 'dividend', 'capital_contribution',
+  // Part V — owner-paid formation / start-up costs (feeds formation_costs_paid).
+  'formation_costs',
+  // Part VI — property transfers and other nonmonetary items carry an amount
+  // only when the filer recorded consideration; that amount feeds part_vi_amount.
+  'property_transfer', 'nonmonetary_other',
 ]);
 
 export interface TxMoneySummary {

@@ -18,17 +18,30 @@ export function ResetPassword() {
   const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    // 1. Check whether Supabase already exchanged the recovery token before
-    //    this component mounted (common when PKCE + detectSessionInUrl is on).
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSessionReady(true);
-    });
+    const params = new URLSearchParams(window.location.search);
+    const token_hash = params.get('token_hash');
+    const type = params.get('type');
 
-    // 2. Subscribe for the PASSWORD_RECOVERY event specifically.
-    //    We intentionally do NOT set sessionReady on a plain SIGNED_IN event
-    //    here — that would allow any logged-in user who navigates to
-    //    /reset-password to submit the form without actually coming from a
-    //    reset email. Only PASSWORD_RECOVERY guarantees the intent.
+    async function exchangeRecoveryToken() {
+      if (token_hash && type === 'recovery') {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash,
+          type: 'recovery',
+        });
+        if (!verifyError) {
+          setSessionReady(true);
+          return;
+        }
+        setError('This reset link is invalid or has expired. Please request a new one.');
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) setSessionReady(true);
+    }
+
+    exchangeRecoveryToken();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSessionReady(true);
@@ -60,7 +73,6 @@ export function ResetPassword() {
   return (
     <section style={{ background: 'var(--tf-bg)', minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem' }}>
       <div style={{ width: '100%', maxWidth: '440px', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '2rem', boxShadow: '0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)' }}>
-
         {done ? (
           <div style={{ textAlign: 'center', padding: '1rem 0' }}>
             <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>Password updated!</p>
@@ -71,9 +83,15 @@ export function ResetPassword() {
             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' }}>Set a new password</h1>
             <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.75rem' }}>Choose a password that is at least 8 characters long.</p>
 
-            {!sessionReady && (
+            {!sessionReady && !error && (
               <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
                 <p style={{ color: '#92400e', fontSize: '0.875rem' }}>Verifying your reset link… If this takes too long, go back to your email and click the link again.</p>
+              </div>
+            )}
+
+            {!sessionReady && error && (
+              <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.35)', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+                <p style={{ color: '#DC2626', fontSize: '0.875rem' }}>{error}</p>
               </div>
             )}
 
@@ -86,7 +104,7 @@ export function ResetPassword() {
                 <label htmlFor="rp-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
                 <input id="rp-confirm" type="password" autoComplete="new-password" placeholder="Repeat your password" value={confirm} onChange={(e) => setConfirm(e.target.value)} disabled={!sessionReady} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px', opacity: sessionReady ? 1 : 0.5 }} />
               </div>
-              {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
+              {error && sessionReady && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
               <button type="submit" disabled={submitting || !sessionReady} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: (submitting || !sessionReady) ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: (submitting || !sessionReady) ? 0.7 : 1 }}>
                 {submitting ? 'Updating…' : 'Update Password'}
               </button>

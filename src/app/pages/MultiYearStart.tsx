@@ -291,6 +291,20 @@ export function MultiYearStart() {
           </p>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.625rem' }}>
+          <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+            Tax years to file{selected.size > 0 ? ` · ${selected.size} selected` : ''}
+          </p>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, padding: 0 }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '0.5rem', marginBottom: '1.5rem' }}>
           {years.map((y) => {
             const on = selected.has(y);
@@ -303,14 +317,7 @@ export function MultiYearStart() {
                 aria-pressed={on}
                 disabled={!eligible}
                 title={eligible ? undefined : `Your LLC was not incorporated until ${incorpYear}`}
-                style={{
-                  padding: '0.75rem 0.5rem', borderRadius: '0.5rem',
-                  border: `1.5px solid ${on ? 'var(--tf-accent)' : 'var(--tf-border)'}`,
-                  background: on ? 'rgba(var(--tf-accent-rgb), 0.10)' : 'var(--tf-surface)',
-                  color: 'var(--tf-text)', fontWeight: 700, fontSize: '1rem',
-                  cursor: eligible ? 'pointer' : 'not-allowed', minHeight: '48px',
-                  opacity: eligible ? 1 : 0.4,
-                }}
+                className={`tf-chip${on ? ' tf-chip--on' : ''}`}
               >
                 {y}
               </button>
@@ -328,9 +335,20 @@ export function MultiYearStart() {
 
         {includeRcl && (
           <div style={{ marginBottom: '1.5rem' }}>
-            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>
-              Why were these years filed late? (select all that apply — asked once for every year)
-            </p>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.625rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Why were these years filed late? (select all that apply — asked once for every year){rclReasons.length > 0 ? ` · ${rclReasons.length} selected` : ''}
+              </p>
+              {rclReasons.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRclReasons([])}
+                  style={{ background: 'none', border: 'none', color: 'var(--tf-accent)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, padding: 0, whiteSpace: 'nowrap' }}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {REASONABLE_CAUSE_REASONS.map((r) => {
                 const checked = rclReasons.includes(r.value);
@@ -383,7 +401,7 @@ export function MultiYearStart() {
               ? 'Select at least one year'
               : editJobId
                 ? `Save ${selected.size} year${selected.size > 1 ? 's' : ''}`
-                : `Continue with ${selected.size} year${selected.size > 1 ? 's' : ''}`}
+                : `Start filing — begin with ${Math.min(...selected)}`}
         </button>
         <button
           onClick={() => navigate('/dashboard')}

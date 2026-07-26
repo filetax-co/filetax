@@ -38,19 +38,19 @@ const howItWorksSteps = [
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
 
-// Base path of the app (e.g. "/5472" on GitHub Pages, "" locally).
-// import.meta.env.BASE_URL is set by Vite from vite.config.ts `base`.
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // strip trailing slash
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-// Cooldown in seconds before the user can request another confirmation/reset email.
 const RESEND_COOLDOWN = 60;
 
-/** Normalise Supabase rate-limit messages into something user-friendly. */
 function friendlyError(msg: string): string {
   if (/security purposes|rate.?limit|too many|after \d+ second/i.test(msg)) {
     return 'Please wait a moment before requesting another email. Check your inbox (and spam folder) first.';
   }
   return msg;
+}
+
+function isDuplicateEmailError(msg: string): boolean {
+  return /already registered|already exists|user_already_exists/i.test(msg);
 }
 
 export function Portal() {
@@ -66,11 +66,7 @@ export function Portal() {
   const partiesParam = searchParams.get('parties');
   const rclParam = searchParams.get('rcl');
   const newFiling = searchParams.get('new-filing') === '1';
-  // Set when the user just confirmed their email (AuthConfirm redirects here).
-  // The confirmation link only confirms the account — the user still has to log
-  // in with their password — so we surface a short "confirmed, please sign in".
   const justConfirmed = searchParams.get('confirmed') === '1';
-  // After login/signup, where should we send the user?
   const nextParam = searchParams.get('next');
 
   const activeSections = sectionsParam ? sectionsParam.split(',').filter(Boolean) : [];
@@ -89,13 +85,11 @@ export function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  // ── Resend cooldown ──────────────────────────────────────────────────────
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Start a countdown whenever we successfully send a confirmation/reset email.
   const startCooldown = () => {
     setResendCooldown(RESEND_COOLDOWN);
     if (cooldownRef.current) clearInterval(cooldownRef.current);
@@ -111,23 +105,32 @@ export function Portal() {
     }, 1000);
   };
 
-  // Clean up timer on unmount.
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   const dashboardPath = nextParam ?? (newFiling ? '/dashboard?new-filing=1' : '/dashboard');
 
+  const buildConfirmQuery = () => {
+    const p = new URLSearchParams();
+    if (years) p.set('years', years);
+    if (sectionsParam) p.set('sections', sectionsParam);
+    if (parties > 1) p.set('parties', String(parties));
+    if (includeRCL) p.set('rcl', 'true');
+    if (nextParam) p.set('next', nextParam);
+    const s = p.toString();
+    return s ? `?${s}` : '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
+    setSubmitted(false);
 
-    // ── Forgot password ──────────────────────────────────────────────────────
     if (mode === 'forgot') {
       if (!email.trim()) { setError('Please enter your email address.'); return; }
       setSubmitting(true);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
-        // Use BASE so the link works on GitHub Pages (/5472/reset-password)
-        // as well as locally (/reset-password).
         { redirectTo: window.location.origin + BASE + '/reset-password' },
       );
       setSubmitting(false);
@@ -137,7 +140,6 @@ export function Portal() {
       return;
     }
 
-    // ── Sign up ──────────────────────────────────────────────────────────────
     if (mode === 'signup') {
       if (!name.trim()) { setError('Please enter your full name.'); return; }
       if (!email.trim()) { setError('Please enter your email address.'); return; }
@@ -146,7 +148,6 @@ export function Portal() {
         return;
       }
 
-      // ── Password security checks (char classes + zxcvbn strength + HIBP breach) ──────────
       setSubmitting(true);
       const pwCheck = await validatePassword(password);
       if (!pwCheck.ok) {
@@ -154,27 +155,36 @@ export function Portal() {
         setSubmitting(false);
         return;
       }
-      // ──────────────────────────────────────────────────────────────────────
+
+      const confirmQuery = buildConfirmQuery();
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           data: { full_name: name.trim() },
-          // After the user clicks the confirmation link, /auth/confirm confirms
-          // the account, signs out, and sends them to the login screen (the link
-          // never logs anyone in on its own).
-          emailRedirectTo: window.location.origin + BASE + '/auth/confirm',
+          emailRedirectTo: window.location.origin + BASE + '/auth/confirm' + confirmQuery,
         },
       });
 
       if (signUpError) {
-        setError(friendlyError(signUpError.message));
+        if (isDuplicateEmailError(signUpError.message)) {
+          setError('This email is already registered. Please sign in instead.');
+        } else {
+          setError(friendlyError(signUpError.message));
+        }
         setSubmitting(false);
         return;
       }
 
-      // Store intake config if present
+      // Handle both obfuscation shapes Supabase uses for existing accounts:
+      // either identities:[] on a returned user, or user:null with no session at all.
+      if (!signUpData?.user || signUpData?.user?.identities?.length === 0) {
+        setError('This email is already registered. Please sign in instead.');
+        setSubmitting(false);
+        return;
+      }
+
       const hasEligibilityConfig = years || sectionsParam || parties > 1 || includeRCL;
       if (hasEligibilityConfig) {
         const userId: string | null = signUpData?.user?.id ?? null;
@@ -193,17 +203,14 @@ export function Portal() {
       setSubmitting(false);
 
       if (signUpData?.session) {
-        // Email confirmation is OFF — user is instantly authenticated, go to dashboard
         navigate(dashboardPath);
       } else {
-        // Email confirmation is ON — show "check your email" screen
         setSubmitted(true);
         startCooldown();
       }
       return;
     }
 
-    // ── Log in ───────────────────────────────────────────────────────────────
     if (!email.trim()) { setError('Please enter your email address.'); return; }
     if (!password) { setError('Please enter your password.'); return; }
     setSubmitting(true);
@@ -219,11 +226,9 @@ export function Portal() {
       return;
     }
 
-    // Respect ?next= deep link; fall back to dashboard.
     navigate(dashboardPath);
   };
 
-  // ── Resend confirmation email ─────────────────────────────────────────────
   const handleResend = async () => {
     if (resendCooldown > 0 || resending) return;
     setResending(true);
@@ -238,11 +243,11 @@ export function Portal() {
       setResending(false);
       if (resendError) { setError(friendlyError(resendError.message)); return; }
     } else {
-      // Re-trigger signup to resend the confirmation email.
+      const confirmQuery = buildConfirmQuery();
       const { error: resendError } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
-        options: { emailRedirectTo: window.location.origin + BASE + '/auth/confirm' },
+        options: { emailRedirectTo: window.location.origin + BASE + '/auth/confirm' + confirmQuery },
       });
       setResending(false);
       if (resendError) { setError(friendlyError(resendError.message)); return; }
@@ -251,9 +256,7 @@ export function Portal() {
     setResendSuccess(true);
     startCooldown();
   };
-
-  // ── Submitted confirmation UI ─────────────────────────────────────────────
-  const submittedUI = (
+    const submittedUI = (
     <div style={{ textAlign: 'center', padding: '1rem 0' }}>
       <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>
         {mode === 'forgot' ? 'Reset link sent' : 'Check your email'}
@@ -261,10 +264,9 @@ export function Portal() {
       <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
         {mode === 'forgot'
           ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>
-          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, and you will land directly on your filing dashboard.</>}
+          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, then sign in below to reach your filing dashboard.</>}
       </p>
 
-      {/* Resend button */}
       {resendSuccess && (
         <p style={{ color: '#059669', fontSize: '0.8125rem', marginBottom: '0.75rem', fontWeight: 500 }}>
           Email resent successfully.
@@ -379,7 +381,7 @@ export function Portal() {
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
               <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>
-                {howItWorksOpen ? '\u2212' : '+'}
+                {howItWorksOpen ? '−' : '+'}
               </span>
             </button>
             {howItWorksOpen && (
@@ -401,10 +403,8 @@ export function Portal() {
         </div>
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr)', gap: '2rem', alignItems: 'start' }} className="portal-grid">
-          {/* ── Auth card ─────────────────────────────────────────────── */}
           <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '2rem', boxShadow: '0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)' }}>
 
-            {/* Tab switcher — only for signup / login */}
             {mode !== 'forgot' && (
               <div style={{ display: 'flex', background: 'var(--tf-bg)', borderRadius: '0.5rem', padding: '0.25rem', marginBottom: '1.75rem', border: '1px solid var(--tf-border)' }}>
                 {(['signup', 'login'] as const).map((m) => (
@@ -415,7 +415,6 @@ export function Portal() {
               </div>
             )}
 
-            {/* Forgot password heading */}
             {mode === 'forgot' && !submitted && (
               <div style={{ marginBottom: '1.5rem' }}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>Reset your password</h2>
@@ -426,14 +425,12 @@ export function Portal() {
             {submitted ? submittedUI : (
               <form onSubmit={handleSubmit} noValidate>
 
-                {/* Email confirmed — prompt to sign in (link only confirms; login still required) */}
                 {justConfirmed && mode === 'login' && (
                   <p style={{ color: '#059669', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.875rem', fontWeight: 500, marginBottom: '1.125rem' }}>
                     Your email is confirmed. Please sign in with your password to continue.
                   </p>
                 )}
 
-                {/* Name — signup only */}
                 {mode === 'signup' && (
                   <div style={{ marginBottom: '1.125rem' }}>
                     <label htmlFor="portal-name" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Full name</label>
@@ -441,13 +438,11 @@ export function Portal() {
                   </div>
                 )}
 
-                {/* Email */}
                 <div style={{ marginBottom: '1.125rem' }}>
                   <label htmlFor="portal-email" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Email address</label>
                   <input id="portal-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
                 </div>
 
-                {/* Password — signup and login only */}
                 {mode !== 'forgot' && (
                   <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.375rem' }}>
@@ -459,8 +454,6 @@ export function Portal() {
                       )}
                     </div>
                     <input id="portal-password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Create a strong password' : 'Your password'} value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
-                    {/* Live requirements checklist — shown up front on signup so the
-                        user knows what's expected before submitting. */}
                     {mode === 'signup' && (() => {
                       const status = ruleStatus(password);
                       return (
@@ -482,11 +475,27 @@ export function Portal() {
 
                 {mode === 'forgot' && <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }} />}
 
-                {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
+                {error && (
+                  <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>
+                    {error}
+                    {error.includes('already registered') && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => { setMode('login'); setError(''); }}
+                          style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                        >
+                          Sign in instead
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
 
                 <button type="submit" disabled={submitting} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', minHeight: '44px', marginBottom: '0.875rem', opacity: submitting ? 0.7 : 1 }}>
                   {submitting
-                    ? (mode === 'forgot' ? 'Sending\u2026' : mode === 'signup' ? 'Creating account\u2026' : 'Signing in\u2026')
+                    ? (mode === 'forgot' ? 'Sending…' : mode === 'signup' ? 'Creating account…' : 'Signing in…')
                     : (mode === 'forgot' ? 'Send Reset Link' : mode === 'signup' ? 'Create Free Account' : 'Sign In')}
                 </button>
 
@@ -509,7 +518,6 @@ export function Portal() {
             </div>
           </div>
 
-          {/* ── Checklist ─────────────────────────────────────────────── */}
           <div>
             <h2 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>What you will need</h2>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
