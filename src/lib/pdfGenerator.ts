@@ -1359,10 +1359,16 @@ const monthAndDay = (iso: string): string => {
  * Print the period's ENDING date into the second LLC_Beginning_Date widget.
  *
  * See the call site: the two date slots on the period line share one field
- * name, so the field itself can only ever carry the beginning date. We take the
- * second widget's rectangle, collapse it so it paints nothing, and draw the
- * ending date onto the page at the same spot. The result flattens identically
- * to a filled field.
+ * name, so the field itself can only ever carry the BEGINNING date. The ending
+ * slot is therefore detached from the field and the date drawn onto the page in
+ * its place.
+ *
+ * The widget has to be REMOVED, not just collapsed to a zero-size rectangle.
+ * A collapsed widget keeps its appearance stream, and pdf-lib's flatten() —
+ * which runs when the year package is merged — draws that stream through a
+ * degenerate transform, leaving a stray copy of the beginning date on the page.
+ * That is invisible in the standalone 7004 and visible in the combined
+ * download, which is the file the filer actually gets.
  */
 const drawEndingDateOver2ndWidget = async (
   doc: PDFDocument,
@@ -1376,13 +1382,26 @@ const drawEndingDateOver2ndWidget = async (
     if (widgets.length < 2) return;
 
     // Rightmost widget is the "ending" slot; do not assume array order.
-    const ending = [...widgets].sort(
-      (a, b) => b.getRectangle().x - a.getRectangle().x,
-    )[0];
-    const rect = ending.getRectangle();
+    const endingIdx = widgets.reduce(
+      (best, w, i) =>
+        w.getRectangle().x > widgets[best].getRectangle().x ? i : best,
+      0,
+    );
+    const rect = widgets[endingIdx].getRectangle();
 
     const page = doc.getPages()[0];
     if (!page) return;
+
+    // Detach it from the field, then drop the annotation from the page so
+    // nothing is left to paint or to flatten.
+    const ref = field.acroField.normalizedEntries().Kids.get(endingIdx);
+    field.acroField.removeWidget(endingIdx);
+    const annots = page.node.Annots();
+    if (annots) {
+      const at = annots.indexOf(ref);
+      if (at !== undefined && at !== -1) annots.remove(at);
+    }
+
     const font = await doc.embedFont(StandardFonts.Helvetica);
     page.drawText(endText, {
       x: rect.x + 1,
@@ -1391,8 +1410,6 @@ const drawEndingDateOver2ndWidget = async (
       size: FORM_FIELD_FONT_SIZE,
       font,
     });
-
-    ending.setRectangle({ x: 0, y: 0, width: 0, height: 0 });
   } catch {
     // Template without this field — leave the page as it is.
   }
