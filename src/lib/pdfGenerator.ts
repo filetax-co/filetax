@@ -1331,9 +1331,61 @@ const fill1120 = async (
 //
 // 7004 maps purely from entity + period data we already hold. Field names come
 // from the custom AcroForm in public/pdf/Form-7004-2025.pdf (13 fields).
-// For a calendar-year filer, LLC_Calendar_Year carries the 4-digit year; for an
-// initial short year or a fiscal year, the beginning/ending fields carry the
-// actual period instead.
+// For a calendar-year filer, LLC_Calendar_Year carries the year; for an initial
+// short year or a fiscal year, the beginning/ending fields carry the actual
+// period instead.
+//
+// The three year boxes take TWO digits, not four. The IRS form preprints the
+// century — "calendar year 20 __" and "tax year beginning ____, 20 __, and
+// ending ____, 20 __" — so a four-digit year printed "20 2025". The boxes are
+// 14.3pt wide, which is the giveaway: room for two characters.
+
+/** "2025" → "25". The century is preprinted on the form. */
+const twoDigitYear = (year: string | number): string =>
+  String(year).trim().slice(-2);
+
+/**
+ * Print the period's ENDING date into the second LLC_Beginning_Date widget.
+ *
+ * See the call site: the two date slots on the period line share one field
+ * name, so the field itself can only ever carry the beginning date. We take the
+ * second widget's rectangle, collapse it so it paints nothing, and draw the
+ * ending date onto the page at the same spot. The result flattens identically
+ * to a filled field.
+ */
+const drawEndingDateOver2ndWidget = async (
+  doc: PDFDocument,
+  endText: string,
+): Promise<void> => {
+  try {
+    const field = doc.getForm().getField('LLC_Beginning_Date');
+    if (!(field instanceof PDFTextField)) return;
+    const widgets = field.acroField.getWidgets();
+    // One widget means the template was fixed upstream — nothing to do.
+    if (widgets.length < 2) return;
+
+    // Rightmost widget is the "ending" slot; do not assume array order.
+    const ending = [...widgets].sort(
+      (a, b) => b.getRectangle().x - a.getRectangle().x,
+    )[0];
+    const rect = ending.getRectangle();
+
+    const page = doc.getPages()[0];
+    if (!page) return;
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText(endText, {
+      x: rect.x + 1,
+      // Sit the baseline inside the box the same way an AcroForm field does.
+      y: rect.y + (rect.height - FORM_FIELD_FONT_SIZE) / 2 + 1,
+      size: FORM_FIELD_FONT_SIZE,
+      font,
+    });
+
+    ending.setRectangle({ x: 0, y: 0, width: 0, height: 0 });
+  } catch {
+    // Template without this field — leave the page as it is.
+  }
+};
 
 const fill7004 = async (
   filing: NormalizedFiling,
@@ -1355,11 +1407,19 @@ const fill7004 = async (
   const isCalendarYear =
     !filing.is_fiscal_year && period.beginISO === `${period.year}-01-01`;
   if (isCalendarYear) {
-    setText(doc, 'LLC_Calendar_Year', String(period.year));
+    setText(doc, 'LLC_Calendar_Year', twoDigitYear(period.year));
   } else {
     setText(doc, 'LLC_Beginning_Date', period.beginText);
-    setText(doc, 'LLC_Beginning_Year', period.beginISO.split('-')[0] ?? String(period.year));
-    setText(doc, 'LLC_Ending_Year',    period.endISO.split('-')[0] ?? String(period.year));
+    setText(doc, 'LLC_Beginning_Year', twoDigitYear(period.beginISO.split('-')[0] ?? period.year));
+    setText(doc, 'LLC_Ending_Year',    twoDigitYear(period.endISO.split('-')[0] ?? period.year));
+
+    // The template gives LLC_Beginning_Date TWO widgets — the "beginning" slot
+    // and the "ending" slot share one field name, so setting the field printed
+    // the BEGINNING date in both, and the form read "beginning July 1, 2025 and
+    // ending July 1, 2025". A single AcroForm field cannot hold two different
+    // values, so the ending slot is drawn on the page directly and its widget
+    // collapsed to nothing so it has no value of its own left to paint.
+    await drawEndingDateOver2ndWidget(doc, period.endText);
   }
 
   checkBox(doc, 'Initial_Return', period.isInitial);
