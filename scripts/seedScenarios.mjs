@@ -10,6 +10,7 @@
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid>
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --only 52,53
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --range 31-40
+ *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --status completed
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --cleanup
  *
  * Credentials — set these in .env.local yourself; the script only reads them
@@ -51,8 +52,26 @@ const cleanup = has('cleanup');
 const only = flag('only')?.split(',').map((s) => Number(s.trim()));
 const range = flag('range')?.split('-').map(Number);
 
+/**
+ * Status to seed with. Default 'draft' opens in the wizard; 'completed' routes
+ * to the generate/preview/download page and puts the identity fields into their
+ * locked state, so both can be exercised without running a real payment.
+ *
+ * filings_block_payment_writes would normally reject a client writing these,
+ * but it returns early for auth.role() = 'service_role', which is the key this
+ * script uses. Nothing here bypasses a check that applies to real users.
+ */
+const status = flag('status') ?? 'draft';
+const VALID = ['draft', 'in_progress', 'payment_failed', 'paid', 'completed'];
+if (!VALID.includes(status)) {
+  console.error(`--status must be one of: ${VALID.join(', ')}`);
+  process.exit(2);
+}
+const isPaidLike = status === 'paid' || status === 'completed';
+
 if (!file || !userId) {
-  console.error('Usage: npm run seed -- --file <scenarios.json> --user-id <uuid> [--dry-run] [--only 31,32] [--range 31-40] [--cleanup]');
+  console.error('Usage: npm run seed -- --file <scenarios.json> --user-id <uuid>');
+  console.error('  [--dry-run] [--only 31,32] [--range 31-40] [--status draft|paid|completed] [--cleanup]');
   process.exit(2);
 }
 
@@ -113,13 +132,16 @@ if (cleanup) {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 /**
- * Build a filings row. `status: 'draft'` is set explicitly because the column
+ * Build a filings row. Status is always set explicitly because the column
  * default is 'pending', which filings_status_check rejects — an insert that
  * omits status fails outright.
  */
 const filingRow = (f, o, extra = {}) => ({
   user_id: userId,
-  status: 'draft',
+  status,
+  // A paid-like filing needs paid_at set, otherwise the dashboard shows a paid
+  // row with no payment date and the lock messaging reads oddly.
+  ...(isPaidLike ? { paid_at: new Date().toISOString(), payment_amount_cents: 15000 } : {}),
   service_type: 'current_year',
   current_step: 5,
   related_parties: extra.related_parties ?? [],
@@ -154,7 +176,7 @@ for (const s of scenarios) {
     const t = isJob
       ? s.year_specific_filings.reduce((a, y) => a + (y.transactions?.length ?? 0), 0)
       : (s.transactions?.length ?? 0);
-    console.log(`[dry] ${String(s.scenario_id).padStart(2)} ${isJob ? `JOB ${n} years` : 'filing'} · ${t} txn · ${s.title}`);
+    console.log(`[dry] ${String(s.scenario_id).padStart(2)} ${isJob ? `JOB ${n} years` : 'filing'} · ${t} txn · [${status}] ${s.title}`);
     filings += n; txns += t; if (isJob) jobs++;
     continue;
   }
@@ -216,6 +238,7 @@ for (const s of scenarios) {
 console.log(`\n${dryRun ? '[dry run] would create' : 'created'}: ${filings} filing(s), ${txns} transaction(s), ${jobs} job(s)`);
 if (!dryRun && created.length) {
   console.log('\nOpen in the app:');
-  for (const c of created.slice(0, 10)) console.log(`  http://localhost:5174/intake?filing_id=${c.id}   ${c.label}`);
+  const path = isPaidLike ? 'filing' : 'intake';
+  for (const c of created.slice(0, 10)) console.log(`  http://localhost:5174/${path}/${c.id}   ${c.label}`);
   if (created.length > 10) console.log(`  ... and ${created.length - 10} more (see your dashboard)`);
 }
