@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
+import { PdfPreviewModal } from '../../components/PdfPreviewModal';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,8 +24,11 @@ const TAX_YEARS = Array.from(
 // It is reached via /filing/:id, which the Dashboard routes to for
 // paid / completed filings. Data entry (steps 1-3) lives in Intake (/intake/:id).
 //
-// Combined PDF order:
-//   Pro Forma 1120 → Form 5472 → statement_partV (if hasPartV) → statement_partVI (always)
+// Combined PDF order is owned by generateFilingPackage() in pdfGenerator.ts —
+// Instructions → reasonable-cause letter (if any) → Pro Forma 1120 → Form 7004
+// (if any) → owner's Form 5472 with its Part V / Part VI statements → a Form
+// 5472 per remaining related party. Do not restate it here; the previous copy
+// of this comment had drifted and described a sequence no longer produced.
 //
 // statement_partVI is always included (hardcoded true in pdfGenerator.ts).
 // statement_partV is included only when distributions, contributions, dividends,
@@ -45,8 +49,11 @@ export default function FilingWizard() {
   const [genErr,       setGenErr]       = useState<string | null>(null);
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
   // Generated single-year package: kept as a blob URL so the filer can preview
-  // it inline (iframe) and download the same bytes without regenerating.
+  // it in the overlay and download the same bytes without regenerating.
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
+  // Whether the preview overlay is showing. Kept separate from `preview` so the
+  // generated package can persist on the page after the overlay is dismissed.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Revoke the preview blob URL when it changes or the component unmounts.
   useEffect(() => {
@@ -93,15 +100,13 @@ export default function FilingWizard() {
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
       const pkg = await generateFilingPackage(fi, txns ?? []);
 
-      // Combined PDF:
-      //   pkg.combined = Pro Forma 1120 + Form 5472
-      //                + pkg.statement_partV  (appended only when hasPartV is true)
-      //                + pkg.statement_partVI (always appended — hardcoded in pdfGenerator.ts)
-      // Show it inline for preview; the filer downloads from the preview panel.
+      // The button says "Generate & preview", so open the overlay straight away;
+      // the package card stays on the page once it is dismissed.
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       const filename = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
       setPreview({ url, filename });
+      setPreviewOpen(true);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -470,38 +475,50 @@ export default function FilingWizard() {
               </div>
             </div>
 
-            {/* ── Inline PDF preview + download (single-year) ─────────────── */}
+            {/* ── Generated package: open in the preview overlay ──────────────
+                The PDF used to sit inline at 75vh, which handed the page to the
+                browser's own viewer (toolbar, zoom, thumbnail rail) and read as
+                if the app had been replaced by Adobe. It now opens in the shared
+                overlay, so the filing page stays put behind it. */}
             {preview && (
               <div style={{ marginTop: '1.5rem' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap',
+                  gap: '0.75rem', flexWrap: 'wrap',
+                  padding: '1rem 1.25rem',
+                  border: '1px solid var(--tf-border)', borderRadius: '0.625rem',
+                  background: 'var(--tf-surface)',
                 }}>
-                  <p style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, color: 'var(--tf-text)' }}>
-                    Preview your complete filing
-                  </p>
-                  <button
-                    onClick={downloadPreview}
-                    style={primaryBtnStyle}
-                    type="button"
-                  >
-                    Download PDF
-                  </button>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, color: 'var(--tf-text)' }}>
+                      Your filing package is ready
+                    </p>
+                    <p style={{
+                      fontSize: '0.8125rem', color: 'var(--tf-muted)', margin: '0.15rem 0 0',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {preview.filename}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button onClick={() => setPreviewOpen(true)} style={secondaryBtnStyle} type="button">
+                      Preview
+                    </button>
+                    <button onClick={downloadPreview} style={primaryBtnStyle} type="button">
+                      Download PDF
+                    </button>
+                  </div>
                 </div>
-                <iframe
-                  title="Filing preview"
-                  src={preview.url}
-                  style={{
-                    width: '100%', height: '75vh', minHeight: 480,
-                    border: '1px solid var(--tf-border)', borderRadius: '0.625rem',
-                    background: 'var(--tf-surface)',
-                  }}
-                />
-                <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
-                  Review every page above. When it looks right, download the PDF, then print, sign where
-                  indicated, and mail (or fax) it to the IRS using the instructions on the first page.
-                </p>
               </div>
+            )}
+
+            {previewOpen && preview && (
+              <PdfPreviewModal
+                target={preview}
+                onClose={() => setPreviewOpen(false)}
+                onDownload={downloadPreview}
+                footnote="Review every page. When it looks right, download the PDF, then print and mail (or fax) it to the IRS using the instructions on the first page."
+              />
             )}
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}

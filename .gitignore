@@ -33,3 +33,6 @@ scripts/_supabaseStub.ts
 
 # git bundles
 *.bundle
+
+# Scratch output from npm run verify:pdf
+tmp-verify/

@@ -917,3 +917,31 @@ export const RP_NAICS: { code: string; label: string; hint: string }[] = [
     hint: 'Catch-all for professionals',
   },
 ];
+
+/**
+ * Resolve a stored business activity + code back to its RP_NAICS preset.
+ *
+ * The owner / related-party dropdowns key on the activity LABEL so that a
+ * manually-typed activity has somewhere to live. That alone would regress
+ * older records: `owner_business_activity` and `owner_business_code` are
+ * separate DB columns, and a row seeded from `owner_naics_code` can carry the
+ * code with a blank activity. Matching on the label only, such a row would
+ * render as "Select type" — or, once touched, as "Other (enter manually)" —
+ * which reads as data loss on a filing that is already paid and locked.
+ *
+ * So: prefer the label, fall back to the code when the activity is blank.
+ *
+ * Returns undefined for a genuinely custom activity, and for the single-space
+ * sentinel the UI parks in the field when the filer picks "Other".
+ */
+export function resolveBizPreset(
+  activity: string | null | undefined,
+  code: string | null | undefined,
+): { code: string; label: string; hint: string } | undefined {
+  const a = (activity ?? '').trim();
+  const c = (code ?? '').trim();
+  const byLabel = RP_NAICS.find((n) => n.label === a);
+  if (byLabel) return byLabel;
+  if (!a && c) return RP_NAICS.find((n) => n.code === c);
+  return undefined;
+}

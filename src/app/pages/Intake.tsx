@@ -17,6 +17,7 @@ import {
   REASONABLE_CAUSE_REASONS,
   RELATED_PARTY_TX,
   RP_NAICS,
+  resolveBizPreset,
   SIMPLE_TX,
   STEP_LABELS,
   TAX_YEARS,
@@ -211,10 +212,44 @@ function getCategoryForTxType(txType: string): 1 | 2 | 3 | null {
  */
 function InfoTooltip({ text, label }: { text: string; label?: string }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [box, setBox] = useState<{ left: number; top: number; width: number; below: boolean } | null>(null);
+
+  // The tooltip is positioned FIXED rather than absolute. Both `.acc-section`
+  // and `groupedCardStyle` set `overflow: hidden` (they need it to clip their
+  // rounded corners), which was slicing the popover off mid-sentence wherever
+  // it reached a section edge. A fixed layer is outside their clipping context,
+  // so the text always shows in full, and we clamp to the viewport so a field
+  // near the right edge does not push it off-screen either.
+  React.useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const measure = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = Math.min(260, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(r.left + r.width / 2 - width / 2, window.innerWidth - width - 8));
+      // Flip below the icon when there is not enough room above it.
+      const below = r.top < 120;
+      setBox({ left, top: below ? r.bottom + 6 : r.top - 6, width, below });
+    };
+    measure();
+    // A fixed popover does not travel with the page, so dismiss it on scroll
+    // or resize instead of leaving it stranded beside the wrong field.
+    const close = () => setOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
   return (
     <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}>
       <button
         type="button"
+        ref={btnRef}
         aria-label={label ?? 'More information'}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -224,26 +259,32 @@ function InfoTooltip({ text, label }: { text: string; label?: string }) {
         style={{
           // Filled accent circle so the info affordance is easy to spot
           // (previously a low-contrast outlined "i" that was hard to find).
-          width: '16px', height: '16px', borderRadius: '9999px',
+          // Kept small: the fill alone makes it findable, so it does not need
+          // the size as well — at 16px it competed with the field label.
+          width: '14px', height: '14px', borderRadius: '9999px',
           border: 'none', background: 'var(--tf-accent)',
-          color: 'var(--tf-on-accent)', fontSize: '11px', fontWeight: 700,
+          color: 'var(--tf-on-accent)', fontSize: '9.5px', fontWeight: 700,
           lineHeight: 1, cursor: 'pointer', padding: 0,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          marginLeft: '0.35rem',
+          marginLeft: '0.3rem', flexShrink: 0,
         }}
       >
         i
       </button>
-      {open && (
+      {open && box && (
         <span
           role="tooltip"
           style={{
-            position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
-            width: 'max-content', maxWidth: '260px', zIndex: 20,
+            position: 'fixed',
+            left: box.left,
+            top: box.top,
+            transform: box.below ? 'none' : 'translateY(-100%)',
+            width: box.width, zIndex: 100,
             background: 'var(--tf-text)', color: 'var(--tf-surface)',
             fontSize: '0.75rem', fontWeight: 400, lineHeight: 1.5,
             padding: '0.5rem 0.625rem', borderRadius: '0.375rem',
             boxShadow: '0 4px 14px rgba(0,0,0,0.18)', textTransform: 'none', letterSpacing: 'normal',
+            whiteSpace: 'normal', overflowWrap: 'break-word', pointerEvents: 'none',
           }}
         >
           {text}
@@ -354,10 +395,10 @@ function AddressFields({
 
   // Two-column rows: row 1 = street (full width), row 2 = city + postal code,
   // row 3 = state/region + country.
-  const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' };
+  const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Row 1 — street */}
       <Field label="Street address" required>
         <input placeholder="Street address" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} />
@@ -440,9 +481,10 @@ function formatAddress(a?: { line1?: string; city?: string; region?: string; pos
 
 /**
  * Reportable-total + money-bucket panel. Shows what the user entered AND the
- * true Form 5472 gross-payments figure (Part IV flows), so the form number is
- * honest while nothing looks missing. Reused on the transaction step (live) and
- * the review step (static).
+ * true Form 5472 gross-payments figure (line 1f/1h — Part IV flows, closing loan
+ * balances, Part V contributions/distributions/formation costs and any Part VI
+ * amount), so the form number is honest while nothing looks missing. Reused on
+ * the transaction step (live) and the review step (static).
  */
 function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summarizeTransactions>; count: number }) {
   if (count === 0) return null;
@@ -465,7 +507,9 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
         </div>
       </div>
       <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
-        The “gross payments” figure (Form 5472 line 1f/1h) counts service, rent, royalty and goods dealings. Money you put in or took out, and loan balances, are reported on their own lines, so the two numbers can differ. That is expected.
+        {summary.formGross === summary.totalEntered
+          ? 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form — your Part IV dealings, money you put in or took out, closing loan balances, formation costs you paid for the LLC, and any amount recorded against a property transfer. Every amount you entered is counted.'
+          : 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form. It can sit below the amount you entered because a loan’s opening balance is not counted — only the closing balance is, so the same loan is not reported twice. That is expected.'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
@@ -478,10 +522,14 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
 
 const stepHeadingStyle: React.CSSProperties = { fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' };
 const stepSubheadStyle: React.CSSProperties = { fontSize: '0.9rem', color: 'var(--tf-muted)', marginBottom: '1.75rem', lineHeight: 1.55 };
-const sectionStyle: React.CSSProperties = { marginBottom: '2rem' };
-const sectionLabelStyle: React.CSSProperties = { fontSize: '0.8rem', fontWeight: 700, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.875rem' };
-const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' };
-const reviewGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1rem 1.25rem' };
+const sectionStyle: React.CSSProperties = { marginBottom: '2.5rem' };
+const sectionLabelStyle: React.CSSProperties = { fontSize: '0.8rem', fontWeight: 700, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '1rem' };
+// Two columns, deliberately. The accordion body is ~590px wide, so a 220px
+// minimum let a third column squeeze in and values started wrapping mid-word
+// (dates broke across lines). A 260px floor caps it at two and matches the
+// paired layout of the underlying form.
+const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', columnGap: '1.25rem', rowGap: '1.25rem' };
+const reviewGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', columnGap: '1.5rem', rowGap: '1.125rem', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1.375rem 1.5rem' };
 const primaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.5rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', borderRadius: '0.5rem', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' };
 const secondaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.25rem', background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' };
 const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'flex-start', padding: '0.4375rem 1rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', borderRadius: '0.375rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' };
@@ -664,6 +712,21 @@ export function Intake() {
 
   const selectedTxMeta = TX_TYPES.find((t) => t.value === txType);
   const currentStepIdx = stepOrder.indexOf(step);
+
+  /**
+   * The display number for a section, taken from its position in `stepOrder`.
+   *
+   * The page title and the accordion headers used to number independently, so
+   * with step 1b present the title read "3. Owner Details" while that very
+   * section's header read "2. Owner Details", and 1b was numbered in one place
+   * but not the other. Both now derive from the same array, so the numbering
+   * holds together — and it shifts correctly for an on-time filer, who has no
+   * step 1b at all.
+   */
+  const stepNumber = (key: IntakeStep): string => {
+    const i = stepOrder.indexOf(key);
+    return i >= 0 ? `${i + 1}. ` : '';
+  };
   const txCategory = getCategoryForTxType(txType);
   // Live money summary (reconciles with the generator's 1f/1h gross).
   const txSummary = summarizeTransactions(transactions);
@@ -766,8 +829,12 @@ export function Intake() {
       setOwnerForeignTaxId(f.owner_foreign_tax_id ?? '');
       setOwnerRefNumber((f as any).owner_ref_number ?? '');
       setOwnerAddress((f.owner_address as Address) ?? {});
-      setOwnerBizActivity(f.owner_business_activity ?? '');
-      setOwnerBizCode((f as any).owner_business_code ?? '');
+      // Backfill a blank activity from a recognised code so the dropdown shows
+      // the preset AND the "type of business" validation can still be satisfied.
+      const loadedBizCode = (f as any).owner_business_code ?? '';
+      const loadedBizPreset = resolveBizPreset(f.owner_business_activity, loadedBizCode);
+      setOwnerBizActivity(f.owner_business_activity?.trim() || loadedBizPreset?.label || '');
+      setOwnerBizCode(loadedBizCode);
       setSignerTitle((f as any).signer_title ?? 'Managing Member');
       setSignatureDate((f as any).signature_date ?? '');
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
@@ -1093,9 +1160,11 @@ export function Intake() {
       }
     }
     if (!entityPrincipalCountry) errs.push('Select the main country where the LLC does business.');
-    if (!entityBizActivity) errs.push("Select your LLC's type of business.");
+    // .trim() matters: picking "Other (enter manually)" parks a single space in
+    // the activity to reveal the free-text input, and a space is not an answer.
+    if (!entityBizActivity.trim()) errs.push("Select or describe your LLC's type of business.");
     if (!entityBizCode.trim()) errs.push("Enter your LLC's business code.");
-    if (!isAddressComplete(mailing, true)) errs.push("Complete your LLC's mailing address.");
+    if (!isAddressComplete(mailing)) errs.push("Complete your LLC's mailing address.");
     return errs;
   }
 
@@ -1119,7 +1188,7 @@ export function Intake() {
     if (!ownerCountryCitizenship) errs.push('Select your country of citizenship.');
     if (!ownerForeignTaxId.trim()) errs.push('Enter your foreign tax ID.');
     if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
-    if (!ownerBizActivity) errs.push('Select your type of business.');
+    if (!ownerBizActivity.trim()) errs.push('Select or describe your type of business.');
     if (!ownerBizCode.trim()) errs.push('Enter your business code.');
     if (!isAddressComplete(ownerAddress, false)) errs.push('Complete your address.');
     return errs;
@@ -1132,7 +1201,7 @@ export function Intake() {
     if (!draft.country_residence) errs.push('Select the country where they pay taxes.');
     if (!draft.foreign_tax_id.trim()) errs.push("Enter the related party's foreign tax ID.");
     if (!draft.ref_number.trim()) errs.push("Enter the related party's reference code.");
-    if (!draft.biz_activity) errs.push("Select the related party's type of business.");
+    if (!draft.biz_activity.trim()) errs.push("Select or describe the related party's type of business.");
     if (!draft.biz_code.trim()) errs.push("Enter the related party's business code.");
     if (!isAddressComplete(draft.address, false)) errs.push("Complete the related party's address.");
     return errs;
@@ -1286,6 +1355,36 @@ export function Intake() {
       setStep(stepOrder[idx + 1]);
       requestAnimationFrame(() => sectionRefs.current[nextKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
+  };
+
+  /**
+   * The catch-up year the Review button will open next. Mirrors the selection
+   * handleSubmit makes (earliest remaining draft, this filing excluded) — the
+   * `jobYears` list is already sorted ascending, so `find` picks the same row.
+   */
+  const nextDraftYear =
+    jobYears.find((y) => y.id !== filingId && y.status === 'draft')?.tax_year ?? null;
+
+  /**
+   * Label for a section's "continue" button.
+   *
+   * A bare "Save & continue" never told the user where they were going, and on
+   * the last section before Review it read as though it were submitting the
+   * return. Naming the destination ("Save & continue to Owner Details") makes
+   * the action explicit, and keeps it clearly distinct from the Review step's
+   * button, which is the only one that actually submits.
+   *
+   * The next section is derived from the same `stepOrder` that
+   * `continueFromSection` walks, so the label can never drift from where the
+   * button really goes — including when step 1b is absent for an on-time filer.
+   */
+  const continueLabel = (key: string): string => {
+    if (saving) return 'Saving…';
+    const s = key === '1b' ? ('1b' as IntakeStep) : (Number(key) as IntakeStep);
+    const idx = stepOrder.indexOf(s);
+    const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
+    if (!nextKey) return 'Save';
+    return `Save & continue to ${STEP_LABELS[nextKey] ?? 'the next step'} →`;
   };
 
   const saveTransactions = async (idOverride?: string): Promise<boolean> => {
@@ -1504,9 +1603,9 @@ export function Intake() {
         );
         if (nextYear) {
           // Company + owner (Steps 1-2) were just propagated to this year, so
-          // send the user straight to Step 3 (related parties). The stepper
-          // still lets them step back to review Steps 1-2 for this year if a
-          // year-specific detail needs changing.
+          // send the user straight to Step 3 (related parties). Every section
+          // stays open on the page, so they can still scroll back to review
+          // Steps 1-2 for this year if a year-specific detail needs changing.
           navigate(`/intake?filing_id=${nextYear.id}&step=3`);
           return;
         }
@@ -1628,8 +1727,6 @@ export function Intake() {
     );
   }
 
-  const visibleSteps = stepOrder;
-
   return (
     <>
       <style>{`
@@ -1648,14 +1745,22 @@ export function Intake() {
           box-sizing: border-box;
           transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
-        /* Custom dropdown chevron with consistent right padding, so the arrow
-           isn't crowded against the edge (varies by browser otherwise). */
+        /* Custom dropdown chevron. The inset matches the field's 0.75rem left
+           padding plus a little, so the arrow sits in visually balanced space
+           rather than crowding the right edge, and the text can never run
+           underneath it. */
         .intake-form select {
           appearance: none; -webkit-appearance: none; -moz-appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
           background-repeat: no-repeat;
-          background-position: right 0.85rem center;
-          padding-right: 2.25rem;
+          background-position: right 1rem center;
+          padding-right: 2.75rem;
+        }
+        /* The chevron is a baked-in SVG, so its stroke cannot inherit the theme.
+           Swap in a lighter one for dark mode instead of leaving a near-black
+           arrow on a near-black field. */
+        [data-theme="dark"] .intake-form select {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394A3B8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         }
         .intake-form input:focus,
         .intake-form select:focus,
@@ -1675,34 +1780,12 @@ export function Intake() {
           color: var(--tf-text);
         }
 
-        /* ── Stepper ── */
-        .stepper-track {
-          display: inline-flex; align-items: center;
-          background: var(--tf-offset, #f1f5f9); border-radius: 2rem;
-          padding: 0.25rem; gap: 0; margin-bottom: 2rem;
-          flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
-          scrollbar-width: none; -ms-overflow-style: none;
-        }
-        .stepper-track::-webkit-scrollbar { display: none; }
-        .stepper-pill {
-          display: flex; align-items: center; gap: 0.35rem;
-          padding: 0.35rem 0.9rem; border-radius: 2rem;
-          font-size: 0.8125rem; font-weight: 500;
-          white-space: nowrap; border: none; background: transparent;
-          transition: background 0.15s, color 0.15s; line-height: 1;
-        }
-        .stepper-pill--active { background: var(--tf-accent); color: var(--tf-on-accent); font-weight: 700; cursor: default; box-shadow: 0 1px 4px rgba(var(--tf-accent-rgb), 0.25); }
-        .stepper-pill--done { background: rgba(var(--tf-accent-rgb), 0.12); color: var(--tf-accent); font-weight: 600; cursor: pointer; }
-        .stepper-pill--done:hover { background: rgba(var(--tf-accent-rgb), 0.20); }
-        .stepper-pill--pending { color: var(--tf-muted); cursor: default; }
-        .stepper-check { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: var(--tf-accent); color: var(--tf-on-accent); font-size: 0.6rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
-
         /* ── Vertical accordion (steps as sections) ── */
         .acc-section {
           border: 1px solid var(--tf-border);
           border-radius: 0.75rem;
           background: var(--tf-surface);
-          margin-bottom: 0.875rem;
+          margin-bottom: 1.25rem;
           overflow: hidden;
         }
         .acc-trigger {
@@ -1723,7 +1806,10 @@ export function Intake() {
         .acc-progress-dot.is-complete { background: var(--tf-accent); border-color: var(--tf-accent); }
         .acc-trigger-chevron { color: var(--tf-muted); display: flex; transition: transform 0.2s ease; flex-shrink: 0; }
         .acc-trigger-chevron.is-open { transform: rotate(180deg); }
-        .acc-body { padding: 1.25rem; }
+        /* Generous body padding — the form reads as dense otherwise, with
+           fields running straight into the section edge. */
+        .acc-body { padding: 1.75rem 1.5rem 1.5rem; }
+        @media (max-width: 520px) { .acc-body { padding: 1.25rem 1rem; } }
 
         /* ── Year tabs (multi-year catch-up) ── */
         .year-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -1743,10 +1829,25 @@ export function Intake() {
           border: 1px solid var(--tf-border);
           border-radius: 0.625rem; cursor: pointer;
           background: var(--tf-surface);
-          transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+          transition: border-color 0.18s ease, background 0.18s ease,
+                      box-shadow 0.18s ease, transform 0.18s ease;
         }
-        .select-card:hover { border-color: var(--tf-accent-soft); box-shadow: 0 1px 6px rgba(var(--tf-accent-rgb), 0.10); }
-        .select-card.is-selected { border-color: var(--tf-accent); background: rgba(var(--tf-accent-rgb), 0.06); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.10); }
+        .select-card { transform: translateY(0); }
+        .select-card:hover {
+          border-color: var(--tf-accent-soft);
+          background: var(--tf-offset);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+        }
+        .select-card:active { transform: translateY(0); box-shadow: none; }
+        /* Selected keeps the page surface behind it and states itself through
+           the border + ring. Filling the card with a tint made it read as a
+           coloured notice rather than a chosen option. */
+        .select-card.is-selected {
+          border-color: var(--tf-accent);
+          box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.14);
+        }
+        .select-card.is-selected .select-card-label { color: var(--tf-accent); }
         .select-card input[type="radio"],
         .select-card input[type="checkbox"] {
           width: 1.1rem !important; height: 1.1rem !important;
@@ -1785,9 +1886,16 @@ export function Intake() {
           text-align: left; border: 1px solid var(--tf-border);
           border-radius: 0.625rem; padding: 0.75rem 0.875rem;
           background: var(--tf-surface); cursor: pointer; width: 100%;
-          transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease,
+                      background 0.18s ease, transform 0.18s ease;
         }
-        .tx-type-card:hover { border-color: var(--tf-accent-soft); box-shadow: 0 1px 6px rgba(var(--tf-accent-rgb), 0.10); }
+        .tx-type-card:hover {
+          border-color: var(--tf-accent-soft);
+          background: var(--tf-offset);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+        }
+        .tx-type-card:active { transform: translateY(0); box-shadow: none; }
         .tx-type-card.is-selected { border-color: var(--tf-accent); box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.10); background: rgba(var(--tf-accent-rgb), 0.06); }
         .tx-type-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text); }
         .tx-type-sentence { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--tf-muted); line-height: 1.45; }
@@ -1804,12 +1912,31 @@ export function Intake() {
           .tx-split { grid-template-columns: 1fr; }
         }
 
-        /* ── Confirm no-transactions row ── */
+        /* ── Confirm no-transactions row ──
+           A checkbox the filer must tick, so it is styled as a control (full
+           rounded border on the page surface), not as an amber notice — it used
+           to wear the banner's fill and read as something to skim past. */
         .confirm-check-row {
           display: flex; gap: 0.75rem; align-items: flex-start;
           padding: 1rem 1.25rem;
-          background: var(--tf-banner-amber-bg); border: 1px solid var(--tf-banner-amber-border); border-radius: 0.5rem;
-          margin-top: 1.25rem;
+          background: var(--tf-surface);
+          border: 1px solid var(--tf-banner-amber-border);
+          border-radius: 0.625rem;
+          margin-top: 1.5rem;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .confirm-check-row:hover { box-shadow: 0 1px 6px rgba(var(--tf-warn-rgb), 0.12); }
+        /* Plain opt-ins (fiscal year, final return, owner services) carry no
+           warning weight, so they start on a neutral border. Kept as a class
+           rather than an inline style so .is-selected can still win. */
+        .confirm-check-row--neutral { border-color: var(--tf-border); }
+        /* Neutral rows are plain opt-ins, so their tick is the accent colour.
+           The warn-amber tick is reserved for the no-transactions confirmation,
+           and looked wrong against a blue selected border. */
+        .confirm-check-row--neutral input[type="checkbox"] { accent-color: var(--tf-accent) !important; }
+        .confirm-check-row.is-selected {
+          border-color: var(--tf-accent);
+          box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.14);
         }
         .confirm-check-row input[type="checkbox"] {
           width: 1.1rem !important; height: 1.1rem !important;
@@ -1819,19 +1946,40 @@ export function Intake() {
           box-shadow: none !important;
         }
 
-        /* ── Transaction tier banners (green = routine, amber = review, red = complex) ── */
-        .cat-banner-green { background: var(--tf-banner-green-bg); border: 1px solid var(--tf-banner-green-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-green-text); margin-bottom: 1rem; line-height: 1.5; }
-        .cat-banner-amber { background: var(--tf-banner-amber-bg); border: 1px solid var(--tf-banner-amber-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-amber-text); margin-bottom: 1rem; line-height: 1.5; }
-        .cat-banner-red { background: var(--tf-banner-red-bg); border: 1px solid var(--tf-banner-red-border); border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--tf-banner-red-text); margin-bottom: 1rem; line-height: 1.5; }
+        /* ── Notices (green = routine, amber = review, red = complex) ──
+           A notice is something to READ; a .select-card is something to CLICK.
+           They used to share one look — a full saturated border around a tinted
+           fill — so each read as the other. Notices now carry a left accent bar
+           and no full outline; the enclosing box is the page surface, not a
+           control. Anything clickable keeps the full rounded border. Never give
+           a notice a complete border, and never give a control a left bar. */
+        .cat-banner-green,
+        .cat-banner-amber,
+        .cat-banner-red {
+          border: none;
+          border-left: 3px solid;
+          border-radius: 0 0.5rem 0.5rem 0;
+          padding: 0.875rem 1.125rem;
+          font-size: 0.8125rem;
+          margin-bottom: 1.25rem;
+          line-height: 1.55;
+        }
+        .cat-banner-green { background: var(--tf-banner-green-bg); border-left-color: var(--tf-banner-green-border); color: var(--tf-banner-green-text); }
+        .cat-banner-amber { background: var(--tf-banner-amber-bg); border-left-color: var(--tf-banner-amber-border); color: var(--tf-banner-amber-text); }
+        .cat-banner-red   { background: var(--tf-banner-red-bg);   border-left-color: var(--tf-banner-red-border);   color: var(--tf-banner-red-text); }
+        /* Selection cards sitting inside a notice (e.g. the "have you filed
+           earlier years?" prompt) need to read as controls against the tint, so
+           they get the page surface behind them rather than the notice's. */
+        .cat-banner-green .select-card,
+        .cat-banner-amber .select-card,
+        .cat-banner-red .select-card { background: var(--tf-surface); }
         .cat3-ack-row { display: flex; gap: 0.75rem; align-items: flex-start; margin-top: 0.75rem; }
         .cat3-ack-row input[type="checkbox"] { width: 1.1rem !important; height: 1.1rem !important; flex-shrink: 0; margin-top: 0.1rem; accent-color: var(--tf-error); padding: 0 !important; border: none !important; box-shadow: none !important; }
 
-        /* ── Dark-mode-only structural tweak (colors already resolve via tokens) ── */
-        .dark .stepper-track { background: rgba(255,255,255,0.06); }
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
-        {/* Intake page header — a clean, consistent title bar above the stepper */}
+        {/* Intake page header — a clean, consistent title bar above the sections */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
           <div style={{ minWidth: 0 }}>
             <button
@@ -1845,7 +1993,7 @@ export function Intake() {
                 details"), so the whole page reads as that step. The company name
                 and form context move to the subtitle line below. */}
             <h1 style={{ fontSize: '1.375rem', lineHeight: 1.2, margin: 0, color: 'var(--tf-text)' }}>
-              {`${currentStepIdx + 1}. ${STEP_LABELS[String(step)] ?? 'Filing'}`}
+              {`${stepNumber(step)}${STEP_LABELS[String(step)] ?? 'Filing'}`}
             </h1>
             <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0.2rem 0 0' }}>
               {(llcName?.trim() ? `${llcName.trim()} · ` : '')}Form 5472 + Pro Forma 1120 · Tax year {taxYear}
@@ -1911,7 +2059,7 @@ export function Intake() {
         </div>
 
         {/* ── Step 1: LLC Details ── */}
-        <AccordionSection numberLabel="1. " label={STEP_LABELS['1']} open={openSections.has('1')} complete={sectionProgress(1) === 'complete'} onToggle={() => toggleSection('1')} anchorRef={(el) => { sectionRefs.current['1'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(1)} label={STEP_LABELS['1']} open={openSections.has('1')} complete={sectionProgress(1) === 'complete'} onToggle={() => toggleSection('1')} anchorRef={(el) => { sectionRefs.current['1'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
             <p style={stepSubheadStyle}>Basic information about the U.S. company. This goes on the Pro Forma 1120 and all Form 5472 filings.</p>
@@ -2106,7 +2254,7 @@ export function Intake() {
             {/* ── Fiscal year + final return ─────────────────────────────────── */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Tax period</h3>
-              <label className={`confirm-check-row${isFiscalYear ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: 0 }}>
+              <label className={`confirm-check-row confirm-check-row--neutral${isFiscalYear ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: 0 }}>
                 <input type="checkbox" checked={isFiscalYear} onChange={(e) => setIsFiscalYear(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
@@ -2140,7 +2288,7 @@ export function Intake() {
                 </>
               )}
 
-              <label className={`confirm-check-row${finalReturn ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: '0.875rem' }}>
+              <label className={`confirm-check-row confirm-check-row--neutral${finalReturn ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: '0.875rem' }}>
                 <input type="checkbox" checked={finalReturn} onChange={(e) => setFinalReturn(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
@@ -2155,13 +2303,18 @@ export function Intake() {
             </section>
 
             <section style={sectionStyle}>
-              <h3 style={sectionLabelStyle}>LLC mailing address (U.S.)</h3>
-              <AddressFields value={mailing} onChange={setMailing} forceUS />
+              <h3 style={sectionLabelStyle}>LLC mailing address</h3>
+              {/* The mailing address defaults to the U.S. but is not forced there:
+                  many foreign-owned LLCs receive mail at the owner's address
+                  abroad, and plenty of countries have no state or region at all.
+                  Country is selectable and State/region follows the same
+                  US-required / otherwise-optional rule as every other address. */}
+              <AddressFields value={mailing} onChange={setMailing} />
             </section>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('1')} disabled={saving}>
-                {saving ? 'Saving…' : 'Save & continue'}
+                {continueLabel('1')}
               </button>
             </div>
           </div>
@@ -2169,7 +2322,7 @@ export function Intake() {
 
         {/* ── Step 1b: Filing Status (only when the filing is late) ── */}
         {show1b && (
-        <AccordionSection numberLabel="" label={STEP_LABELS['1b']} open={openSections.has('1b')} complete={sectionProgress('1b') === 'complete'} onToggle={() => toggleSection('1b')} anchorRef={(el) => { sectionRefs.current['1b'] = el; }}>
+        <AccordionSection numberLabel={stepNumber('1b')} label={STEP_LABELS['1b']} open={openSections.has('1b')} complete={sectionProgress('1b') === 'complete'} onToggle={() => toggleSection('1b')} anchorRef={(el) => { sectionRefs.current['1b'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Filing status</h2>
             <p style={stepSubheadStyle}>
@@ -2262,14 +2415,14 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('1b')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('1b')} disabled={saving}>{continueLabel('1b')}</button>
             </div>
           </div>
         </AccordionSection>
         )}
 
         {/* ── Step 2: Owner Details ── */}
-        <AccordionSection numberLabel="2. " label={STEP_LABELS['2']} open={openSections.has('2')} complete={sectionProgress(2) === 'complete'} onToggle={() => toggleSection('2')} anchorRef={(el) => { sectionRefs.current['2'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(2)} label={STEP_LABELS['2']} open={openSections.has('2')} complete={sectionProgress(2) === 'complete'} onToggle={() => toggleSection('2')} anchorRef={(el) => { sectionRefs.current['2'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Your details as the foreign owner</h2>
             <p style={stepSubheadStyle}>Details about you as the person (or entity) that owns 25% or more of this LLC. This goes on your Form 5472.</p>
@@ -2342,30 +2495,66 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your type of business</h3>
               <div style={gridStyle}>
-                <Field label="Type of business" hint="Your own business, not the LLC's" required>
-                  <select
-                    value={ownerBizCode}
-                    onChange={(e) => {
-                      const match = RP_NAICS.find((n) => n.code === e.target.value);
-                      setOwnerBizCode(e.target.value);
-                      setOwnerBizActivity(match?.label ?? '');
-                    }}
-                  >
-                    <option value="">Select type</option>
-                    {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.label} ({n.code})</option>)}
-                  </select>
+                <Field label="Type of business" tooltip="Your own business, not the LLC's. Pick the closest match, or choose “Other” to type your own activity and code." required>
+                  {(() => {
+                    // Same manual-entry escape hatch as the LLC's business
+                    // activity: the preset list never covers every trade, so
+                    // "Other" reveals a free-text activity and leaves the code
+                    // field open for the owner to type.
+                    // resolveBizPreset also matches on the CODE when the stored
+                    // activity is blank, so a legacy record still shows its preset
+                    // instead of collapsing to "Select type" / "Other".
+                    const preset = resolveBizPreset(ownerBizActivity, ownerBizCode);
+                    const selectValue = preset
+                      ? preset.label
+                      : (ownerBizActivity === '' ? '' : '__other__');
+                    return (
+                      <select
+                        value={selectValue}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__other__') {
+                            // Switch to manual entry: a single space marks
+                            // "custom, not yet typed" so the free-text input shows.
+                            setOwnerBizActivity(' ');
+                            setOwnerBizCode('');
+                            return;
+                          }
+                          setOwnerBizActivity(val);
+                          const match = RP_NAICS.find((n) => n.label === val);
+                          if (match) setOwnerBizCode(match.code);
+                        }}
+                      >
+                        <option value="">Select type</option>
+                        {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.label}>{n.label} ({n.code})</option>)}
+                        <option value="__other__">Other (enter manually)</option>
+                      </select>
+                    );
+                  })()}
+                </Field>
+                {ownerBizActivity !== '' && !resolveBizPreset(ownerBizActivity, ownerBizCode) && (
+                  <Field label="Business activity" required>
+                    <input
+                      value={ownerBizActivity.trim()}
+                      onChange={(e) => setOwnerBizActivity(e.target.value)}
+                      placeholder="Describe your business"
+                    />
+                  </Field>
+                )}
+                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code for your own business. We fill it in when you pick a type above — you can also type it yourself.">
+                  <input value={ownerBizCode} onChange={(e) => setOwnerBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
             </section>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('2')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('2')} disabled={saving}>{continueLabel('2')}</button>
             </div>
           </div>
         </AccordionSection>
 
         {/* ── Step 3: Related Parties ── */}
-        <AccordionSection numberLabel="3. " label={STEP_LABELS['3']} open={openSections.has('3')} complete={sectionProgress(3) === 'complete'} onToggle={() => toggleSection('3')} anchorRef={(el) => { sectionRefs.current['3'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(3)} label={STEP_LABELS['3']} open={openSections.has('3')} complete={sectionProgress(3) === 'complete'} onToggle={() => toggleSection('3')} anchorRef={(el) => { sectionRefs.current['3'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Related parties</h2>
             <p style={stepSubheadStyle}>
@@ -2441,17 +2630,47 @@ export function Intake() {
                     <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
                     </Field>
-                    <Field label="Type of business" required>
-                      <select
+                    <Field label="Type of business" required tooltip="Pick the closest match, or choose “Other” to type the activity and code by hand.">
+                      {(() => {
+                        const preset = resolveBizPreset(rpDraft.biz_activity, rpDraft.biz_code);
+                        const selectValue = preset
+                          ? preset.label
+                          : (rpDraft.biz_activity === '' ? '' : '__other__');
+                        return (
+                          <select
+                            value={selectValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '__other__') {
+                                setRpDraft((p) => ({ ...p, biz_activity: ' ', biz_code: '' }));
+                                return;
+                              }
+                              const match = RP_NAICS.find((n) => n.label === val);
+                              setRpDraft((p) => ({ ...p, biz_activity: val, biz_code: match ? match.code : p.biz_code }));
+                            }}
+                          >
+                            <option value="">Select type</option>
+                            {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.label}>{n.label} ({n.code})</option>)}
+                            <option value="__other__">Other (enter manually)</option>
+                          </select>
+                        );
+                      })()}
+                    </Field>
+                    {rpDraft.biz_activity !== '' && !resolveBizPreset(rpDraft.biz_activity, rpDraft.biz_code) && (
+                      <Field label="Business activity" required>
+                        <input
+                          value={rpDraft.biz_activity.trim()}
+                          onChange={(e) => setRpDraft((p) => ({ ...p, biz_activity: e.target.value }))}
+                          placeholder="Describe their business"
+                        />
+                      </Field>
+                    )}
+                    <Field label="Business code" required tooltip="The 6-digit IRS business-activity code. We fill it in when you pick a type above — you can also type it yourself.">
+                      <input
                         value={rpDraft.biz_code}
-                        onChange={(e) => {
-                          const match = RP_NAICS.find((n) => n.code === e.target.value);
-                          setRpDraft((p) => ({ ...p, biz_code: e.target.value, biz_activity: match?.label ?? '' }));
-                        }}
-                      >
-                        <option value="">Select type</option>
-                        {RP_NAICS.map((n) => <option key={`${n.code}-${n.label}`} value={n.code}>{n.label} ({n.code})</option>)}
-                      </select>
+                        onChange={(e) => setRpDraft((p) => ({ ...p, biz_code: e.target.value }))}
+                        placeholder="e.g. 541511"
+                      />
                     </Field>
                   </div>
 
@@ -2479,13 +2698,13 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('3')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('3')} disabled={saving}>{continueLabel('3')}</button>
             </div>
           </div>
         </AccordionSection>
 
         {/* ── Step 4: Transactions ── */}
-        <AccordionSection numberLabel="4. " label={STEP_LABELS['4']} open={openSections.has('4')} complete={sectionProgress(4) === 'complete'} onToggle={() => toggleSection('4')} anchorRef={(el) => { sectionRefs.current['4'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(4)} label={STEP_LABELS['4']} open={openSections.has('4')} complete={sectionProgress(4) === 'complete'} onToggle={() => toggleSection('4')} anchorRef={(el) => { sectionRefs.current['4'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Money between you and the LLC</h2>
             <p style={stepSubheadStyle}>
@@ -2493,7 +2712,7 @@ export function Intake() {
             </p>
 
             {/* Owner managerial-services Part VI disclosure — pre-selected, can opt out */}
-            <label className={`confirm-check-row${partViManagerial ? ' is-selected' : ''}`} style={{ cursor: 'pointer', background: 'var(--tf-offset)', borderColor: 'var(--tf-border)', marginTop: 0, marginBottom: '1.5rem' }}>
+            <label className={`confirm-check-row confirm-check-row--neutral${partViManagerial ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: 0, marginBottom: '1.5rem' }}>
               <input type="checkbox" checked={partViManagerial} onChange={(e) => setPartViManagerial(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
@@ -2830,13 +3049,13 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('4')} disabled={saving}>{saving ? 'Saving…' : 'Save & continue'}</button>
+              <button type="button" style={primaryBtnStyle} onClick={() => continueFromSection('4')} disabled={saving}>{continueLabel('4')}</button>
             </div>
           </div>
         </AccordionSection>
 
         {/* ── Step 5: Review ── */}
-        <AccordionSection numberLabel="5. " label={STEP_LABELS['5']} open={openSections.has('5')} complete onToggle={() => toggleSection('5')} anchorRef={(el) => { sectionRefs.current['5'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(5)} label={STEP_LABELS['5']} open={openSections.has('5')} complete onToggle={() => toggleSection('5')} anchorRef={(el) => { sectionRefs.current['5'] = el; }}>
           <div>
             <h2 style={stepHeadingStyle}>Review & submit</h2>
             <p style={stepSubheadStyle}>Check everything below before we start preparing your forms.</p>
@@ -2856,17 +3075,39 @@ export function Intake() {
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
+                <SummaryRow label="Accounting period" value={isFiscalYear ? 'Fiscal year' : 'Calendar year'} />
                 {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : '—'} />}
+                {earlierReturnsFiled !== null && (
+                  <SummaryRow label="Earlier years already filed" value={earlierReturnsFiled ? 'Yes' : 'No'} />
+                )}
               </div>
             </section>
 
-            {show1b && (
-              <section style={sectionStyle}>
-                <h3 style={sectionLabelStyle}>Filing status</h3>
-                <div style={reviewGridStyle}>
-                  <SummaryRow label="Extension (Form 7004) filed" value={extensionFiled === null ? '—' : extensionFiled ? 'Yes' : 'No'} />
-                  <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
-                </div>
+            {/* Filing status is shown unconditionally. It used to render only
+                when step 1b was reachable (`show1b`), which hid the extension and
+                reasonable-cause answers from an on-time filer's review — the user
+                could not see what had been decided on their behalf. */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Filing status</h3>
+              <div style={reviewGridStyle}>
+                <SummaryRow
+                  label="Filing timing"
+                  value={
+                    filingTiming.status === 'on_time' ? 'On time'
+                      : filingTiming.status === 'within_extension' ? 'Within the extension period'
+                        : 'Past the extended deadline'
+                  }
+                />
+                <SummaryRow
+                  label="Extension (Form 7004) filed"
+                  value={
+                    extensionFiled === null
+                      ? (show1b ? '—' : 'Not applicable — filing on time')
+                      : extensionFiled ? 'Yes' : 'No'
+                  }
+                />
+                <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
+              </div>
                 {includeReasonableCause && reasonableCauseReasons.length > 0 && (
                   <div style={{ marginTop: '0.75rem' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.4rem' }}>
@@ -2881,8 +3122,7 @@ export function Intake() {
                     </ul>
                   </div>
                 )}
-              </section>
-            )}
+            </section>
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Primary owner</h3>
@@ -2894,7 +3134,7 @@ export function Intake() {
                 <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
                 <SummaryRow label="U.S. tax ID" value={ownerSSN} />
                 <SummaryRow label="Reference code" value={ownerRefNumber} />
-                <SummaryRow label="Business type" value={ownerBizActivity || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
+                <SummaryRow label="Business type" value={ownerBizActivity.trim() || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
                 <SummaryRow label="Business code" value={ownerBizCode} />
                 <SummaryRow label="Address" value={formatAddress(ownerAddress)} />
                 <SummaryRow label="Signing as" value={signerTitle} />
@@ -2913,7 +3153,7 @@ export function Intake() {
                     <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
                     <SummaryRow label="U.S. tax ID" value={rp.us_tin} />
                     <SummaryRow label="Reference code" value={rp.ref_number} />
-                    <SummaryRow label="Business type" value={rp.biz_activity} />
+                    <SummaryRow label="Business type" value={rp.biz_activity?.trim()} />
                     <SummaryRow label="Business code" value={rp.biz_code} />
                     <SummaryRow label="Address" value={formatAddress(rp.address)} />
                   </div>
@@ -2969,7 +3209,13 @@ export function Intake() {
                   : isPaidLocked
                     ? 'Save corrections & re-download'
                     : jobId
-                      ? (hasNextDraftYear ? 'Save & file next year →' : 'Finish & generate all years →')
+                      ? (hasNextDraftYear
+                          // Name the year we are about to open. "Save & file next
+                          // year" left the user guessing which of their catch-up
+                          // years came next; handleSubmit routes to the earliest
+                          // remaining draft, so mirror that exact choice here.
+                          ? `Save ${taxYear} & continue to ${nextDraftYear ?? 'the next year'} →`
+                          : 'Finish & generate all years →')
                       : 'Submit & generate my forms →'}
               </button>
             </div>

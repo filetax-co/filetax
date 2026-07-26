@@ -7,7 +7,10 @@
     "build": "vite build",
     "dev": "vite",
     "audit:pdfs": "node scripts/audit-pdf-fields.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:logic": "node --experimental-strip-types --import ./scripts/tsResolve.mjs scripts/verifyRegressions.mjs",
+    "verify:pdf": "esbuild scripts/verifyPackageOutput.mjs --bundle --platform=node --format=esm --packages=external --define:import.meta.env={\\\"BASE_URL\\\":\\\"/\\\"} --outfile=tmp-verify/verifyPackage.mjs --log-level=error && node tmp-verify/verifyPackage.mjs",
+    "test": "npm run typecheck && npm run verify:logic && npm run verify:pdf"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

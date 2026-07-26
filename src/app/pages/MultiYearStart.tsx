@@ -317,14 +317,7 @@ export function MultiYearStart() {
                 aria-pressed={on}
                 disabled={!eligible}
                 title={eligible ? undefined : `Your LLC was not incorporated until ${incorpYear}`}
-                style={{
-                  padding: '0.75rem 0.5rem', borderRadius: '0.5rem',
-                  border: `1.5px solid ${on ? 'var(--tf-accent)' : 'var(--tf-border)'}`,
-                  background: on ? 'rgba(var(--tf-accent-rgb), 0.10)' : 'var(--tf-surface)',
-                  color: 'var(--tf-text)', fontWeight: 700, fontSize: '1rem',
-                  cursor: eligible ? 'pointer' : 'not-allowed', minHeight: '48px',
-                  opacity: eligible ? 1 : 0.4,
-                }}
+                className={`tf-chip${on ? ' tf-chip--on' : ''}`}
               >
                 {y}
               </button>

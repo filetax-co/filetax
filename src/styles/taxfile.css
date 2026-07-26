@@ -178,6 +178,56 @@ h1, h2, h3 {
   }
 }
 
+/* ── Selectable chip ───────────────────────────────────────────────────────
+   For pill/box choices such as the multi-year year picker. These were styled
+   inline, and an inline style cannot express :hover — so they had no hover
+   state whatsoever and every change landed instantly and hard-edged. A chip
+   lifts slightly and warms its background on hover, then settles on press. */
+.tf-chip {
+  padding: 0.75rem 0.5rem;
+  border-radius: 0.625rem;
+  border: 1.5px solid var(--tf-border);
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 1rem;
+  min-height: 48px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease,
+              box-shadow 0.18s ease, transform 0.18s ease;
+}
+.tf-chip:hover:not(:disabled) {
+  border-color: var(--tf-accent-soft);
+  background: var(--tf-offset);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+}
+.tf-chip:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.tf-chip--on {
+  border-color: var(--tf-accent);
+  background: rgba(var(--tf-accent-rgb), 0.10);
+  color: var(--tf-accent);
+}
+.tf-chip--on:hover:not(:disabled) {
+  border-color: var(--tf-accent);
+  background: rgba(var(--tf-accent-rgb), 0.16);
+}
+.tf-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Motion is decoration here, so drop the lift entirely when it is unwelcome —
+   the colour and border changes still carry the state. */
+@media (prefers-reduced-motion: reduce) {
+  .tf-chip { transition: none; }
+  .tf-chip:hover:not(:disabled) { transform: none; box-shadow: none; }
+}
+
 /* Short answer box for articles */
 .short-answer-box {
   background: #F8FAFC;
