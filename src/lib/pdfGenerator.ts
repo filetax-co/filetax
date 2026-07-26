@@ -1345,6 +1345,17 @@ const twoDigitYear = (year: string | number): string =>
   String(year).trim().slice(-2);
 
 /**
+ * "2025-07-01" → "July 1". The 7004 period line reads
+ * "beginning ______, 20 __", so the blank takes the month and day and the year
+ * belongs in the box that follows it — the same convention the 1120 filler
+ * already uses for its period line.
+ */
+const monthAndDay = (iso: string): string => {
+  const [, m, d] = iso.split('-');
+  return m && d ? `${MONTH_NAMES[Number(m)] ?? m} ${Number(d)}` : '';
+};
+
+/**
  * Print the period's ENDING date into the second LLC_Beginning_Date widget.
  *
  * See the call site: the two date slots on the period line share one field
@@ -1409,17 +1420,21 @@ const fill7004 = async (
   if (isCalendarYear) {
     setText(doc, 'LLC_Calendar_Year', twoDigitYear(period.year));
   } else {
-    setText(doc, 'LLC_Beginning_Date', period.beginText);
+    // The date blank holds the MONTH AND DAY only — the year that follows it is
+    // the "20 __" box. period.beginText is the long form ("July 1, 2025") used
+    // on the 1120 and the statements, and printing that here gave the year
+    // twice: "beginning July 1, 2025, 20 25".
+    setText(doc, 'LLC_Beginning_Date', monthAndDay(period.beginISO));
     setText(doc, 'LLC_Beginning_Year', twoDigitYear(period.beginISO.split('-')[0] ?? period.year));
     setText(doc, 'LLC_Ending_Year',    twoDigitYear(period.endISO.split('-')[0] ?? period.year));
 
     // The template gives LLC_Beginning_Date TWO widgets — the "beginning" slot
     // and the "ending" slot share one field name, so setting the field printed
-    // the BEGINNING date in both, and the form read "beginning July 1, 2025 and
-    // ending July 1, 2025". A single AcroForm field cannot hold two different
-    // values, so the ending slot is drawn on the page directly and its widget
-    // collapsed to nothing so it has no value of its own left to paint.
-    await drawEndingDateOver2ndWidget(doc, period.endText);
+    // the BEGINNING date in both, and the form read "beginning July 1 and
+    // ending July 1". A single AcroForm field cannot hold two different values,
+    // so the ending slot is drawn on the page directly and its widget collapsed
+    // to nothing so it has no value of its own left to paint.
+    await drawEndingDateOver2ndWidget(doc, monthAndDay(period.endISO));
   }
 
   checkBox(doc, 'Initial_Return', period.isInitial);

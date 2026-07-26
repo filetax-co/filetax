@@ -109,9 +109,13 @@ must(!/= '2025'/.test(t), 'no year field may carry a 4-digit year');
 // Both date slots on that line share the field name LLC_Beginning_Date, so the
 // ending date is drawn onto the page instead. Beginning is the formation date
 // (short year); ending is 31 December.
+// The blank takes the month and day only — the year that follows it is the
+// "20 __" box, so a full date printed the year twice.
 const shortYearPage = pageText(f7004);
-must(/February 10, 2025/.test(t), 'beginning date should be the formation date on a short year');
-must(/December 31, 2025/.test(shortYearPage), 'ending date must be printed in the ending slot, not a repeat of the beginning date');
+must(/'LLC_Beginning_Date' = 'February 10'/.test(t), "beginning slot should read 'February 10' — the year goes in the 20 __ box");
+must(!/February 10, 2025/.test(t), 'beginning slot must not repeat the year');
+must(/December 31/.test(shortYearPage), 'ending date must be printed in the ending slot, not a repeat of the beginning date');
+must(!/December 31, 2025/.test(shortYearPage), 'ending slot must not repeat the year');
 
 // 2. Calendar-year filer (formed earlier) => LLC_Calendar_Year filled
 const f7004cal = await gen.generateForm7004(baseFiling({ date_of_incorporation: '2020-01-01' }), 2025);
