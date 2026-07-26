@@ -238,7 +238,13 @@ for (const s of scenarios) {
 console.log(`\n${dryRun ? '[dry run] would create' : 'created'}: ${filings} filing(s), ${txns} transaction(s), ${jobs} job(s)`);
 if (!dryRun && created.length) {
   console.log('\nOpen in the app:');
-  const path = isPaidLike ? 'filing' : 'intake';
-  for (const c of created.slice(0, 10)) console.log(`  http://localhost:5174/${path}/${c.id}   ${c.label}`);
+  // A draft opens in the wizard, which takes the id as a QUERY param — there is
+  // no /intake/:id route, so a path segment would land on the 404 page. A
+  // paid/completed filing has its own /filing/:id route.
+  const href = (id) =>
+    isPaidLike
+      ? `http://localhost:5174/filing/${id}`
+      : `http://localhost:5174/intake?filing_id=${id}`;
+  for (const c of created.slice(0, 10)) console.log(`  ${href(c.id)}   ${c.label}`);
   if (created.length > 10) console.log(`  ... and ${created.length - 10} more (see your dashboard)`);
 }

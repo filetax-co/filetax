@@ -26,6 +26,7 @@ import {
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
+import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
   line1?: string;
@@ -1720,6 +1721,93 @@ export function Intake() {
     setEditingTxIdx((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur));
   };
 
+  /**
+   * DEV ONLY — drop a test scenario into the form's state.
+   *
+   * It fills exactly the state the tester's own typing would fill, then stops.
+   * Nothing is validated, saved or submitted here: the tester still clicks
+   * through every step, so a negative scenario fails where it is supposed to
+   * fail rather than being waved through by the loader.
+   *
+   * A multi-year scenario has no single filing of its own — it carries shared
+   * fields plus one entry per year — so we load the shared data and the FIRST
+   * year, and say so in the message. The remaining years come from the
+   * multi-year start flow, which is the thing that scenario is testing anyway.
+   */
+  const applyScenario = (s: any): string => {
+    const f = s.filing ?? s.shared_filing_fields ?? {};
+    const yearOne = s.year_specific_filings?.[0];
+    const o = s.owner ?? s.shared_owner_fields ?? {};
+    const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
+
+    // Step 1 — LLC
+    setLlcName(str(f.llc_name));
+    setEin(str(f.ein));
+    setStateOfFormation(str(f.state_of_formation));
+    setTaxYear(str(f.tax_year ?? yearOne?.tax_year ?? taxYear));
+    setTotalAssets(str(f.total_assets ?? yearOne?.total_assets));
+    setEntityDOI(str(f.date_of_incorporation ?? f.entity_date_of_incorporation));
+    setEntityPrincipalCountry(str(f.entity_principal_country));
+    setMailing((f.mailing_address as Address) ?? { country: 'US' });
+    setEntityBizActivity(str(f.naics_description ?? f.entity_business_activity));
+    setEntityBizCode(str(f.naics_code ?? f.entity_business_code));
+    setFinalReturn(Boolean(f.final_return ?? yearOne?.final_return ?? false));
+    setIsFiscalYear(Boolean(f.is_fiscal_year));
+    setFiscalEndMonth(f.fiscal_end_month ? Number(f.fiscal_end_month) : '');
+
+    // Step 1b — lateness and the reasonable-cause letter
+    setExtensionFiled(f.extension_filed ?? null);
+    setIncludeReasonableCause(Boolean(f.include_reasonable_cause ?? s.include_rcl ?? false));
+    setReasonableCauseReasons(f.reasonable_cause_reasons ?? s.reasonable_cause_reasons ?? []);
+
+    // Step 2 — owner. A legacy row may carry a code with a blank activity, so
+    // recover the preset the same way the filing loader does.
+    setOwnerName(str(o.owner_full_name));
+    setOwnerCountry(str(o.owner_primary_country));
+    setOwnerCountryRes(str(o.owner_country_residence));
+    setOwnerCountryCitizenship(str(o.owner_country_citizenship));
+    setOwnerSSN(str(o.owner_us_tin));
+    setOwnerForeignTaxId(str(o.owner_foreign_tax_id));
+    setOwnerRefNumber(str(o.owner_reference_id));
+    setOwnerAddress((o.owner_address as Address) ?? {});
+    const ownerCode = str(o.owner_naics_code);
+    const preset = resolveBizPreset(o.owner_business_activity, ownerCode);
+    setOwnerBizActivity(str(o.owner_business_activity).trim() || preset?.label || '');
+    setOwnerBizCode(ownerCode);
+    setSignerTitle(str(o.signer_title) || 'Managing Member');
+    setSignatureDate(str(o.signature_date));
+
+    // Steps 3 & 4
+    setRelatedParties((s.related_parties as RelatedParty[]) ?? []);
+    setTransactions(((s.transactions ?? yearOne?.transactions ?? []) as TransactionRow[]).map((t) => ({
+      ...t,
+      amount_usd: str(t.amount_usd),
+      loan_begin_usd: str(t.loan_begin_usd),
+      description: str(t.description),
+      transaction_date: str(t.transaction_date),
+    })));
+    setNoTransactionsConfirmed(Boolean(s.no_transactions_confirmed ?? yearOne?.no_transactions_confirmed ?? false));
+    setPartViManagerial(s.part_vi_managerial ?? true);
+    setCat3Acknowledged(Boolean(s.cat3_acknowledged ?? false));
+
+    // Clear anything left over from a previous scenario.
+    setStepErrors([]);
+    setRpErrors([]);
+    setTxErrors([]);
+    setEinErr(null);
+    setError(null);
+    setShowRpForm(false);
+    setEditingRpIdx(null);
+    setEditingTxIdx(null);
+
+    const txCount = (s.transactions ?? yearOne?.transactions ?? []).length;
+    const rpCount = (s.related_parties ?? []).length;
+    const base = `Loaded ${str(f.llc_name) || 'scenario'} · ${rpCount} related ${rpCount === 1 ? 'party' : 'parties'} · ${txCount} transaction${txCount === 1 ? '' : 's'}. Now work through the form yourself — nothing has been saved.`;
+    return s.year_specific_filings
+      ? `${base} This is a ${s.year_specific_filings.length}-year job; only ${yearOne?.tax_year} was loaded — start the rest from the multi-year flow.`
+      : base;
+  };
+
   if (loadingFiling) {
     return (
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center', color: 'var(--tf-text-muted, #6b7280)' }}>
@@ -3223,6 +3311,8 @@ export function Intake() {
           </div>
         </AccordionSection>
       </div>
+
+      {import.meta.env.DEV && <DevScenarioLoader onLoad={applyScenario} />}
     </>
   );
 }
