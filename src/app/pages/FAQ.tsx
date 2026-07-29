@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { useJsonLd } from "../hooks/useJsonLd";
 
 const faqs = [
   {
@@ -58,6 +59,18 @@ export function FAQ() {
     description:
       "Common questions about Form 5472, Pro Forma 1120, IRS penalties, the CPA-Authored Reasonable Cause Letter, and how FileTax.co works. Clear answers for foreign LLC owners.",
     canonical: "https://filetax.co/faq",
+  });
+
+  // FAQPage schema, generated from the same `faqs` array the page renders, so
+  // the markup can never drift from the visible answers.
+  useJsonLd("faqpage", {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.q,
+      acceptedAnswer: { "@type": "Answer", text: faq.a },
+    })),
   });
 
   const [open, setOpen] = useState<number | null>(null);

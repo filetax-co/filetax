@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
 import { PortableText, type PortableTextComponents } from "@portabletext/react";
 import { usePageMeta } from "@/app/hooks/usePageMeta";
+import { useJsonLd } from "@/app/hooks/useJsonLd";
 import { sanity } from "@/lib/sanity";
 
 // Types matching the Sanity schema
@@ -62,6 +63,12 @@ function slugifyHeading(text: string): string {
 }
 
 // Extract plain text from a Portable Text block (used for heading slugs and TOC display)
+// True when the Sanity `author` value is the brand rather than a real byline.
+function isBrandAuthor(author: string | undefined): boolean {
+  if (!author) return true;
+  return ["filetax", "filetax.co"].includes(author.trim().toLowerCase());
+}
+
 function extractBlockText(block: any): string {
   if (!block?.children) return "";
   return block.children
@@ -321,6 +328,11 @@ export function Article() {
     fetchPost();
   }, [slug]);
 
+  const articleUrl = slug
+    ? `https://filetax.co/resources/${slug}`
+    : "https://filetax.co/resources";
+  const socialImage = getImageUrl(post?.mainImage) ?? undefined;
+
   // Build SEO metadata. Prefer seoTitle/seoDescription, fall back to title/excerpt.
   usePageMeta({
     title: post
@@ -331,10 +343,54 @@ export function Article() {
     description: post
       ? (post.seoDescription ?? post.excerpt ?? "").slice(0, 160)
       : "This article could not be found.",
-    canonical: slug
-      ? `https://filetax.co/resources/${slug}`
-      : "https://filetax.co/resources",
+    canonical: articleUrl,
+    type: post ? "article" : "website",
+    image: socialImage,
   });
+
+  // Article schema. Tax content is YMYL, so publisher, dates and an explicit
+  // author matter more here than they would on a general-interest blog.
+  useJsonLd(
+    "article",
+    post
+      ? {
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: (post.seoTitle ?? post.title).slice(0, 110),
+          description: post.seoDescription ?? post.excerpt ?? undefined,
+          image: socialImage ? [socialImage] : undefined,
+          datePublished: post.publishedAt,
+          dateModified: post.publishedAt,
+          // Every post currently carries author "FileTax" — a brand, not a
+          // person — so it must be typed as an Organization. A real byline
+          // (e.g. the reviewing CPA) would be typed Person and is worth adding:
+          // named, credentialed authorship is a direct E-E-A-T signal on tax
+          // content, and the author field is not displayed on the page today.
+          author: isBrandAuthor(post.author)
+            ? { "@type": "Organization", name: "FileTax.co", url: "https://filetax.co" }
+            : { "@type": "Person", name: post.author as string },
+          publisher: { "@id": "https://filetax.co/#organization" },
+          mainEntityOfPage: { "@type": "WebPage", "@id": articleUrl },
+          articleSection: post.categories?.[0]?.title,
+        }
+      : null
+  );
+
+  // Marks up the breadcrumb that is already rendered visually below.
+  useJsonLd(
+    "breadcrumb",
+    post
+      ? {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: "https://filetax.co/" },
+            { "@type": "ListItem", position: 2, name: "Resources", item: "https://filetax.co/resources" },
+            { "@type": "ListItem", position: 3, name: post.title, item: articleUrl },
+          ],
+        }
+      : null
+  );
 
   // Loading state
   if (loading) {

@@ -28,19 +28,33 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build
-        run: npm run build
+      # Non-blocking for now: Portal.tsx has one pre-existing error
+      # ("Property 'id' does not exist on type 'never'", line 88) that is being
+      # addressed alongside the portal rework. Flip continue-on-error to false
+      # once that lands so type errors actually gate the deploy.
+      - name: Typecheck
+        run: npm run typecheck
+        continue-on-error: true
 
-      - name: Copy index.html to 404.html for SPA routing
-        run: cp dist/index.html dist/404.html
-
+      # Chromium is installed here with --with-deps (needs apt, available on the
+      # GitHub runner) so postbuild's own best-effort install is a no-op.
       - name: Install Playwright browser
         run: npx playwright install chromium --with-deps
 
-      - name: Prerender routes
-        run: npm run prerender
+      # `build` now runs generate-sitemap (prebuild), vite build, then
+      # postbuild.mjs, which writes 404.html and prerenders every route.
+      - name: Build
+        run: npm run build
+
+      - name: Verify prerender produced real HTML
+        run: |
+          if ! grep -q 'Missed Form 5472' dist/index.html; then
+            echo "::error::dist/index.html is still the empty shell — prerender did not run."
+            exit 1
+          fi
+          echo "Prerender verified: dist/index.html contains rendered content."
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

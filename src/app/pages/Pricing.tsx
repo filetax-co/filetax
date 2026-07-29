@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { useJsonLd } from "../hooks/useJsonLd";
 
 // ---------------------------------------------------------------------
 // TEMPORARY: Services are not yet live. All pricing-card CTAs route
@@ -105,6 +106,32 @@ export function Pricing() {
     description:
       "Per-filing pricing. Form 5472 + Pro Forma 1120: $150. Past year with CPA-Authored Reasonable Cause Letter: $350 per year. No subscription. No ongoing fees.",
     canonical: "https://filetax.co/pricing",
+  });
+
+  // Service + offer catalog, derived from the same `cards` array the page
+  // renders. "Custom" is skipped because it has no numeric price.
+  useJsonLd("service", {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: "IRS Form 5472 and Pro Forma 1120 preparation",
+    serviceType: "Tax form preparation",
+    provider: { "@id": "https://filetax.co/#organization" },
+    areaServed: "US",
+    audience: {
+      "@type": "Audience",
+      audienceType: "Non-U.S. founders of U.S. single-member LLCs",
+    },
+    url: "https://filetax.co/pricing",
+    offers: cards
+      .filter((card) => /^\+?\$\d/.test(card.price))
+      .map((card) => ({
+        "@type": "Offer",
+        name: card.title,
+        description: card.description,
+        price: card.price.replace(/[^0-9.]/g, ""),
+        priceCurrency: "USD",
+        url: "https://filetax.co/pricing",
+      })),
   });
 
   return (

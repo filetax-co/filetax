@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# Build output that prebuild/postbuild regenerate every time.
+# public/sitemap.xml is intentionally NOT ignored: it is committed so the file
+# exists even if a build skips the prebuild hook.
+
+*.local
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+npm-debug.log*
+yarn-error.log*

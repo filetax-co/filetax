@@ -32,4 +32,20 @@ export default defineConfig({
   },
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the vendor libraries out of the single ~612 kB app chunk.
+        // This is caching only — every chunk is still loaded eagerly, so
+        // nothing about render order or the UI changes. React and the router
+        // rarely change, so they stay cached across content deploys.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router'],
+          'vendor-sanity': ['@sanity/client', '@portabletext/react'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+        },
+      },
+    },
+  },
 })

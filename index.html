@@ -4,7 +4,32 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FileTax.co</title>
+    <title>File Form 5472 + Pro Forma 1120 | FileTax.co</title>
+
+    <!--
+      Defaults only. usePageMeta overwrites these per route at runtime, and the
+      prerender step bakes the per-route values into each static HTML file.
+      These exist so the SPA fallback (404.html) and any non-JS consumer still
+      get something meaningful instead of a bare "FileTax.co".
+    -->
+    <meta
+      name="description"
+      content="Print-ready IRS Form 5472 and Pro Forma 1120 for non-U.S. founders with U.S. single-member LLCs. Catch up on missed years with a reasonable cause letter."
+    />
+    <meta property="og:site_name" content="FileTax.co" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="File Form 5472 + Pro Forma 1120 | FileTax.co" />
+    <meta
+      property="og:description"
+      content="Print-ready IRS Form 5472 and Pro Forma 1120 for non-U.S. founders with U.S. single-member LLCs. Catch up on missed years with a reasonable cause letter."
+    />
+    <meta property="og:image" content="https://filetax.co/og-default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://filetax.co/og-default.png" />
+
+    <!-- Third-party origins the app hits on first paint. -->
+    <link rel="preconnect" href="https://alh0fv7m.apicdn.sanity.io" crossorigin />
+    <link rel="preconnect" href="https://cdn.sanity.io" crossorigin />
     <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
   </head>
   <body>
