@@ -1,20 +1,29 @@
 // scripts/postbuild.mjs
 // Runs automatically after `vite build` (see the "build" script in package.json).
 //
-// This exists because the live site is not built by .github/workflows/deploy.yml —
-// Cloudflare runs a plain `npm run build`, which meant scripts/prerender.mjs
-// never ran and every URL served the empty `<div id="root">` shell. Hanging the
+// This exists because prerendering used to be a separate npm script that only
+// the (now removed) GitHub Pages workflow invoked. Cloudflare, which actually
+// hosts the site, runs a plain `npm run build`, so scripts/prerender.mjs never
+// ran and every URL served the empty `<div id="root">` shell. Hanging the
 // prerender off `build` guarantees it runs no matter which pipeline builds us.
 //
-// Prerendering is deliberately BEST-EFFORT: if Chromium can't be installed or
-// launched in the build sandbox, we log loudly, restore the old SPA-fallback
-// behaviour and exit 0 so the deploy still ships. We never take the site down
-// over a prerender failure.
+// Prerendering is deliberately BEST-EFFORT on the hosting build: if Chromium
+// can't be installed or launched in the build sandbox, we log loudly, restore
+// the old SPA-fallback behaviour and exit 0 so the deploy still ships. We never
+// take the site down over a prerender failure.
+//
+// Set PRERENDER_STRICT=1 to turn a prerender failure into a hard error instead.
+// CI uses this so a broken prerender is caught on push rather than shipping a
+// silently degraded site. It is deliberately NOT keyed off `CI`, which
+// Cloudflare Pages also sets — strict mode there would break production
+// deploys, which is exactly what best-effort is protecting against.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const STRICT = process.env.PRERENDER_STRICT === '1';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -76,7 +85,14 @@ try {
   console.warn('postbuild: PRERENDER FAILED — shipping the client-rendered shell.');
   console.warn('The site still works, but crawlers get an empty <div id="root">');
   console.warn('on first fetch. Fix this before relying on organic search.');
-  console.warn(`Reason: ${err?.message ?? err}`);
   console.warn('='.repeat(72));
+  // Full stack, not just the message: the message alone ("Command failed")
+  // is rarely enough to tell a missing binary from a launch failure.
+  console.warn(err?.stack ?? String(err));
   console.warn('');
+
+  if (STRICT) {
+    console.error('postbuild: PRERENDER_STRICT=1 — failing the build.');
+    process.exit(1);
+  }
 }
