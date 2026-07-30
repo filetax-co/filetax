@@ -23,7 +23,8 @@ clarity from someone who actually knows this topic.
 
 The portal charges $150 for Form 5472 plus pro forma 1120 filing, $30 for a Form
 7004 extension fax add-on, and $200 for a reasonable cause abatement letter.
-Complex cases are referred to TaxClaim (taxclaim.co), a full-service CPA firm.
+Complex cases are referred out to a CPA firm, which is never named in published
+content. See the naming restriction below.
 
 ## VOICE AND TONE, NON-NEGOTIABLE
 
