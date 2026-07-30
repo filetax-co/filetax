@@ -1,13 +1,13 @@
 ---
 title: Pro Forma 1120: What It Is and Every Field You Complete
-seoTitle: Pro Forma 1120 — What It Is and Every Field You Complete
+seoTitle: Pro Forma 1120: What It Is and Every Field You Complete
 seoDescription: Pro Forma 1120 is the cover sheet Form 5472 attaches to. Why a disregarded entity files it, and exactly which fields to complete and leave blank.
-excerpt: A Pro Forma 1120 is a Form 1120 filed as a cover sheet for Form 5472. It computes no tax. Only the name and address block, Item B and Item E are completed — everything else stays blank.
+excerpt: A Pro Forma 1120 is a Form 1120 filed as a cover sheet for Form 5472. It computes no tax. Only the name and address block, Item B and Item E are completed. Everything else stays blank.
 ---
 
 If you are filing Form 5472 for a foreign-owned single-member LLC, you also file a "Pro Forma 1120." The term confuses most foreign founders, because Form 1120 is the US corporate income tax return and a single-member LLC is not a corporation.
 
-The short version: the Pro Forma 1120 is a Form 1120 used as a transmittal cover sheet. It computes no tax. It exists to give Form 5472 a return to attach to. Most of it stays blank, and an incomplete one can trigger the same $25,000 penalty as a missing Form 5472 — the IRS treats the two as a single packet.
+The short version: the Pro Forma 1120 is a Form 1120 used as a transmittal cover sheet. It computes no tax. It exists to give Form 5472 a return to attach to. Most of it stays blank, and an incomplete one can trigger the same $25,000 penalty as a missing Form 5472, because the IRS treats the two as a single packet.
 
 ## Why it is called "pro forma"
 
@@ -21,7 +21,7 @@ A foreign-owned single-member LLC is a disregarded entity under Treas. Reg. §30
 
 In 2017 the IRS issued Treas. Reg. §301.7701-2(c)(2)(vi), creating a narrow exception: for purposes of §6038A reporting, and only for that purpose, foreign-owned US single-member LLCs are treated as corporations. This brought them inside the §6038A regime that already applied to 25% foreign-owned US corporations.
 
-That regime requires Form 5472 to be attached to a Form 1120. Since the LLC has no income tax to compute, the Form 1120 is filed in pro forma fashion — identifying information only. The IRS preserved the existing attachment structure so foreign-owned LLCs would route through the same processing channels, without requiring them to compute tax they do not owe.
+That regime requires Form 5472 to be attached to a Form 1120. Since the LLC has no income tax to compute, the Form 1120 is filed in pro forma fashion, with identifying information only. The IRS preserved the existing attachment structure so foreign-owned LLCs would route through the same processing channels, without requiring them to compute tax they do not owe.
 
 The practical consequence: the Pro Forma 1120 is a transmittal device, not a tax computation. Founders new to the requirement often spend hours trying to work out what belongs on the income lines. The answer is nothing.
 
@@ -57,7 +57,7 @@ For an ongoing year with no changes, Item E is left blank.
 
 ### Signature block
 
-Sign and date. For most foreign-owned single-member LLCs the foreign owner signs as Owner, Member, or Sole Member, with their full legal name printed. Wet signature or a printed, signed copy — foreign-owned disregarded entities cannot e-file or sign electronically.
+Sign and date. For most foreign-owned single-member LLCs the foreign owner signs as Owner, Member, or Sole Member, with their full legal name printed. Wet signature or a printed, signed copy. Foreign-owned disregarded entities cannot e-file or sign electronically.
 
 Leave "Paid Preparer Use Only" blank if self-prepared.
 
@@ -83,7 +83,7 @@ Attaching only page 1 and attaching the full form with schedules blank are both 
 
 ## Where to file
 
-Mail or fax the complete packet — Pro Forma 1120 with Form 5472 attached — to the dedicated address for foreign-owned US DEs:
+Mail or fax the complete packet, Pro Forma 1120 with Form 5472 attached, to the dedicated address for foreign-owned US DEs:
 
 > Internal Revenue Service, 1973 Rulon White Blvd, M/S 6112, Attn: PIN Unit, Ogden, UT 84201
 

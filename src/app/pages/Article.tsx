@@ -241,6 +241,75 @@ const portableTextComponents: PortableTextComponents = {
     },
   },
   types: {
+    // Matches the shape produced by the @sanity/table plugin:
+    // { _type: 'table', rows: [{ _type: 'row', cells: ['a', 'b'] }] }
+    // The first row is rendered as the header.
+    table: ({ value }) => {
+      const rows: { _key?: string; cells?: string[] }[] = value?.rows ?? [];
+      if (!rows.length) return null;
+
+      const [head, ...body] = rows;
+      const cellBase = {
+        padding: "0.5rem 0.75rem",
+        borderBottom: "1px solid var(--tf-border)",
+        fontSize: "0.875rem",
+        lineHeight: 1.55,
+        textAlign: "left" as const,
+        verticalAlign: "top" as const,
+      };
+
+      return (
+        // Wide tables scroll inside their own container so the article column
+        // never scrolls sideways on mobile.
+        <div
+          style={{
+            overflowX: "auto",
+            margin: "1.75rem 0",
+            border: "1px solid var(--tf-border)",
+            borderRadius: "0.75rem",
+          }}
+        >
+          <table
+            style={{
+              borderCollapse: "collapse",
+              width: "100%",
+              minWidth: "32rem",
+              color: "var(--tf-text)",
+            }}
+          >
+            <thead>
+              <tr>
+                {(head.cells ?? []).map((cell, i) => (
+                  <th
+                    key={i}
+                    scope="col"
+                    style={{
+                      ...cellBase,
+                      fontWeight: 600,
+                      background: "var(--tf-surface)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {cell}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, r) => (
+                <tr key={row._key ?? r}>
+                  {(row.cells ?? []).map((cell, c) => (
+                    <td key={c} style={{ ...cellBase, fontWeight: 400 }}>
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    },
     image: ({ value }) => {
       const url = getImageUrl(value);
       if (!url) return null;

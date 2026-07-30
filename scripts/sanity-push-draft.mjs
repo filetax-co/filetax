@@ -47,7 +47,7 @@ function span(text, marks = []) {
   return { _type: 'span', _key: key(), text, marks };
 }
 
-// Inline markdown: **bold**, [text](href). Deliberately minimal — the source
+// Inline markdown: **bold**, [text](href). Deliberately minimal, the source
 // files only use what the site's PortableText serializers actually render.
 function inline(text) {
   const children = [];

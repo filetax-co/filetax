@@ -15,7 +15,7 @@
 // Set PRERENDER_STRICT=1 to turn a prerender failure into a hard error instead.
 // CI uses this so a broken prerender is caught on push rather than shipping a
 // silently degraded site. It is deliberately NOT keyed off `CI`, which
-// Cloudflare Pages also sets — strict mode there would break production
+// Cloudflare Pages also sets, strict mode there would break production
 // deploys, which is exactly what best-effort is protecting against.
 
 import { execFileSync } from 'node:child_process';
@@ -46,7 +46,7 @@ function runNode(scriptPath, args = []) {
 
 const shellPath = resolve(DIST, 'index.html');
 if (!existsSync(shellPath)) {
-  console.error('postbuild: dist/index.html missing — did vite build run?');
+  console.error('postbuild: dist/index.html missing, did vite build run?');
   process.exit(1);
 }
 
@@ -82,7 +82,7 @@ try {
 
   console.warn('');
   console.warn('='.repeat(72));
-  console.warn('postbuild: PRERENDER FAILED — shipping the client-rendered shell.');
+  console.warn('postbuild: PRERENDER FAILED, shipping the client-rendered shell.');
   console.warn('The site still works, but crawlers get an empty <div id="root">');
   console.warn('on first fetch. Fix this before relying on organic search.');
   console.warn('='.repeat(72));
@@ -92,7 +92,7 @@ try {
   console.warn('');
 
   if (STRICT) {
-    console.error('postbuild: PRERENDER_STRICT=1 — failing the build.');
+    console.error('postbuild: PRERENDER_STRICT=1, failing the build.');
     process.exit(1);
   }
 }
