@@ -61,11 +61,15 @@ Sign and date. For most foreign-owned single-member LLCs the foreign owner signs
 
 Leave "Paid Preparer Use Only" blank if self-prepared.
 
+## Which fields are optional
+
+**Item C** (date incorporated) and **Item D** (total assets) are not required. The instructions list only the name and address, Item B and Item E. Leaving both blank is a complete and correct filing.
+
+They can be completed if you prefer, and where you do, the figures should line up with what you report on Form 5472. Total assets in Item D should match the total assets figure on Form 5472 Line 1c, and the date in Item C should match the formation date used on Form 5472. Completing them is a consistency choice, not a compliance one. What causes problems is entering a figure here that disagrees with the one on Form 5472, so complete both or neither.
+
 ## Which fields you leave blank
 
-**Item A** (consolidated return, personal holding company, personal service corporation, Schedule M-3 indicator), **Item C** (date incorporated) and **Item D** (total assets) are not required for a pro forma filing and are left blank.
-
-Some preparers voluntarily enter total assets in Item D to keep it consistent with Form 5472 Line 1c. That is optional, not a filing requirement.
+**Item A** covers consolidated return, personal holding company, personal service corporation, and the Schedule M-3 indicator. None apply to a foreign-owned single-member LLC filing a pro forma return. Leave it blank.
 
 All income lines, deduction lines, tax and payment lines, and every schedule (C, J, K, L, M-1, M-2, M-3) are left blank. The LLC reports no income and computes no tax on this form. If the foreign owner has US-source effectively connected income, that is reported on the owner's Form 1040-NR, not here.
 

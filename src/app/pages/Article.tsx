@@ -62,13 +62,13 @@ function slugifyHeading(text: string): string {
     .replace(/-+/g, "-");
 }
 
-// Extract plain text from a Portable Text block (used for heading slugs and TOC display)
 // True when the Sanity `author` value is the brand rather than a real byline.
 function isBrandAuthor(author: string | undefined): boolean {
   if (!author) return true;
   return ["filetax", "filetax.co"].includes(author.trim().toLowerCase());
 }
 
+// Extract plain text from a Portable Text block (used for heading slugs and TOC display)
 function extractBlockText(block: any): string {
   if (!block?.children) return "";
   return block.children

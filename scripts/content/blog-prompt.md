@@ -310,25 +310,28 @@ Rules:
 - Base penalty: $25,000 per form per year, IRC §6038A(d)(1)
 - Continuation penalty: $25,000 per 30-day period after IRS notification,
   IRC §6038A(d)(2)
-- Filing address for foreign-owned DE returns: Internal Revenue Service,
-  1973 Rulon White Blvd, M/S 6112, Attn: PIN Unit, Ogden, UT 84201
-- Fax for the foreign-owned DE Form 5472 and pro forma 1120 packet:
-  855-887-7737
+- Dedicated filing address for foreign-owned US DEs: Internal Revenue Service,
+  1973 Rulon White Blvd, M/S 6112, Attn: PIN Unit, Ogden, UT 84201. The
+  instructions state explicitly that these filers do NOT use the mailing address
+  given in the Instructions for Form 1120.
+- Fax for the foreign-owned DE packet: 855-887-7737, at 300 DPI or higher
+- "Foreign-owned U.S. DE" is written across the top of the Form 1120
+- The only information required on the pro forma Form 1120 is the name and
+  address of the foreign-owned US DE and items B and E on the first page
+- The foreign-owned US DE uses the same tax year as its owner uses for US tax
+  filing purposes, or the calendar year if the owner has none
+- Form 5472 is filed as an attachment to the reporting corporation's income tax
+  return by that return's due date, including extensions
 - IRS.gov reference: IRS.gov/Form5472
 
-[VERIFY: v1 of this prompt listed the filing address as P.O. Box 409101, Ogden,
-UT 84409, which conflicts with the Rulon White address used in all 28 published
-articles that state an address. The Rulon White address is the one given in the
-Instructions for Form 5472 for foreign-owned US disregarded entities, and P.O.
-Box 409101 is a general Form 1120 address. Confirm against the current
-instructions before the next post is generated, and correct whichever is wrong.]
+The three items above that were previously marked [VERIFY] are now confirmed
+against the "When and Where To File" section of the IRS Instructions for Form
+5472. The v1 address (P.O. Box 409101, Ogden, UT 84409) was wrong and must never
+be used. The fax number applies to this packet, not only to Form 7004.
 
-[VERIFY: v1 described 855-887-7737 as the Form 7004 fax number while the
-published articles use it for the Form 5472 packet. Confirm which is correct.]
-
-[VERIFY: v1 stated the current Form 5472 revision as December 2023 while the
-site and articles cite instructions revised December 2024. Confirm both the form
-revision and the instructions revision, which are different dates.]
+[VERIFY: the Form 5472 revision date and the instructions revision date are
+different from each other. The site and articles cite instructions revised
+December 2024. Confirm the current form revision separately before citing it.]
 
 ## VERIFIED STATUTE AND REGULATION CITATIONS
 
