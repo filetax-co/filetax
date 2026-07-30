@@ -26,10 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
+      # v4 of these actions runs on the Node 20 action runtime, which GitHub has
+      # deprecated and now force-runs on Node 24. v5 targets Node 24 natively.
+      # node-version below is the Node used to build the site, unrelated to the
+      # runtime the actions themselves execute on.
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
