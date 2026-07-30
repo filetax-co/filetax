@@ -101,11 +101,19 @@ function startStaticServer() {
   });
 }
 
+// Flat "<route>.html" files, NOT "<route>/index.html".
+//
+// Cloudflare Pages resolves an extensionless request against a flat file first
+// and serves it at that exact URL. If only the directory form exists it instead
+// issues a 308 to the trailing-slash variant — which would redirect every
+// already-indexed URL (/pricing, /resources/<slug>) to a new one, while the
+// canonical tag and sitemap still point at the non-slash form. Flat files keep
+// the live URLs byte-identical to what Google has indexed.
 function routeToOutputPath(route) {
   if (route === '/') {
     return join(DIST_DIR, 'index.html');
   }
-  return join(DIST_DIR, route, 'index.html');
+  return join(DIST_DIR, `${route}.html`);
 }
 
 async function prerenderRoute(page, route) {
