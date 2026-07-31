@@ -90,6 +90,47 @@ function buildTOC(body: any[]): { text: string; anchor: string }[] {
     .filter((entry) => entry.text.length > 0);
 }
 
+// Pull question/answer pairs out of the FAQ section for FAQPage structured data.
+//
+// The corpus stores FAQs as an H3 question followed by one or more body blocks,
+// all sitting under an H2 whose text is "Frequently Asked Questions". Scoping to
+// that section matters: articles also use H3 for ordinary subheads, and marking
+// those up as questions would be misleading structured data.
+function buildFAQ(body: any[]): { question: string; answer: string }[] {
+  if (!Array.isArray(body)) return [];
+
+  const start = body.findIndex(
+    (block) =>
+      block?._type === "block" &&
+      block.style === "h2" &&
+      /frequently asked questions/i.test(extractBlockText(block))
+  );
+  if (start === -1) return [];
+
+  const faqs: { question: string; answer: string }[] = [];
+  let current: { question: string; answer: string[] } | null = null;
+
+  for (const block of body.slice(start + 1)) {
+    if (block?._type !== "block") continue;
+
+    // A second H2 ends the FAQ section (e.g. a closing disclaimer heading).
+    if (block.style === "h2") break;
+
+    if (block.style === "h3") {
+      if (current) faqs.push({ question: current.question, answer: current.answer.join(" ") });
+      current = { question: extractBlockText(block), answer: [] };
+      continue;
+    }
+
+    const text = extractBlockText(block).trim();
+    if (current && text) current.answer.push(text);
+  }
+
+  if (current) faqs.push({ question: current.question, answer: current.answer.join(" ") });
+
+  return faqs.filter((f) => f.question && f.answer);
+}
+
 // Sanity image URL builder. For full feature support, consider @sanity/image-url package.
 // This minimal version handles the common case of an asset reference with a CDN URL.
 function getImageUrl(image: ImageAsset | undefined): string | null {
@@ -134,20 +175,28 @@ const portableTextComponents: PortableTextComponents = {
         </h2>
       );
     },
-    h3: ({ children }) => (
-      <h3
-        style={{
-          fontSize: "1.0625rem",
-          fontWeight: 600,
-          lineHeight: 1.4,
-          color: "var(--tf-text)",
-          marginTop: "1.5rem",
-          marginBottom: "0.625rem",
-        }}
-      >
-        {children}
-      </h3>
-    ),
+    // H3s carry an id for the same reason H2s do: FAQ answers are the most
+    // linked-to part of these articles, and an answer engine citing one should
+    // be able to deep-link to it rather than to the top of the page.
+    h3: ({ children, value }) => {
+      const text = extractBlockText(value);
+      return (
+        <h3
+          id={slugifyHeading(text)}
+          style={{
+            fontSize: "1.0625rem",
+            fontWeight: 600,
+            lineHeight: 1.4,
+            color: "var(--tf-text)",
+            marginTop: "1.5rem",
+            marginBottom: "0.625rem",
+            scrollMarginTop: "1rem",
+          }}
+        >
+          {children}
+        </h3>
+      );
+    },
     normal: ({ children }) => (
       <p
         style={{
@@ -402,6 +451,10 @@ export function Article() {
     : "https://filetax.co/resources";
   const socialImage = getImageUrl(post?.mainImage) ?? undefined;
 
+  // Computed before the loading/not-found early return so the hook order below
+  // stays stable across renders.
+  const faqEntries = buildFAQ(post?.body ?? []);
+
   // Build SEO metadata. Prefer seoTitle/seoDescription, fall back to title/excerpt.
   usePageMeta({
     title: post
@@ -441,6 +494,25 @@ export function Article() {
           publisher: { "@id": "https://filetax.co/#organization" },
           mainEntityOfPage: { "@type": "WebPage", "@id": articleUrl },
           articleSection: post.categories?.[0]?.title,
+        }
+      : null
+  );
+
+  // FAQPage markup for the Q&A block every article ends with. This is the one
+  // piece of structured data on the site that can be surfaced on its own: an
+  // answer engine can retrieve a single question without the surrounding
+  // article, which is how most of this audience arrives at the topic.
+  useJsonLd(
+    "faq",
+    faqEntries.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqEntries.map((f) => ({
+            "@type": "Question",
+            name: f.question,
+            acceptedAnswer: { "@type": "Answer", text: f.answer },
+          })),
         }
       : null
   );

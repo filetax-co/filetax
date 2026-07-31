@@ -107,28 +107,28 @@ For the Form 5472 walkthrough, see [Form 5472 Field by Field](/resources/form-54
 
 ## Frequently Asked Questions
 
-**Does my LLC owe corporate tax because Form 1120 is involved?**
+### Does my LLC owe corporate tax because Form 1120 is involved?
 No. The Pro Forma 1120 is a cover sheet, not a tax computation. The LLC remains a disregarded entity for income tax purposes and owes no US corporate tax as a result of filing it.
 
-**Can I file Form 5472 without the Pro Forma 1120?**
+### Can I file Form 5472 without the Pro Forma 1120?
 No. The IRS instructions require Form 5472 to be attached to a Form 1120, filed in pro forma fashion for foreign-owned DEs. Form 5472 alone is incomplete and may be rejected or misprocessed.
 
-**Do I need to fill in total assets or date incorporated?**
+### Do I need to fill in total assets or date incorporated?
 No. For foreign-owned US DEs the instructions list only the name and address, Item B and Item E. Some preparers add total assets voluntarily to match Form 5472 Line 1c, but it is not required.
 
-**Is Pro Forma 1120 the same as Form 1120-F?**
+### Is Pro Forma 1120 the same as Form 1120-F?
 No. Form 1120-F is the US Income Tax Return of a Foreign Corporation. A Pro Forma 1120 is a Form 1120 used as a transmittal for Form 5472 by foreign-owned US disregarded entities. Different forms, different purposes.
 
-**Do I write "Foreign-owned U.S. DE" on Form 5472 as well?**
+### Do I write "Foreign-owned U.S. DE" on Form 5472 as well?
 No. It goes on the Pro Forma 1120 page 1 heading. Form 5472 has its own structure identifying the reporting corporation.
 
-**What if I accidentally filled in income on the Pro Forma 1120?**
+### What if I accidentally filled in income on the Pro Forma 1120?
 Filling in income lines does not create a tax liability for a foreign-owned single-member LLC, but it can confuse IRS processing. If you have already filed that way, file an amended Pro Forma 1120 marked "Amended" with the income lines blanked out.
 
-**Do I file a Pro Forma 1120 every year?**
+### Do I file a Pro Forma 1120 every year?
 Every year that Form 5472 is filed. The cover sheet accompanies each year's Form 5472. There is no one-time filing.
 
-**What if the LLC is in its final year?**
+### What if the LLC is in its final year?
 Check the Final return box under Item E. Form 5472 is still required for the final year, covering transactions through the dissolution date. No further filings are required after dissolution.
 
 Disclaimer: This article provides general information about US tax filing requirements for foreign-owned single-member LLCs. It does not constitute legal or tax advice. FileTax.co is a software platform for generating IRS forms based on user inputs. It is not a law firm and does not provide legal or tax advice. Forms are generated according to the official IRS Instructions for Form 5472 (Rev. December 2024). For advice on your specific situation, consult a qualified tax professional.

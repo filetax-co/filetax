@@ -1,1 +1,8 @@
+# Retired in the pro forma 1120 merge. Both posts targeted "pro forma 1120" and
+# contradicted each other on which Form 1120 items a foreign-owned DE completes.
+# The surviving post follows the IRS Instructions for Form 5472: name and address
+# block, Item B and Item E only.
+# 301s must sit above the SPA catch-all, which would otherwise swallow them.
+/resources/pro-forma-1120-every-field-foreign-owned-de  /resources/pro-forma-1120-explained  301
+
 /*    /index.html   200
