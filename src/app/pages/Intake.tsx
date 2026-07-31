@@ -26,6 +26,7 @@ import {
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
+import { PRICE_RCL } from '../../lib/pricing';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -2455,7 +2456,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Reasonable cause letter</h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
-                A reasonable cause letter can help reduce or waive the $25,000 penalty for late filing. It's a +$200 add-on that we draft for you alongside your forms.
+                A reasonable cause letter can help reduce or waive the $25,000 penalty for late filing. It's a +${PRICE_RCL} add-on that we draft for you alongside your forms, charged once however many years you are filing.
               </p>
               <label className={`select-card${includeReasonableCause ? ' is-selected' : ''}`} style={{ marginBottom: '1.25rem' }}>
                 <input
@@ -2464,7 +2465,7 @@ export function Intake() {
                   onChange={(e) => { setIncludeReasonableCause(e.target.checked); if (!e.target.checked) setReasonableCauseReasons([]); }}
                 />
                 <div>
-                  <div className="select-card-label">Yes, include a reasonable cause letter (+$200)</div>
+                  <div className="select-card-label">Yes, include a reasonable cause letter (+${PRICE_RCL})</div>
                   <div className="select-card-hint">We will draft a personalized letter to the IRS on your behalf.</div>
                 </div>
               </label>
@@ -3195,7 +3196,7 @@ export function Intake() {
                       : extensionFiled ? 'Yes' : 'No'
                   }
                 />
-                <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
+                <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? `Yes (+$${PRICE_RCL})` : 'No'} />
               </div>
                 {includeReasonableCause && reasonableCauseReasons.length > 0 && (
                   <div style={{ marginTop: '0.75rem' }}>

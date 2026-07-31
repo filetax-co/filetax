@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
 // TEMPORARY: Services are not yet live. All "start filing" CTAs route
@@ -84,7 +85,7 @@ export function Services() {
               The IRS requires a separate Form 5472 for each foreign related party. Most single-member LLCs have only one, the foreign owner. If your LLC transacted with additional related parties such as a foreign parent company or an entity you own 25% or more of, each requires its own Form 5472.
             </p>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-              Each additional related party: <strong style={{ color: "var(--tf-text)" }}>+$50</strong> (one extra Form 5472 per party). The eligibility check will ask about this and calculate your total automatically.
+              Each additional related party: <strong style={{ color: "var(--tf-text)" }}>+${PRICE_ADDITIONAL_PARTY} per year</strong> (one extra Form 5472 per party, for each year you file). The eligibility check will ask about this and calculate your total automatically.
             </p>
           </div>
 
@@ -133,10 +134,13 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Submission</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            The IRS processes faxed filings significantly faster than mailed ones. By faxing your completed forms, you receive a digital confirmation receipt that serves as proof of timely submission. This is useful if you are filing close to a deadline or responding to a penalty notice.
+            For ${PRICE_FAX} we fax your completed package to the IRS, so you do not need a printer or a post office. You receive a transmission receipt recording the date, time and page count, stored against your filing and re-downloadable at any time. This is useful if you are filing close to a deadline or responding to a penalty notice.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            This service is an add-on to Form 5472 filings only. It is not available for Form 8832 or Form 2553 filings, which must be mailed.
+            A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that. If a transmission fails we retry automatically, and if every attempt fails we refund the ${PRICE_FAX} without you having to ask.
+          </p>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
+            One ${PRICE_FAX} fee covers the whole job, however many years you are filing. This service is an add-on to Form 5472 filings only. It is not available for Form 8832 or Form 2553 filings, which must be mailed.
           </p>
           {/* original CTA: <Link to="/portal">Add to My Filing</Link> - revert when services go live */}
           <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>

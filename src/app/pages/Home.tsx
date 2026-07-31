@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from "../../lib/pricing";
 
 export function Home() {
   usePageMeta({
@@ -215,9 +216,9 @@ export function Home() {
                 Most Popular
               </p>
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
+              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>${PRICE_PER_YEAR}</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>One Filing. Two Forms. One Price.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>One-time filing. No ongoing fees.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>One-time filing. No subscription. Your next two filings are guaranteed at ${PRICE_PER_YEAR}.</p>
               <Link
                 to="/check"
                 style={{
@@ -268,7 +269,7 @@ export function Home() {
               >
                 Recommended for Late Filers
               </span>
-              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.5rem", marginBottom: "1.5rem", flex: 1 }}>from $350</p>
+              <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.5rem", marginBottom: "1.5rem", flex: 1 }}>from ${PRICE_PER_YEAR + PRICE_RCL}</p>
               <Link
                 to="/past-filings"
                 style={{
@@ -337,8 +338,8 @@ export function Home() {
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Submission</h3>
-                <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Faster IRS processing. Digital confirmation receipt included.</p>
+                <p style={{ color: "#0284C7", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>We fax it for you, so you never need a printer. Transmission receipt included.</p>
                 <Link
                   to="/portal"
                   style={{

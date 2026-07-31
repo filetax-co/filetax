@@ -4,6 +4,7 @@ import { supabase, type Filing, type ServiceType } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { FILING_DUE_DATES } from './intake/constants';
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -445,8 +446,8 @@ export function Dashboard() {
             <div style={cardStyle}>
               <p style={tagStyle}>Most popular</p>
               <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>File this year</h3>
-              <p style={priceStyle}>$150</p>
-              <p style={mutedStyle}>Form 5472 + pro forma 1120 for the current tax year. One-time, no ongoing fees.</p>
+              <p style={priceStyle}>${PRICE_PER_YEAR}</p>
+              <p style={mutedStyle}>Form 5472 + pro forma 1120 for the current tax year. One-time, no subscription.</p>
               <button onClick={() => startFiling('current_year')} disabled={busy !== null} style={primaryBtn(busy === 'current_year')}>
                 {busy === 'current_year' ? 'Creating…' : 'Start filing'}
               </button>
@@ -454,7 +455,7 @@ export function Dashboard() {
             <div style={cardStyle}>
               <p style={tagStyle}>For late filers</p>
               <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Catch up on past years</h3>
-              <p style={priceStyle}>$150<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year + one $200 letter</span></p>
+              <p style={priceStyle}>${PRICE_PER_YEAR}<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year + one ${PRICE_RCL} letter</span></p>
               <p style={mutedStyle}>File one or more missed years. A single reasonable-cause letter covers them all.</p>
               <button onClick={() => navigate('/catch-up')} disabled={busy !== null} style={primaryBtn(false)}>
                 Choose years
@@ -466,7 +467,7 @@ export function Dashboard() {
           <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem 1.25rem', flexWrap: 'wrap', padding: '1rem 1.25rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem' }}>
             <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Coming soon:</span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
-              LLC tax classification change (8832 / 2553) · $50 &nbsp;·&nbsp; IRS fax submission add-on &nbsp;·&nbsp; Form 7004, FBAR &amp; more
+              LLC tax classification change (8832 / 2553) · $50 &nbsp;·&nbsp; IRS fax submission · +${PRICE_FAX} &nbsp;·&nbsp; Form 7004, FBAR &amp; more
             </span>
             <button onClick={() => navigate('/waitlist')} style={linkBtnStyle}>
               Join the waitlist →

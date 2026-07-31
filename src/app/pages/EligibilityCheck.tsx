@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
-import { PRICE_PER_YEAR, PRICE_RCL, additionalPartiesCost, additionalPartiesBreakdown } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, additionalPartiesCost, additionalPartiesBreakdown } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
 // Service go-live flag.
@@ -91,7 +91,7 @@ const INITIAL_SUB: SubAnswers = {};
 
 // ── Pricing helpers ───────────────────────────────────────────────
 
-/** Flat $50 per additional related party (each extra Form 5472). */
+/** Flat PRICE_ADDITIONAL_PARTY per additional related party, per year. */
 function calcAdditionalFormsCost(totalForms: number): number {
   return additionalPartiesCost(totalForms);
 }
@@ -329,7 +329,7 @@ export function EligibilityCheck() {
     const additionalFormsCostPerYear = calcAdditionalFormsCost(totalForms);
     const additionalFormsTotal = numYears * additionalFormsCostPerYear;
     const baseTotal = numYears * basePerYear;
-    // One reasonable-cause letter covers every year — a single flat $200.
+    // One reasonable-cause letter covers every year — charged once per job.
     const rclTotal = answers.includeRCL ? PRICE_RCL : 0;
     const grandTotal = answers.filingYears !== "3-plus"
       ? baseTotal + additionalFormsTotal + rclTotal
@@ -359,13 +359,13 @@ export function EligibilityCheck() {
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.875rem" }}>
                 <PriceRow
                   label={`Form 5472 + Pro Forma 1120${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
-                  value={yearCount && yearCount > 1 ? `$${baseTotal}` : "$150"}
+                  value={`$${baseTotal}`}
                 />
 
                 {answers.includeRCL && hasPriorYears && (
                   <PriceRow
                     label="CPA-Prepared Reasonable Cause Letter (one letter, covers all years)"
-                    value="+$200"
+                    value={`+$${PRICE_RCL}`}
                   />
                 )}
 
@@ -604,19 +604,22 @@ export function EligibilityCheck() {
                         </p>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <p style={{ fontWeight: 700, fontSize: "1.125rem", color: "var(--tf-text)", lineHeight: 1 }}>+$200</p>
-                        <p style={{ fontSize: "0.8125rem", color: "var(--tf-muted)", fontWeight: 400 }}>per year</p>
+                        <p style={{ fontWeight: 700, fontSize: "1.125rem", color: "var(--tf-text)", lineHeight: 1 }}>+${PRICE_RCL}</p>
+                        <p style={{ fontSize: "0.8125rem", color: "var(--tf-muted)", fontWeight: 400 }}>one letter, all years</p>
                       </div>
                     </div>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "1rem" }}>
                       Because the original filing deadline was missed, the IRS imposes an automatic $25,000 penalty. Our CPA-prepared letter is written to present the strongest possible case for penalty abatement. It is included directly in your download alongside the completed forms.
                     </p>
                     <div style={{ borderTop: "1px solid var(--tf-border)", paddingTop: "0.875rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                      <PriceRow label="Form 5472 + Pro Forma 1120" value={yearCount && yearCount > 1 ? `$${yearCount * 150}` : "$150"} />
-                      <PriceRow label="Reasonable Cause Letter" value={yearCount && yearCount > 1 ? `+$${yearCount * 200}` : "+$200"} />
+                      <PriceRow
+                        label={`Form 5472 + Pro Forma 1120${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
+                        value={`$${(yearCount ?? 1) * PRICE_PER_YEAR}`}
+                      />
+                      <PriceRow label="Reasonable Cause Letter (one letter, covers every year)" value={`+$${PRICE_RCL}`} />
                       <PriceRow
                         label={yearCount && yearCount > 1 ? `Total for ${yearCount} years` : "Total"}
-                        value={yearCount && yearCount > 1 ? `$${yearCount * 350}` : "$350"}
+                        value={`$${(yearCount ?? 1) * PRICE_PER_YEAR + PRICE_RCL}`}
                         total
                       />
                     </div>
@@ -660,10 +663,10 @@ export function EligibilityCheck() {
                       One CPA-Prepared Reasonable Cause Letter covers every year
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "0.875rem" }}>
-                      Filing three or more years at once is handled through our multi-year package. A single Reasonable Cause Letter covers all the years you file. Pricing is confirmed at checkout: $150 per year plus one $200 letter.
+                      Filing three or more years at once is handled through our multi-year package. A single Reasonable Cause Letter covers all the years you file. Pricing is confirmed at checkout: ${PRICE_PER_YEAR} per year plus one ${PRICE_RCL} letter.
                     </p>
                     <p style={{ fontSize: "0.875rem", color: "var(--tf-muted)", fontWeight: 400, lineHeight: 1.6 }}>
-                      Each year filed: $350 (Form 5472 + Reasonable Cause Letter). Three or more years may qualify for package pricing.
+                      Three years, for example: ${3 * PRICE_PER_YEAR} for the filings plus ${PRICE_RCL} for the letter = ${3 * PRICE_PER_YEAR + PRICE_RCL} total. The letter is never charged per year.
                     </p>
                   </div>
                   <div className="flex flex-col gap-3">
@@ -855,7 +858,7 @@ export function EligibilityCheck() {
                   />
                   <OptionButton
                     label="Yes, the LLC also dealt with other foreign related parties"
-                    sublabel="Each additional related party requires its own Form 5472 (+$75/form, volume pricing for 4+ forms)."
+                    sublabel={`Each additional related party requires its own Form 5472 (+$${PRICE_ADDITIONAL_PARTY} per party, per year filed).`}
                     onClick={() => setShowPartyCount(true)}
                   />
                   <OptionButton
