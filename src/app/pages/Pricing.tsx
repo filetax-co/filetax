@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { useJsonLd } from "../hooks/useJsonLd";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
@@ -29,6 +30,17 @@ interface PricingCard {
 
 const cards: PricingCard[] = [
   {
+    title: "Form 5472 + Pro Forma 1120: Past Year",
+    price: `$${PRICE_PER_YEAR}`,
+    priceNote: "per year",
+    description: "Any prior unfiled year. Same output as current year. Pair with the CPA-Authored Reasonable Cause Letter for the strongest abatement case.",
+    microcopy: "One-time filing. No ongoing fees.",
+    badge: "Recommended for Late Filers",
+    cta: "Join the Waitlist",
+    ctaLink: CHECK_URL, // original: "/check"
+    highlight: true,
+  },
+  {
     title: "Form 5472 + Pro Forma 1120: Current Year",
     price: `$${PRICE_PER_YEAR}`,
     description: "One filing year. Print-ready PDF. Ready to mail or fax.",
@@ -36,39 +48,28 @@ const cards: PricingCard[] = [
     tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
-    highlight: true,
   },
   {
-    title: "Form 5472 + Pro Forma 1120: Past Year",
-    price: `$${PRICE_PER_YEAR}`,
-    priceNote: "per year",
-    description: "Any prior unfiled year. Same output as current year.",
-    microcopy: "One-time filing. No ongoing fees.",
+    title: "Add-On: CPA-Authored Reasonable Cause Letter",
+    price: `+$${PRICE_RCL}`,
+    priceNote: "one letter, covers every year",
+    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty, auto-populated with your filing details. Charged once, however many years you are catching up on — never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
     cta: "Join the Waitlist",
-    ctaLink: CHECK_URL, // original: "/check"
+    ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
     title: "Add-On: Additional Related Party (Form 5472)",
     price: `+$${PRICE_ADDITIONAL_PARTY}`,
     priceNote: "per related party, per year",
-    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each party, for each year filed.",
+    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each party, for each year filed, with the totals reconciled on lines 1f and 1h.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
-    title: "Add-On: CPA-Prepared Reasonable Cause Letter",
-    price: `+$${PRICE_RCL}`,
-    priceNote: "one letter, covers every year",
-    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty. Charged once, however many years you are catching up on — never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
-    badge: "Recommended for Late Filers",
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
-  },
-  {
-    title: "Add-On: IRS Fax Submission",
+    title: "Add-On: IRS Fax Transmission (at launch)",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
-    description: "We fax the completed package to the IRS for you, so you never need a printer. You receive a transmission receipt with the date, time and page count, stored against your filing permanently.",
+    description: "Not yet available. At launch: you sign the completed forms, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
     note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
@@ -105,7 +106,38 @@ export function Pricing() {
   usePageMeta({
     title: "Pricing | FileTax.co",
     description:
-      `Simple per-filing pricing. Form 5472 + Pro Forma 1120: $${PRICE_PER_YEAR}. One CPA-prepared reasonable cause letter covers every late year for $${PRICE_RCL}, never per year. No subscription. No ongoing fees.`,
+      `Per-filing pricing. Form 5472 + Pro Forma 1120: $${PRICE_PER_YEAR}. One CPA-authored reasonable cause letter covers every late year for $${PRICE_RCL}, never per year. No subscription. No ongoing fees.`,
+    canonical: "https://filetax.co/pricing",
+  });
+
+  // Service + offer catalog, derived from the same `cards` array the page
+  // renders. Any card without a numeric price is skipped.
+  useJsonLd("service", {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: "IRS Form 5472 and Pro Forma 1120 preparation",
+    serviceType: "Tax form preparation",
+    provider: { "@id": "https://filetax.co/#organization" },
+    areaServed: "US",
+    audience: {
+      "@type": "Audience",
+      audienceType: "Non-U.S. founders of U.S. single-member LLCs",
+    },
+    url: "https://filetax.co/pricing",
+    offers: cards
+      .filter((card) => /^\+?\$\d/.test(card.price))
+      .map((card) => ({
+        "@type": "Offer",
+        name: card.title,
+        description: card.description,
+        price: card.price.replace(/[^0-9.]/g, ""),
+        priceCurrency: "USD",
+        url: "https://filetax.co/pricing",
+        // Nothing is purchasable yet — every CTA on this page routes to the
+        // waitlist. Advertising these as InStock would be false, so the prices
+        // are published as pre-order until the product opens.
+        availability: "https://schema.org/PreOrder",
+      })),
   });
 
   return (
@@ -115,7 +147,7 @@ export function Pricing() {
       <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 1.5rem" }}>
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.5rem" }}>
-            Simple, per-filing pricing. No subscriptions.
+            Per-filing pricing. No subscriptions.
           </h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400 }}>
             Pay only for what you file. Start without an account.
