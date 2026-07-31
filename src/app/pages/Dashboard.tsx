@@ -78,22 +78,9 @@ const STATUS_COLOR: Record<Filing['status'], { bg: string; fg: string }> = {
   submitted:      { bg: 'rgba(var(--tf-accent-rgb), 0.12)', fg: 'var(--tf-accent)' },
 };
 
-type EligibilityIntake = {
-  id: string;
-  years_param: string | null;
-  sections_param: string | null;
-  parties_param: number | null;
-  rcl_param: boolean | null;
-};
-
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function deriveServiceType(years: string | null | undefined): ServiceType {
-  if (!years || years === 'current') return 'current_year';
-  return 'past_year';
 }
 
 /**
@@ -135,7 +122,6 @@ export function Dashboard() {
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
 
   const [filings, setFilings] = useState<Filing[]>([]);
-  const [pendingIntake, setPendingIntake] = useState<EligibilityIntake | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -158,14 +144,6 @@ export function Dashboard() {
         .eq('user_id', effectiveUserId)
         .order('updated_at', { ascending: false });
 
-      const intakeRes = await supabase
-        .from('intake_submissions')
-        .select('id, years_param, sections_param, parties_param, rcl_param')
-        .eq('user_id', effectiveUserId)
-        .is('linked_filing_id', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
       if (cancelled) return;
 
       if (filingsRes.error) {
@@ -174,57 +152,11 @@ export function Dashboard() {
         setFilings((filingsRes.data ?? []) as Filing[]);
       }
 
-      const candidate = (intakeRes.data ?? [])[0] as EligibilityIntake | undefined;
-      const hasEligibilityData = candidate && (
-        candidate.years_param || candidate.sections_param ||
-        (candidate.parties_param && candidate.parties_param > 1) ||
-        candidate.rcl_param
-      );
-      setPendingIntake(hasEligibilityData ? candidate! : null);
-
       setLoading(false);
     }
     load();
     return () => { cancelled = true; };
   }, [effectiveUserId, authLoading]);
-
-  async function startFromEligibility() {
-    if (!effectiveUserId || !pendingIntake || busy) return;
-    setBusy('eligibility');
-    setError('');
-
-    const sections = pendingIntake.sections_param
-      ? pendingIntake.sections_param.split(',').filter(Boolean)
-      : [];
-
-    const { data, error } = await supabase
-      .from('filings')
-      .insert({
-        user_id: effectiveUserId,
-        service_type: deriveServiceType(pendingIntake.years_param),
-        tax_year: deriveTaxYear(pendingIntake.years_param),
-        status: 'draft',
-        current_step: 1,
-        include_rcl: !!pendingIntake.rcl_param,
-        parties_count: pendingIntake.parties_param ?? 1,
-        complex_sections: sections,
-      })
-      .select('id')
-      .single();
-
-    if (error || !data) {
-      setBusy(null);
-      setError(error?.message ?? 'Could not create filing.');
-      return;
-    }
-
-    await supabase
-      .from('intake_submissions')
-      .update({ linked_filing_id: data.id, status: 'in_progress' })
-      .eq('id', pendingIntake.id);
-
-    navigate(`/intake?filing_id=${data.id}`);
-  }
 
   async function startFiling(serviceType: ServiceType) {
     if (!effectiveUserId || busy) return;
@@ -310,33 +242,6 @@ export function Dashboard() {
           </button>
         </div>
       </section>
-
-      {!loading && pendingIntake && (
-        <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 1rem' }}>
-          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-            <div style={{ border: '2px solid var(--tf-accent)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                <span style={{ display: 'inline-block', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.2rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  From Your Eligibility Check
-                </span>
-              </div>
-              <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)', marginBottom: '0.5rem' }}>
-                Pick up where you left off.
-              </p>
-              <p style={{ color: 'var(--tf-text)', fontSize: '0.9375rem', fontWeight: 400, lineHeight: 1.6, marginBottom: '1rem' }}>
-                We saved your eligibility answers. Continue your filing and we will carry them forward, so you do not need to enter them again.
-              </p>
-              <button
-                onClick={startFromEligibility}
-                disabled={busy !== null}
-                style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1.25rem', borderRadius: '0.5rem', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: busy === 'eligibility' ? 0.7 : 1 }}
-              >
-                {busy === 'eligibility' ? 'Setting up...' : 'Continue your filing'}
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* ── Summary strip ───────────────────────────────────────────────── */}
       {!loading && filings.length > 0 && (
