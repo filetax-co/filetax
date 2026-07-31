@@ -1232,7 +1232,7 @@ export function EligibilityCheck() {
                   />
                   <OptionButton
                     label="2 prior years"
-                    sublabel="Reasonable Cause Letter available per year."
+                    sublabel="Reasonable Cause Letter available as an add-on."
                     onClick={() => {
                       setAnswers((a) => ({ ...a, filingYears: "2-prior" }));
                       setShowPriorYearNote(true);
@@ -1240,7 +1240,7 @@ export function EligibilityCheck() {
                   />
                   <OptionButton
                     label="3 or more prior years"
-                    sublabel="Multi-year package with Reasonable Cause Letter per year."
+                    sublabel="Multi-year package; one Reasonable Cause Letter covers all years."
                     onClick={() => setShowMultiYearNote(true)}
                   />
                 </div>
