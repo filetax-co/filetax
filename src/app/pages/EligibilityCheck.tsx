@@ -1,24 +1,33 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
-import {
-  PRICE_PER_YEAR,
-  PRICE_RCL,
-  PRICE_ADDITIONAL_PARTY,
-  additionalPartiesCost,
-  additionalPartiesBreakdown,
-} from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
-// TEMPORARY: Services are not yet live. The "Create Your Free Account"
-// CTA at the end of the eligibility flow routes to /waitlist instead
-// of the portal. To revert when services launch, change PORTAL_PATH
-// back to "/portal".
+// This screen is a GATE, not an intake form.
+//
+// Its only job is to answer one question: can FileTax serve this person,
+// or should they be sent to a CPA? Everything the filing itself needs
+// (which years, which transactions, which related parties, and all the
+// party details that go in Form 5472 Part II) is collected once, in the
+// portal's intake flow, where it is validated and saved.
+//
+// The rule: this screen must never ask anything intake will ask again.
+// A question asked here and re-asked there costs the user twice and
+// tells us nothing, because none of it was ever carried across.
+//
+// The one exception is the year COUNT in step 3, which exists purely to
+// put a real number on the estimate. Which years, specifically, is
+// chosen later in the multi-year flow, where the incorporation date is
+// known and can rule years out.
+//
+// TEMPORARY: Services are not yet live. The CTA at the end routes to
+// /waitlist instead of the portal. To revert when services launch,
+// change PORTAL_PATH back to "/portal".
 // ---------------------------------------------------------------------
 const PORTAL_PATH = "/waitlist"; // original: "/portal"
-// const TAXCLAIM_URL = "https://taxclaim.co/filetax"; // original: "https://taxclaim.co"
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type Step = 1 | 2 | 3 | 4;
 type Outcome = "pass" | "refer" | null;
 type YesNo = "yes" | "no";
 
@@ -30,119 +39,28 @@ interface SubAnswers {
   usPresence?: YesNo;
 }
 
-interface Answers {
-  entityType?: string;
-  filingYears?: string;
-  includeRCL?: boolean;
-  complexTransactions: string[];
-  relatedPartyCount?: number;
-}
+const totalSteps = 4;
 
-const totalSteps = 6;
-
-const PORTAL_SECTION_NAMES: Record<string, string> = {
-  "import-goods": "Related-Party Import Transactions",
-  "formal-loans": "Intercompany Loan Reporting",
-  "property-transfer": "Non-Cash Asset Transfers",
-  "royalties-ip": "IP Licensing and Royalties",
-  "owns-entity": "Subsidiary Ownership Disclosure",
-  "digital-assets": "Digital Asset Transactions",
-  "dissolution": "Ownership Change and Dissolution",
-};
-
-const EXPERT_REVIEW_RECOMMENDED = new Set([
-  "formal-loans",
-  "property-transfer",
-  "royalties-ip",
-]);
-
-const TRANSACTION_OPTIONS: {
-  value: string;
-  label: string;
-  hint?: string;
-  expertNote?: string;
-}[] = [
-  {
-    value: "import-goods",
-    label:
-      "Goods purchased from a foreign company in which you or a related party hold an ownership stake",
-  },
-  {
-    value: "formal-loans",
-    label:
-      "A loan between the LLC and the foreign owner or a related party, with a set interest rate and repayment terms",
-    hint:
-      "Adding cash to the LLC or withdrawing profit does not count as a loan. A loan requires an agreed repayment date and an interest rate.",
-    expertNote:
-      "You may want to confirm that the interest rate and terms are supportable before filing.",
-  },
-  {
-    value: "property-transfer",
-    label:
-      "Assets other than cash moved into or out of the LLC, such as equipment, real estate, or a patent",
-    hint:
-      "Putting only cash into the LLC, or contributing your personal time and services, does not count.",
-    expertNote:
-      "You may want to confirm fair market value and how the transfer should be described before filing.",
-  },
-  {
-    value: "royalties-ip",
-    label:
-      "Payments for the right to use intellectual property, or interest on a loan, sent to a person or company outside the U.S.",
-    hint:
-      "Paying for software subscriptions the LLC uses, or paying a contractor for their work, is not the same as licensing intellectual property.",
-    expertNote:
-      "You may want to confirm transfer pricing, royalty rate, or interest support before filing.",
-  },
-  {
-    value: "owns-entity",
-    label:
-      "The LLC holds at least a 20% ownership interest in another business, partnership, or trust",
-  },
-  {
-    value: "digital-assets",
-    label:
-      "Receipts or payments during the year involving cryptocurrency, NFTs, or other digital tokens",
-    hint:
-      "Holding crypto in a wallet with no transactions during the year does not need to be reported here.",
-  },
-  {
-    value: "dissolution",
-    label:
-      "A change in who owns the LLC, or steps taken to close, sell, or wind down the LLC at any point during the year",
-  },
-  { value: "none", label: "None of the above" },
-];
-
-const INITIAL_ANSWERS: Answers = { complexTransactions: [] };
 const INITIAL_SUB: SubAnswers = {};
 
-/** Flat PRICE_ADDITIONAL_PARTY per additional related party, per year. */
-function calcAdditionalFormsCost(totalForms: number): number {
-  return additionalPartiesCost(totalForms);
-}
+// Step 2 establishes that the owner is a non-U.S. INDIVIDUAL before either
+// U.S.-activity question is reached, so Form 1040-NR is the right return to
+// name here. Form 1120 is a corporate return and Form 1120-F is for a foreign
+// corporation owner; both were previously named here and both were wrong.
+const REFER_US_SOURCE_INCOME =
+  "Income the IRS treats as U.S.-source may make you personally liable to file " +
+  "Form 1040-NR, and can change how the LLC's income is taxed. Services are " +
+  "sourced where the work is performed, so having U.S. customers does not by " +
+  "itself make income U.S.-source. This flow prepares Form 5472 and the pro " +
+  "forma 1120 only. Please confirm your position with a CPA or tax adviser " +
+  "before filing.";
 
-function additionalFormsBreakdown(totalForms: number): string {
-  return additionalPartiesBreakdown(totalForms);
-}
-
-function buildPortalPath(answers: Answers): string {
-  const params = new URLSearchParams();
-  if (answers.filingYears && answers.filingYears !== "current") {
-    params.set("years", answers.filingYears);
-  }
-  const active = answers.complexTransactions.filter((v) => v !== "none");
-  if (active.length > 0) params.set("sections", active.join(","));
-  const parties = answers.relatedPartyCount ?? 1;
-  if (parties > 1) params.set("parties", String(parties));
-  if (answers.includeRCL) params.set("rcl", "true");
-  const q = params.toString();
-  return PORTAL_PATH + (q ? "?" + q : "");
-}
-
-function yearCountFor(filingYears?: string): number | null {
-  return filingYears === "1-prior" ? 1 : filingYears === "2-prior" ? 2 : null;
-}
+const REFER_US_PRESENCE =
+  "Employing people or keeping premises in the U.S. can create what the IRS " +
+  "calls a U.S. trade or business. If it does, you would generally report that " +
+  "income on Form 1040-NR at graduated rates, and a return is required even " +
+  "when no tax is due. This flow prepares Form 5472 and the pro forma 1120 " +
+  "only. A CPA or tax adviser should confirm your position before you file.";
 
 function ProgressBar({ current }: { current: number }) {
   return (
@@ -295,104 +213,8 @@ function HintBox({ text }: { text: string }) {
   );
 }
 
-function AdvisoryBox({ text }: { text: string }) {
-  return (
-    <div
-      style={{
-        background: "rgba(180,83,9,0.06)",
-        border: "1px solid rgba(180,83,9,0.2)",
-        borderRadius: "0.5rem",
-        padding: "0.875rem 1rem",
-        marginTop: "0.75rem",
-      }}
-    >
-      <p style={{ fontSize: "0.875rem", color: "#B45309", fontWeight: 500, lineHeight: 1.6 }}>
-        {text}
-      </p>
-    </div>
-  );
-}
-
 function Divider() {
   return <div style={{ borderTop: "1px solid var(--tf-border)", margin: "1.5rem 0" }} />;
-}
-
-function CheckOption({
-  label,
-  hint,
-  checked,
-  onChange,
-  expertNote,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: () => void;
-  expertNote?: string;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "0.75rem",
-        padding: "0.875rem 1.125rem",
-        borderRadius: "0.5rem",
-        border: `1px solid ${checked ? "#0284C7" : "var(--tf-border)"}`,
-        background: checked ? "rgba(2,132,199,0.06)" : "var(--tf-surface)",
-        cursor: "pointer",
-        minHeight: "44px",
-        lineHeight: 1.4,
-        transition: "background 0.15s, border-color 0.15s",
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        style={{
-          marginTop: "3px",
-          accentColor: "#0284C7",
-          width: "16px",
-          height: "16px",
-          flexShrink: 0,
-        }}
-      />
-      <div>
-        <span style={{ fontWeight: 500, fontSize: "0.9375rem", color: "var(--tf-text)" }}>
-          {label}
-        </span>
-        {hint && (
-          <span
-            style={{
-              display: "block",
-              color: "var(--tf-muted)",
-              fontSize: "0.8125rem",
-              fontWeight: 400,
-              marginTop: "0.25rem",
-              lineHeight: 1.5,
-            }}
-          >
-            {hint}
-          </span>
-        )}
-        {checked && expertNote && (
-          <span
-            style={{
-              display: "block",
-              color: "#B45309",
-              fontSize: "0.8125rem",
-              fontWeight: 500,
-              marginTop: "0.35rem",
-              lineHeight: 1.5,
-            }}
-          >
-            {expertNote}
-          </span>
-        )}
-      </div>
-    </label>
-  );
 }
 
 function PriceRow({
@@ -410,6 +232,7 @@ function PriceRow({
         display: "flex",
         justifyContent: "space-between",
         alignItems: "baseline",
+        gap: "1rem",
         fontSize: total ? "0.9375rem" : "0.875rem",
         fontWeight: total ? 700 : 400,
         color: total ? "var(--tf-text)" : "var(--tf-muted)",
@@ -419,7 +242,9 @@ function PriceRow({
       }}
     >
       <span>{label}</span>
-      <span style={{ fontWeight: total ? 700 : 500, color: "var(--tf-text)" }}>{value}</span>
+      <span style={{ fontWeight: total ? 700 : 600, color: "var(--tf-text)", whiteSpace: "nowrap" }}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -506,19 +331,14 @@ export function EligibilityCheck() {
   usePageMeta({
     title: "Check Your Eligibility | FileTax.co",
     description:
-      "Answer a few questions to confirm your Form 5472 filing is a good fit for FileTax.co. Takes about 2 minutes. Your answers are never stored.",
+      "Answer a few questions to confirm your Form 5472 filing is a good fit for FileTax.co. Takes about a minute. Your answers are never stored.",
   });
 
   const [step, setStep] = useState<Step>(1);
   const [subAnswers, setSubAnswers] = useState<SubAnswers>(INITIAL_SUB);
-  const [answers, setAnswers] = useState<Answers>(INITIAL_ANSWERS);
+  const [yearCount, setYearCount] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [referReason, setReferReason] = useState("");
-  const [showMultiYearNote, setShowMultiYearNote] = useState(false);
-  const [showPriorYearNote, setShowPriorYearNote] = useState(false);
-  const [showRelatedPartyNote, setShowRelatedPartyNote] = useState(false);
-  const [showPartyCount, setShowPartyCount] = useState(false);
-  const [selectedPartyCount, setSelectedPartyCount] = useState<number | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -532,56 +352,18 @@ export function EligibilityCheck() {
     setOutcome("refer");
   };
 
-  const pass = () => setOutcome("pass");
-
-  const hasPriorYears = answers.filingYears && answers.filingYears !== "current";
-  const yearCount = yearCountFor(answers.filingYears);
-
   const resetAll = () => {
     setStep(1);
     setSubAnswers(INITIAL_SUB);
-    setAnswers(INITIAL_ANSWERS);
+    setYearCount(null);
     setOutcome(null);
     setReferReason("");
-    setShowMultiYearNote(false);
-    setShowPriorYearNote(false);
-    setShowRelatedPartyNote(false);
-    setShowPartyCount(false);
-    setSelectedPartyCount(null);
   };
-
-  const toggleComplex = (value: string) => {
-    setAnswers((prev) => {
-      const arr = prev.complexTransactions;
-      if (value === "none") {
-        return { ...prev, complexTransactions: arr.includes("none") ? [] : ["none"] };
-      }
-      const filtered = arr.filter((v) => v !== "none");
-      return {
-        ...prev,
-        complexTransactions: filtered.includes(value)
-          ? filtered.filter((v) => v !== value)
-          : [...filtered, value],
-      };
-    });
-  };
-
-  const activeSections = answers.complexTransactions.filter((v) => v !== "none");
-  const needsExpertReview = activeSections.some((v) => EXPERT_REVIEW_RECOMMENDED.has(v));
-  const additionalParties = (answers.relatedPartyCount ?? 1) - 1;
 
   if (outcome === "pass") {
-    const basePerYear = PRICE_PER_YEAR;
-    const numYears = yearCount ?? 1;
-    const totalForms = answers.relatedPartyCount ?? 1;
-    const additionalFormsCostPerYear = calcAdditionalFormsCost(totalForms);
-    const additionalFormsTotal = numYears * additionalFormsCostPerYear;
-    const baseTotal = numYears * basePerYear;
-    // One reasonable-cause letter covers every year — charged once per job.
-    const rclTotal = answers.includeRCL ? PRICE_RCL : 0;
-    const grandTotal =
-      answers.filingYears !== "3-plus" ? baseTotal + additionalFormsTotal + rclTotal : null;
-    const portalPath = buildPortalPath(answers);
+    const years = yearCount ?? 1;
+    const baseTotal = years * PRICE_PER_YEAR;
+    const isMany = years >= 4;
 
     return (
       <section style={{ background: "var(--tf-bg)", minHeight: "80vh", padding: "3rem 1rem" }}>
@@ -608,18 +390,16 @@ export function EligibilityCheck() {
                 marginBottom: "1rem",
               }}
             >
-              Ready to file
+              You are a fit
             </span>
             <h1 style={{ fontSize: "clamp(1.375rem, 4vw, 1.875rem)", marginBottom: "0.75rem" }}>
-              Your filing is configured.
+              We can prepare this filing for you.
             </h1>
-            <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", marginBottom: "1.5rem" }}>
-              Based on your answers, here is exactly what will be prepared for you.
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
+              A single-member LLC owned by a non-U.S. individual, with no U.S.-source income and no
+              U.S. premises, is what this platform is built for. Next you will choose the exact
+              years and tell us what moved between you and the LLC.
             </p>
-
-            {needsExpertReview && (
-              <AdvisoryBox text="One or more of your selected transactions may require judgment on interest terms, valuation, or transfer pricing. You can still proceed with filing, but you may want to confirm the transaction treatment with a qualified tax professional first." />
-            )}
 
             <div
               style={{
@@ -628,7 +408,6 @@ export function EligibilityCheck() {
                 borderRadius: "0.625rem",
                 padding: "1.25rem",
                 marginBottom: "1.25rem",
-                marginTop: needsExpertReview ? "1.25rem" : 0,
               }}
             >
               <p
@@ -641,87 +420,66 @@ export function EligibilityCheck() {
                   marginBottom: "0.875rem",
                 }}
               >
-                Filing Summary
+                What it costs
               </p>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.875rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <PriceRow
-                  label={`Form 5472 + Pro Forma 1120${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
-                  value={`$${baseTotal}`}
+                  label={
+                    isMany
+                      ? `Form 5472 + pro forma 1120, per year`
+                      : `Form 5472 + pro forma 1120${years > 1 ? ` x ${years} years` : ""}`
+                  }
+                  value={isMany ? `$${PRICE_PER_YEAR}` : `$${baseTotal}`}
                 />
-
-                {answers.includeRCL && hasPriorYears && (
+                {!isMany && (
                   <PriceRow
-                    label="CPA-Authored Reasonable Cause Letter (one letter, covers all years)"
-                    value={`+$${PRICE_RCL}`}
-                  />
-                )}
-
-                {additionalParties > 0 && (
-                  <>
-                    <PriceRow
-                      label={`Additional Form 5472${additionalParties > 1 ? "s" : ""} (${additionalParties} more ${additionalParties === 1 ? "party" : "parties"}${numYears > 1 ? `, ${numYears} years` : ""})`}
-                      value={numYears > 1 ? `+$${additionalFormsTotal}` : `+$${additionalFormsCostPerYear}`}
-                    />
-                  </>
-                )}
-
-                {grandTotal !== null && (
-                  <PriceRow
-                    label={answers.filingYears === "2-prior" ? "Total for 2 years" : "Total"}
-                    value={`$${grandTotal}`}
+                    label={years > 1 ? `Filings for ${years} years` : "Total for the filing"}
+                    value={`$${baseTotal}`}
                     total
                   />
                 )}
-
-                {answers.filingYears === "3-plus" && (
-                  <p
-                    style={{
-                      fontSize: "0.8125rem",
-                      color: "var(--tf-muted)",
-                      fontWeight: 400,
-                      paddingTop: "0.5rem",
-                      borderTop: "1px solid var(--tf-border)",
-                    }}
-                  >
-                    Multi-year package pricing is confirmed at checkout.
-                  </p>
-                )}
               </div>
 
-              {activeSections.length > 0 && (
-                <div style={{ borderTop: "1px solid var(--tf-border)", paddingTop: "0.875rem", marginTop: "0.375rem" }}>
-                  <p style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--tf-text)", marginBottom: "0.5rem" }}>
-                    Portal sections pre-activated for you:
-                  </p>
-                  <ul
-                    style={{
-                      listStyle: "none",
-                      padding: 0,
-                      margin: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.3rem",
-                    }}
-                  >
-                    {activeSections.map((s) => (
-                      <li
-                        key={s}
-                        style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "var(--tf-text)" }}
-                      >
-                        <span style={{ color: "#059669", fontWeight: 700, flexShrink: 0, fontSize: "0.75rem" }}>
-                          &#10003;
-                        </span>
-                        {PORTAL_SECTION_NAMES[s]}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <div
+                style={{
+                  paddingTop: "0.875rem",
+                  marginTop: "0.875rem",
+                  borderTop: "1px solid var(--tf-border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                }}
+              >
+                <PriceRow
+                  label="CPA-authored reasonable cause letter, if any year is late"
+                  value={`$${PRICE_RCL} once`}
+                />
+                <PriceRow
+                  label="Each additional related party"
+                  value={`$${PRICE_ADDITIONAL_PARTY} per year`}
+                />
+              </div>
+
+              <p
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "var(--tf-muted)",
+                  fontWeight: 400,
+                  lineHeight: 1.6,
+                  paddingTop: "0.875rem",
+                  marginTop: "0.875rem",
+                  borderTop: "1px solid var(--tf-border)",
+                }}
+              >
+                The letter is charged once however many late years you file, never per year. We
+                work out which of your years are late from the actual deadlines once you pick
+                them, and you will see your exact total, itemised, before you are asked to pay.
+              </p>
             </div>
 
             <Link
-              to={portalPath}
+              to={PORTAL_PATH}
               style={{
                 background: "#0284C7",
                 color: "white",
@@ -800,13 +558,6 @@ export function EligibilityCheck() {
                 marginBottom: "1.25rem",
               }}
             >
-              {/* Original branded block retained for reference only.
-              <p style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.25rem" }}>TaxClaim.co</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.6, marginBottom: "0.875rem" }}>
-                A team of licensed CPAs who specialise in Form 5472 and foreign-owned LLC compliance. They handle cases our platform currently does not.
-              </p>
-              <a href={TAXCLAIM_URL} target="_blank" rel="noopener noreferrer">Connect with a CPA at TaxClaim.co</a>
-              */}
               <p style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.25rem" }}>
                 Speak with a qualified tax professional
               </p>
@@ -863,7 +614,7 @@ export function EligibilityCheck() {
           Before you begin, let us confirm this is the right fit.
         </h1>
         <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2rem" }}>
-          This takes about 2 minutes. Your answers stay in your browser and are never stored.
+          A handful of quick questions, about a minute. Your answers stay in your browser and are never stored.
         </p>
 
         <div
@@ -887,10 +638,7 @@ export function EligibilityCheck() {
               <div className="flex flex-col gap-3">
                 <OptionButton
                   label="Single-member LLC (I am the only owner)"
-                  onClick={() => {
-                    setAnswers((a) => ({ ...a, entityType: "sm-llc" }));
-                    setStep(2);
-                  }}
+                  onClick={() => setStep(2)}
                 />
                 <OptionButton
                   label="Multi-member LLC (2 or more owners)"
@@ -997,258 +745,35 @@ export function EligibilityCheck() {
           {step === 3 && (
             <div>
               <SectionLabel text="Filing Years" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "1.25rem" }}>
-                Which tax year or years are you filing for?
+              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
+                How many tax years do you need to file?
               </h2>
-
-              {showPriorYearNote ? (
-                <div>
-                  <div
-                    style={{
-                      border: "2px solid #0284C7",
-                      borderRadius: "0.75rem",
-                      padding: "1.25rem 1.375rem",
-                      marginBottom: "1rem",
-                      background: "rgba(2,132,199,0.03)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: "1rem",
-                        marginBottom: "0.875rem",
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            background: "#059669",
-                            color: "white",
-                            borderRadius: "9999px",
-                            padding: "0.2rem 0.75rem",
-                            fontSize: "0.75rem",
-                            fontWeight: 700,
-                            letterSpacing: "0.04em",
-                            textTransform: "uppercase",
-                            marginBottom: "0.5rem",
-                          }}
-                        >
-                          Recommended Add-On
-                        </span>
-                        <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--tf-text)", lineHeight: 1.3 }}>
-                          CPA-Authored Reasonable Cause Letter
-                        </p>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <p style={{ fontWeight: 700, fontSize: "1.125rem", color: "var(--tf-text)", lineHeight: 1 }}>
-                          +${PRICE_RCL}
-                        </p>
-                        <p style={{ fontSize: "0.8125rem", color: "var(--tf-muted)", fontWeight: 400 }}>
-                          one letter, all years
-                        </p>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "1rem" }}>
-                      Because the original filing deadline was missed, the IRS may assess a $25,000 penalty. This letter is designed to help explain reasonable cause and is included with your filing package if selected.
-                    </p>
-                    <div style={{ borderTop: "1px solid var(--tf-border)", paddingTop: "0.875rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                      <PriceRow
-                        label={`Form 5472 + Pro Forma 1120${yearCount && yearCount > 1 ? ` x ${yearCount} years` : ""}`}
-                        value={`$${(yearCount ?? 1) * PRICE_PER_YEAR}`}
-                      />
-                      <PriceRow label="Reasonable Cause Letter (one letter, covers every year)" value={`+$${PRICE_RCL}`} />
-                      <PriceRow
-                        label={yearCount && yearCount > 1 ? `Total for ${yearCount} years` : "Total"}
-                        value={`$${(yearCount ?? 1) * PRICE_PER_YEAR + PRICE_RCL}`}
-                        total
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setAnswers((a) => ({ ...a, includeRCL: true }));
-                      setStep(4);
-                    }}
-                    style={{
-                      background: "#0284C7",
-                      color: "white",
-                      fontWeight: 600,
-                      fontSize: "0.9375rem",
-                      padding: "0.75rem 1.5rem",
-                      borderRadius: "0.5rem",
-                      border: "none",
-                      cursor: "pointer",
-                      minHeight: "44px",
-                      width: "100%",
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    Include Reasonable Cause Letter and continue
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAnswers((a) => ({ ...a, includeRCL: false }));
-                      setStep(4);
-                    }}
-                    style={{
-                      background: "transparent",
-                      color: "var(--tf-muted)",
-                      fontWeight: 500,
-                      fontSize: "0.875rem",
-                      padding: "0.625rem 1rem",
-                      borderRadius: "0.5rem",
-                      border: "1px solid var(--tf-border)",
-                      cursor: "pointer",
-                      minHeight: "44px",
-                      width: "100%",
-                      marginBottom: "0.875rem",
-                    }}
-                  >
-                    Continue without the letter
-                  </button>
-
-                  {/* Original TaxClaim CTA retained as comment.
-                  <a href={TAXCLAIM_URL} target="_blank" rel="noopener noreferrer">
-                    Need more hands-on help? Speak with a CPA at TaxClaim.co
-                  </a>
-                  */}
-
-                  <button
-                    onClick={() => setShowPriorYearNote(false)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--tf-muted)",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      padding: 0,
-                    }}
-                  >
-                    &#8592; Change my selection
-                  </button>
-                </div>
-              ) : showMultiYearNote ? (
-                <div>
-                  <div
-                    style={{
-                      border: "2px solid #0284C7",
-                      borderRadius: "0.75rem",
-                      padding: "1.25rem 1.375rem",
-                      marginBottom: "1rem",
-                      background: "rgba(2,132,199,0.03)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "inline-block",
-                        background: "#059669",
-                        color: "white",
-                        borderRadius: "9999px",
-                        padding: "0.2rem 0.75rem",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        letterSpacing: "0.04em",
-                        textTransform: "uppercase",
-                        marginBottom: "0.625rem",
-                      }}
-                    >
-                      Multi-Year Package
-                    </span>
-                    <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--tf-text)", marginBottom: "0.625rem" }}>
-                      One Reasonable Cause Letter covers every year
-                    </p>
-                    <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65, marginBottom: "0.875rem" }}>
-                      Filing three or more years at once is handled through the multi-year package. A single Reasonable Cause Letter covers all the years you file. Pricing is confirmed at checkout: ${PRICE_PER_YEAR} per year plus one ${PRICE_RCL} letter.
-                    </p>
-                    <p style={{ fontSize: "0.875rem", color: "var(--tf-muted)", fontWeight: 400, lineHeight: 1.6 }}>
-                      Three years, for example: ${3 * PRICE_PER_YEAR} for the filings plus ${PRICE_RCL} for the letter = ${3 * PRICE_PER_YEAR + PRICE_RCL} total. The letter is never charged per year.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={() => {
-                        setAnswers((a) => ({ ...a, filingYears: "3-plus", includeRCL: true }));
-                        setStep(4);
-                      }}
-                      style={{
-                        background: "#0284C7",
-                        color: "white",
-                        fontWeight: 600,
-                        fontSize: "0.9375rem",
-                        padding: "0.75rem 1.25rem",
-                        borderRadius: "0.5rem",
-                        border: "none",
-                        cursor: "pointer",
-                        minHeight: "44px",
-                        textAlign: "center",
-                      }}
-                    >
-                      Continue with my filing
-                    </button>
-
-                    {/* Original TaxClaim CTA retained as comment.
-                    <a href={TAXCLAIM_URL} target="_blank" rel="noopener noreferrer">
-                      Speak with a CPA at TaxClaim.co instead
-                    </a>
-                    */}
-                  </div>
-                  <button
-                    onClick={() => setShowMultiYearNote(false)}
-                    style={{
-                      marginTop: "1rem",
-                      background: "none",
-                      border: "none",
-                      color: "var(--tf-muted)",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      padding: 0,
-                    }}
-                  >
-                    &#8592; Change my selection
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.25rem" }}>
+                A count is enough for now, so we can show you a price. You will pick the exact
+                years in the portal, where we check them against the date your LLC was formed and
+                work out which ones are late.
+              </p>
+              <div className="flex flex-col gap-3">
+                {[1, 2, 3].map((n) => (
                   <OptionButton
-                    label="Current year only"
+                    key={n}
+                    label={n === 1 ? "Just one year" : `${n} years`}
                     onClick={() => {
-                      setAnswers((a) => ({ ...a, filingYears: "current" }));
+                      setYearCount(n);
                       setStep(4);
                     }}
                   />
-                  <OptionButton
-                    label="1 prior year"
-                    sublabel="Reasonable Cause Letter available as an add-on."
-                    onClick={() => {
-                      setAnswers((a) => ({ ...a, filingYears: "1-prior" }));
-                      setShowPriorYearNote(true);
-                    }}
-                  />
-                  <OptionButton
-                    label="2 prior years"
-                    sublabel="Reasonable Cause Letter available as an add-on."
-                    onClick={() => {
-                      setAnswers((a) => ({ ...a, filingYears: "2-prior" }));
-                      setShowPriorYearNote(true);
-                    }}
-                  />
-                  <OptionButton
-                    label="3 or more prior years"
-                    sublabel="Multi-year package; one Reasonable Cause Letter covers all years."
-                    onClick={() => setShowMultiYearNote(true)}
-                  />
-                </div>
-              )}
-
-              {!showPriorYearNote && !showMultiYearNote && (
-                <StepNav onBack={() => setStep(2)} onReset={resetAll} />
-              )}
+                ))}
+                <OptionButton
+                  label="4 or more years"
+                  sublabel="We support tax years back to 2019."
+                  onClick={() => {
+                    setYearCount(4);
+                    setStep(4);
+                  }}
+                />
+              </div>
+              <StepNav onBack={() => setStep(2)} onReset={resetAll} />
             </div>
           )}
 
@@ -1265,9 +790,7 @@ export function EligibilityCheck() {
                   selected={subAnswers.usIncome}
                   onYes={() => {
                     setSub("usIncome", "yes");
-                    triggerRefer(
-                      "An LLC with U.S.-source income may need to file a full Form 1120 in addition to Form 5472. This filing flow prepares Form 5472 and the Pro Forma 1120 only and is not set up for that scenario."
-                    );
+                    triggerRefer(REFER_US_SOURCE_INCOME);
                   }}
                   onNo={() => setSub("usIncome", "no")}
                 />
@@ -1284,9 +807,7 @@ export function EligibilityCheck() {
                       selected={subAnswers.usPresence}
                       onYes={() => {
                         setSub("usPresence", "yes");
-                        triggerRefer(
-                          "Hiring staff or maintaining a physical location in the U.S. can create what the IRS calls a U.S. trade or business. That situation is outside what this flow handles."
-                        );
+                        triggerRefer(REFER_US_PRESENCE);
                       }}
                       onNo={() => setSub("usPresence", "no")}
                     />
@@ -1298,347 +819,9 @@ export function EligibilityCheck() {
                 onBack={() => setStep(3)}
                 onReset={resetAll}
                 showContinue={subAnswers.usIncome === "no" && subAnswers.usPresence === "no"}
-                onContinue={() => setStep(5)}
+                onContinue={() => setOutcome("pass")}
+                continueLabel="See what this costs"
               />
-            </div>
-          )}
-
-          {step === 5 && (
-            <div>
-              <SectionLabel text="Transactions and Complexity" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
-                Did the LLC have any of the following during the tax year?
-              </h2>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.25rem" }}>
-                Select all that apply. These determine which sections of your portal are activated.
-              </p>
-
-              <div className="flex flex-col gap-3">
-                {TRANSACTION_OPTIONS.map((opt) => (
-                  <CheckOption
-                    key={opt.value}
-                    label={opt.label}
-                    hint={opt.hint}
-                    expertNote={opt.expertNote}
-                    checked={answers.complexTransactions.includes(opt.value)}
-                    onChange={() => toggleComplex(opt.value)}
-                  />
-                ))}
-              </div>
-
-              {activeSections.length > 0 && (
-                <div
-                  style={{
-                    background: "rgba(2,132,199,0.04)",
-                    border: "1px solid rgba(2,132,199,0.2)",
-                    borderRadius: "0.5rem",
-                    padding: "1rem 1.125rem",
-                    marginTop: "1rem",
-                  }}
-                >
-                  <p style={{ fontWeight: 600, fontSize: "0.875rem", color: "#0284C7", marginBottom: "0.5rem" }}>
-                    These sections will be ready in your portal:
-                  </p>
-                  <ul
-                    style={{
-                      listStyle: "none",
-                      padding: 0,
-                      margin: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.35rem",
-                      marginBottom: "0.625rem",
-                    }}
-                  >
-                    {activeSections.map((s) => (
-                      <li
-                        key={s}
-                        style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.875rem", color: "var(--tf-text)" }}
-                      >
-                        <span style={{ color: "#059669", fontWeight: 700, flexShrink: 0, marginTop: "1px", fontSize: "0.75rem" }}>
-                          &#10003;
-                        </span>
-                        <span>{PORTAL_SECTION_NAMES[s]}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {needsExpertReview ? (
-                    <p
-                      style={{
-                        fontSize: "0.8125rem",
-                        color: "#B45309",
-                        fontWeight: 400,
-                        lineHeight: 1.55,
-                        paddingTop: "0.5rem",
-                        borderTop: "1px solid rgba(180,83,9,0.15)",
-                      }}
-                    >
-                      One or more selected transactions may require judgment on pricing, valuation, or interest support. You can still proceed in the platform, but you may want to check the transaction treatment with a qualified tax professional before filing.
-                    </p>
-                  ) : (
-                    <p style={{ fontSize: "0.8125rem", color: "var(--tf-muted)", fontWeight: 400 }}>
-                      The platform will guide you through each selected section.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 mt-5 flex-wrap items-center">
-                <button
-                  onClick={() => setStep(6)}
-                  disabled={answers.complexTransactions.length === 0}
-                  style={{
-                    background: "#0284C7",
-                    color: "white",
-                    fontWeight: 600,
-                    fontSize: "0.9375rem",
-                    padding: "0.75rem 1.5rem",
-                    borderRadius: "0.5rem",
-                    border: "none",
-                    cursor: answers.complexTransactions.length === 0 ? "not-allowed" : "pointer",
-                    opacity: answers.complexTransactions.length === 0 ? 0.5 : 1,
-                    minHeight: "44px",
-                  }}
-                >
-                  Continue
-                </button>
-                <button
-                  onClick={() => setStep(4)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--tf-muted)",
-                    cursor: "pointer",
-                    fontSize: "0.875rem",
-                    fontWeight: 500,
-                    padding: "0.75rem 0",
-                  }}
-                >
-                  &#8592; Back
-                </button>
-                <button
-                  onClick={resetAll}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--tf-muted)",
-                    cursor: "pointer",
-                    fontSize: "0.8125rem",
-                    fontWeight: 400,
-                    padding: "0.75rem 0",
-                    textDecoration: "underline",
-                    textUnderlineOffset: "2px",
-                  }}
-                >
-                  Start over
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 6 && (
-            <div>
-              <SectionLabel text="Related Parties" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
-                Did the LLC conduct reportable transactions with more than one foreign related party?
-              </h2>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.25rem" }}>
-                A separate Form 5472 is required for each foreign related party. For most single-member LLCs, the only related party is the foreign owner. Related parties also include any foreign entity where you or the LLC hold 25% or more ownership.
-              </p>
-
-              {!showPartyCount && !showRelatedPartyNote && (
-                <div className="flex flex-col gap-3">
-                  <OptionButton
-                    label="No, only with me as the foreign owner"
-                    sublabel="One Form 5472 required. This is the most common situation."
-                    onClick={() => {
-                      setAnswers((a) => ({ ...a, relatedPartyCount: 1 }));
-                      pass();
-                    }}
-                  />
-                  <OptionButton
-                    label="Yes, the LLC also dealt with other foreign related parties"
-                    sublabel={`Each additional related party requires its own Form 5472 (+$${PRICE_ADDITIONAL_PARTY} per party, per year filed).`}
-                    onClick={() => setShowPartyCount(true)}
-                  />
-                  <OptionButton
-                    label="I am not certain who qualifies as a related party"
-                    onClick={() => setShowRelatedPartyNote(true)}
-                  />
-                </div>
-              )}
-
-              {showPartyCount && (
-                <div
-                  style={{
-                    background: "var(--tf-bg)",
-                    border: "1px solid var(--tf-border)",
-                    borderRadius: "0.625rem",
-                    padding: "1.25rem",
-                  }}
-                >
-                  <p style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.875rem" }}>
-                    How many foreign related parties in total, including yourself?
-                  </p>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, 1fr)",
-                      gap: "0.5rem",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    {[2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => setSelectedPartyCount(n)}
-                        style={{
-                          padding: "0.75rem 0.5rem",
-                          borderRadius: "0.5rem",
-                          border:
-                            selectedPartyCount === n ? "1.5px solid #0284C7" : "1px solid var(--tf-border)",
-                          background: selectedPartyCount === n ? "#0284C7" : "var(--tf-surface)",
-                          color: selectedPartyCount === n ? "white" : "var(--tf-text)",
-                          fontWeight: 700,
-                          fontSize: "1.0625rem",
-                          cursor: "pointer",
-                          minHeight: "48px",
-                          transition: "background 0.15s, color 0.15s, border-color 0.15s",
-                        }}
-                      >
-                        {n === 5 ? "5+" : n}
-                      </button>
-                    ))}
-                  </div>
-
-                  {selectedPartyCount !== null && (
-                    <div>
-                      <div
-                        style={{
-                          background: "rgba(2,132,199,0.04)",
-                          border: "1px solid rgba(2,132,199,0.2)",
-                          borderRadius: "0.5rem",
-                          padding: "0.875rem 1rem",
-                          marginBottom: "0.875rem",
-                        }}
-                      >
-                        <p style={{ fontSize: "0.875rem", color: "var(--tf-text)", lineHeight: 1.65 }}>
-                          {selectedPartyCount === 5
-                            ? "For 5 or more related parties, a Form 5472 is prepared for each one. The platform can handle this."
-                            : `Your filing will include ${selectedPartyCount} Form 5472s, one per related party. ${additionalFormsBreakdown(
-                                selectedPartyCount
-                              )}`}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setAnswers((a) => ({ ...a, relatedPartyCount: selectedPartyCount }));
-                          pass();
-                        }}
-                        style={{
-                          background: "#0284C7",
-                          color: "white",
-                          fontWeight: 600,
-                          fontSize: "0.9375rem",
-                          padding: "0.75rem 1.25rem",
-                          borderRadius: "0.5rem",
-                          border: "none",
-                          cursor: "pointer",
-                          minHeight: "44px",
-                          width: "100%",
-                          marginBottom: "0.5rem",
-                        }}
-                      >
-                        Continue to filing
-                      </button>
-
-                      {/* Original TaxClaim CTA retained as comment.
-                      {selectedPartyCount === 5 && (
-                        <a href={TAXCLAIM_URL} target="_blank" rel="noopener noreferrer">
-                          Speak with a CPA at TaxClaim.co instead
-                        </a>
-                      )}
-                      */}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      setShowPartyCount(false);
-                      setSelectedPartyCount(null);
-                    }}
-                    style={{
-                      marginTop: "0.875rem",
-                      background: "none",
-                      border: "none",
-                      color: "var(--tf-muted)",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      padding: 0,
-                    }}
-                  >
-                    &#8592; Back
-                  </button>
-                </div>
-              )}
-
-              {showRelatedPartyNote && (
-                <div
-                  style={{
-                    background: "var(--tf-bg)",
-                    border: "1px solid var(--tf-border)",
-                    borderRadius: "0.625rem",
-                    padding: "1.125rem",
-                  }}
-                >
-                  <p style={{ color: "var(--tf-text)", fontSize: "0.875rem", lineHeight: 1.65, marginBottom: "0.875rem" }}>
-                    A foreign related party includes your foreign owner, any foreign entity in which you personally own 25% or more, and any entity that owns 25% or more of your LLC. For many single-member LLCs formed by a sole non-U.S. founder with no other connected entities, the owner is the only related party.
-                  </p>
-
-                  <AdvisoryBox text="If you are uncertain whether another person or entity qualifies as a related party, you may want to confirm that point with a qualified tax professional before filing." />
-
-                  <div className="flex flex-col gap-2" style={{ marginTop: "0.875rem" }}>
-                    <OptionButton
-                      label="I only have myself as the related party"
-                      onClick={() => {
-                        setAnswers((a) => ({ ...a, relatedPartyCount: 1 }));
-                        pass();
-                      }}
-                    />
-
-                    {/* Original TaxClaim CTA retained as comment.
-                    <a href={TAXCLAIM_URL} target="_blank" rel="noopener noreferrer">
-                      I would like a CPA to confirm. TaxClaim.co can help.
-                    </a>
-                    */}
-                  </div>
-                  <button
-                    onClick={() => setShowRelatedPartyNote(false)}
-                    style={{
-                      marginTop: "0.875rem",
-                      background: "none",
-                      border: "none",
-                      color: "var(--tf-muted)",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      padding: 0,
-                    }}
-                  >
-                    &#8592; Back
-                  </button>
-                </div>
-              )}
-
-              {!showPartyCount && !showRelatedPartyNote && (
-                <StepNav
-                  onBack={() => {
-                    setStep(5);
-                  }}
-                  onReset={resetAll}
-                />
-              )}
             </div>
           )}
         </div>
