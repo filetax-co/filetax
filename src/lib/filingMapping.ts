@@ -67,6 +67,10 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   // disclosed under "other amount" (line 21/35) until those lines are wired.
   platform_contribution: 'other',
   cost_sharing:          'other',
+  // Form 5472 has no digital-asset line. The amount is disclosed under "other
+  // amount" (line 21/35) so it is reported and the line 22/36 totals still
+  // foot, the same treatment the absent loan-guarantee lines already get.
+  digital_asset:         'other',
   insurance:             'insurance',
   loan_guarantee_fee:    'loan_guarantee',
   other:                 'other',

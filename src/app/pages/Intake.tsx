@@ -201,9 +201,23 @@ function getStepOrder(show1b: boolean): IntakeStep[] {
   return [1, 2, 3, 4, 5];
 }
 
-function getCategoryForTxType(txType: string): 1 | 2 | 3 | null {
+/**
+ * Risk tier for a transaction type against a particular counterparty.
+ *
+ * The tier is not a property of the type alone. A domestic disregarded entity
+ * and its sole owner are the same taxpayer: their dealings are not recognised
+ * for income tax and are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
+ * makes the LLC a corporation for section 6038A. So an owner loan is a
+ * bookkeeping entry, while the identical type against a non-owner related
+ * party is a real loan carrying interest and sourcing consequences. Tiering by
+ * type alone over-warns the common case and under-warns the dangerous one.
+ *
+ * `isOwner` is true for related party index 0, which is always the filer.
+ */
+function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null {
   const found = TX_TYPES.find((t) => t.value === txType);
-  return found ? found.category : null;
+  if (!found) return null;
+  return isOwner ? found.ownerCategory ?? found.category : found.category;
 }
 
 /**
@@ -729,7 +743,9 @@ export function Intake() {
     const i = stepOrder.indexOf(key);
     return i >= 0 ? `${i + 1}. ` : '';
   };
-  const txCategory = getCategoryForTxType(txType);
+  // Index 0 is always the filer, so a transaction against it is owner-to-DE.
+  const txCategory = getCategoryForTxType(txType, txRelatedPartyIdx === 0);
+  const txMeta = TX_TYPES.find((t) => t.value === txType);
   // Live money summary (reconciles with the generator's 1f/1h gross).
   const txSummary = summarizeTransactions(transactions);
 
@@ -2826,7 +2842,16 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>{editingTxIdx !== null ? 'Edit transaction' : 'Add a transaction'}</h3>
 
               <Field label="Who was this transaction with?" required style={{ marginBottom: '1rem' }}>
-                <select value={txRelatedPartyIdx} onChange={(e) => setTxRelatedPartyIdx(Number(e.target.value))}>
+                <select
+                  value={txRelatedPartyIdx}
+                  onChange={(e) => {
+                    setTxRelatedPartyIdx(Number(e.target.value));
+                    // The tier is resolved against the counterparty, so changing
+                    // it can move this transaction from tier 1 to tier 3. Drop
+                    // any acknowledgment given for the previous pairing.
+                    setCat3Acknowledged(false);
+                  }}
+                >
                   {allPartyLabels.map((label, i) => (
                     <option key={i} value={i}>{label}</option>
                   ))}
@@ -2999,9 +3024,16 @@ export function Intake() {
                       1 → routine, nothing extra needed (green)
                       2 → reportable but straightforward, we handle it (amber/blue)
                       3 → complex, CPA review recommended + acknowledgment (red) */}
-                {/* Categories 1 (routine) and 2 (standard reportable) show no
-                    banner — we only surface a note when the user needs a warning
-                    or must give an explicit acknowledgment (category 3). */}
+                {/* Tier 1 (routine) shows no banner. Tier 2 gets an advisory
+                    note with no gate. Tier 3 gets a warning AND blocks the add
+                    until acknowledged. The tier is resolved against the chosen
+                    counterparty, so the same type can sit in a different tier
+                    for the owner than for a non-owner related party. */}
+                {txType && txCategory === 2 && (
+                  <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
+                    <strong>Worth a second look.</strong> We can prepare this from your answers, but this type is one where the tax treatment depends on the details. If you are unsure how it should be described, a CPA or tax adviser can confirm it before you file.
+                  </div>
+                )}
                 {txType && txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
@@ -3009,6 +3041,27 @@ export function Intake() {
                       <input type="checkbox" checked={cat3Acknowledged} onChange={(e) => setCat3Acknowledged(e.target.checked)} id="cat3ack" />
                       <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand, proceed anyway</label>
                     </div>
+                  </div>
+                )}
+
+                {/* Negative definition. Choosing the wrong type produces a wrong
+                    return rather than an error, and the confusable pairs land in
+                    different Parts of the form, so say what does NOT count. */}
+                {txType && txMeta?.notThis && (
+                  <div
+                    style={{
+                      background: 'var(--tf-bg)',
+                      border: '1px solid var(--tf-border)',
+                      borderRadius: '0.5rem',
+                      padding: '0.75rem 0.875rem',
+                      marginBottom: '1rem',
+                      fontSize: '0.8125rem',
+                      color: 'var(--tf-muted)',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <strong style={{ color: 'var(--tf-text)' }}>Not this: </strong>
+                    {txMeta.notThis}
                   </div>
                 )}
 

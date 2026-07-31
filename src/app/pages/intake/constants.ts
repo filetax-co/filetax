@@ -86,17 +86,35 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
 //   amountLabel    — custom label for the amount field
 //   amountHint     — optional hint shown under amount
 //   amountOptional — true if amount can be omitted
+//   notThis        — plain-English NEGATIVE definition: what this is NOT.
+//                    Picking the wrong type produces a wrong return rather
+//                    than an error, and the pairs people actually confuse
+//                    (a capital contribution called a loan, a service fee
+//                    called a royalty) land in different Parts of the form.
+//                    Saying what does not count prevents more damage than
+//                    restating what does.
+//   ownerCategory  — tier to use when the counterparty IS the sole owner.
+//                    Transactions between a disregarded entity and its own
+//                    owner are not recognised for income tax purposes; they
+//                    are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
+//                    makes the LLC a corporation for section 6038A alone. So
+//                    an owner loan is a bookkeeping entry, while the same
+//                    type against a non-owner related party is a real loan
+//                    with interest and sourcing consequences. Falls back to
+//                    `category` when unset.
 
 export const TX_TYPES: {
   value: string;
   label: string;
   sentence: string;
   category: 1 | 2 | 3;
+  ownerCategory?: 1 | 2 | 3;
   part: 'IV' | 'V' | 'VI';
   showDirection: boolean;
   amountLabel?: string;
   amountHint?: string;
   amountOptional?: boolean;
+  notThis?: string;
 }[] = [
 
   // ── Part IV — Goods & property ─────────────────────────────────────────
@@ -167,6 +185,8 @@ export const TX_TYPES: {
     category: 2,
     part: 'IV',
     showDirection: true,
+    notThis:
+      'Paying for software the LLC simply uses, such as a subscription, is not a royalty. Nor is paying a contractor for their work. A royalty is payment for the right to use intellectual property that someone else owns.',
   },
   {
     value: 'interest',
@@ -183,20 +203,26 @@ export const TX_TYPES: {
     label: 'Loan to the LLC',
     sentence: '{party} lent money to the LLC — enter the year-end closing balance',
     category: 2,
+    ownerCategory: 1,
     part: 'IV',
     showDirection: false,
     amountLabel: 'Closing balance (USD)',
     amountHint: 'The outstanding loan balance at the end of the tax year',
+    notThis:
+      'Putting your own cash into the LLC, or taking profit out, is not a loan. A loan needs an agreed repayment date and an interest rate. If there is no such agreement, use "Capital contribution by owner" or "Distribution to owner" instead.',
   },
   {
     value: 'loan_from_llc',
     label: 'Loan from the LLC',
     sentence: 'The LLC lent money to {party} — enter the year-end closing balance',
     category: 2,
+    ownerCategory: 1,
     part: 'IV',
     showDirection: false,
     amountLabel: 'Closing balance (USD)',
     amountHint: 'The outstanding loan balance at the end of the tax year',
+    notThis:
+      'Taking profit out of the LLC is not a loan. A loan needs an agreed repayment date and an interest rate. If there is no such agreement, use "Distribution to owner" instead.',
   },
 
   // ── Part IV — Complex / CPA-level ─────────────────────────────────────
@@ -207,6 +233,8 @@ export const TX_TYPES: {
     category: 3,
     part: 'IV',
     showDirection: true,
+    notThis:
+      'Buying or subscribing to software the LLC uses is not an IP transfer. This is for handing over, or licensing out, IP the LLC or the related party owns.',
   },
   {
     value: 'platform_contribution',
@@ -239,6 +267,17 @@ export const TX_TYPES: {
     category: 3,
     part: 'IV',
     showDirection: true,
+  },
+  {
+    value: 'digital_asset',
+    label: 'Cryptocurrency or other digital assets',
+    sentence: 'The LLC paid or received cryptocurrency, NFTs, or other digital tokens with {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: true,
+    amountHint: 'Use the US dollar value at the time of each transaction, not the value today.',
+    notThis:
+      'Holding crypto in a wallet, with nothing moving between you and the LLC during the year, is not reportable here.',
   },
   {
     value: 'other',
@@ -514,6 +553,13 @@ export const TX_CATEGORIES: {
     description: 'Money lent or borrowed between the LLC and its related parties',
     parts: ['IV'],
     values: ['loan_to_llc', 'loan_from_llc'],
+  },
+  {
+    key: 'digital',
+    label: 'Cryptocurrency & digital assets',
+    description: 'Crypto, NFTs, or other tokens moving between the LLC and a related party',
+    parts: ['IV'],
+    values: ['digital_asset'],
   },
   {
     key: 'complex',
