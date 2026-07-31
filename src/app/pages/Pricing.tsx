@@ -66,10 +66,10 @@ const cards: PricingCard[] = [
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
-    title: "Add-On: IRS Fax Transmission",
+    title: "Add-On: IRS Fax Transmission (at launch)",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
-    description: "You sign the completed forms. We fax them to the IRS for you, so you never need a printer. You receive a transmission receipt recording the date, time and page count, stored against your filing permanently.",
+    description: "Not yet available. At launch: you sign the completed forms, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
     note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
@@ -133,6 +133,10 @@ export function Pricing() {
         price: card.price.replace(/[^0-9.]/g, ""),
         priceCurrency: "USD",
         url: "https://filetax.co/pricing",
+        // Nothing is purchasable yet — every CTA on this page routes to the
+        // waitlist. Advertising these as InStock would be false, so the prices
+        // are published as pre-order until the product opens.
+        availability: "https://schema.org/PreOrder",
       })),
   });
 

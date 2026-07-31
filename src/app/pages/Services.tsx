@@ -173,13 +173,16 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Transmission</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            For ${PRICE_FAX} we fax your completed package to the IRS, so you do not need a printer or a post office. You sign the completed forms and we transmit them on your behalf. You receive a transmission receipt recording the date, time and page count, stored against your filing and re-downloadable at any time. This is useful if you are filing close to a deadline or responding to a penalty notice.
+            <strong>Planned for launch, not yet available.</strong> Fax transmission is not running today, and no filing is currently sent to the IRS on your behalf. Join the waitlist and we will tell you when it opens.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that. If a transmission fails we retry automatically, and if every attempt fails we refund the ${PRICE_FAX} without you having to ask.
+            The intention is that for ${PRICE_FAX} we fax your completed package to the IRS, so you do not need a printer or a post office. You would sign the completed forms and we would transmit them on your behalf, then store a transmission receipt recording the date, time and page count against your filing. That matters most if you are filing close to a deadline or responding to a penalty notice.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            One ${PRICE_FAX} fee covers the whole job, however many years you are filing. This service is an add-on to Form 5472 filings only. It is not available for Form 8832 or Form 2553 filings, which must be mailed.
+            One point is worth stating plainly now, because the rest of this market blurs it: a transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.
+          </p>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
+            When it launches, one ${PRICE_FAX} fee is intended to cover the whole job, however many years you are filing. It will be an add-on to Form 5472 filings only, and not available for Form 8832 or Form 2553, which must be mailed.
           </p>
           {/* original CTA: <Link to="/portal">Add to My Filing</Link> - revert when services go live */}
           <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
