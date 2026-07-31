@@ -153,6 +153,13 @@ export function Footer() {
             >
               Privacy Policy
             </Link>
+            <span aria-hidden="true">&middot;</span>
+            <Link
+              to="/refunds"
+              style={{ color: "var(--tf-muted)", textDecoration: "none" }}
+            >
+              Refund Policy
+            </Link>
           </div>
         </div>
       </div>

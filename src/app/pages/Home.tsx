@@ -337,9 +337,9 @@ export function Home() {
                   flexDirection: "column",
                 }}
               >
-                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
+                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission (at launch)</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign the forms. We fax them to the IRS, so you never need a printer. Transmission receipt included.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: you sign the forms, we fax them to the IRS so you never need a printer, and you get a transmission receipt.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
                   to="/waitlist?service=irs-fax"

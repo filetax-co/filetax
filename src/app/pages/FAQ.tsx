@@ -5,11 +5,11 @@ import { useJsonLd } from "../hooks/useJsonLd";
 const faqs = [
   {
     q: "What is Form 5472 and who needs to file it?",
-    a: "Form 5472 is an IRS information return required for any U.S. corporation or foreign-owned disregarded entity that had reportable transactions with a foreign related party. Any single-member LLC owned 25% or more by a non-U.S. person must file Form 5472 annually, even if the LLC had no revenue. The act of forming the LLC and making a capital contribution is itself a reportable transaction.",
+    a: "Form 5472 is an IRS information return required for any U.S. corporation or foreign-owned disregarded entity that had reportable transactions with a foreign related party. A single-member LLC owned 25% or more by a non-U.S. person must file it for any year in which such a transaction occurred, whether or not the LLC had any revenue. In practice that is most years: the act of forming the LLC and making a capital contribution is itself a reportable transaction, and so is money moving between you and the LLC in either direction.",
   },
   {
     q: "Does a dormant LLC with no revenue need to file Form 5472?",
-    a: "Yes. The filing requirement is based on ownership and the existence of reportable transactions, not on revenue. The initial capital contribution used to form the LLC is considered a reportable transaction. A dormant LLC with a foreign owner and no other activity still needs to file Form 5472 and a Pro Forma 1120 for every year it is open.",
+    a: "The requirement is triggered by reportable transactions, not by revenue, so strictly speaking a year with no reportable transactions at all does not require the form. In practice that year is rarer than it sounds, and we recommend filing anyway. Three reasons. First, if you provide management or other services to the LLC, or charge it for anything, that is reportable. Second, state annual fees and registered agent charges paid by the owner on the LLC's behalf are themselves reportable transactions. Third, the downside is lopsided: filing a form you did not strictly need costs you very little, while not filing one you did need means arguing your way out of an automatic $25,000 penalty after the IRS has already sent a notice. The formation year is not in doubt either way, since the initial capital contribution is always reportable.",
   },
   {
     q: "What counts as a reportable transaction for Form 5472?",
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "What is the filing deadline for Form 5472?",
-    a: "The standard deadline for Form 5472 (with the Pro Forma 1120) is April 15 of the year following the tax year being reported. If April 15 falls on a weekend or holiday, the deadline shifts to the next business day. If the April 15 deadline has already passed, filing as soon as possible with a Reasonable Cause Letter gives you the best chance of penalty abatement. A 6-month extension is available with Form 7004 if filed before the original deadline.",
+    a: "For a calendar-year LLC, which is almost all of them, the deadline is April 15 of the year following the tax year being reported. If your LLC uses a fiscal year instead, the deadline is the 15th day of the 4th month after your tax year ends. If the date falls on a weekend or holiday, it shifts to the next business day. If your deadline has already passed, filing as soon as possible with a Reasonable Cause Letter gives you the best chance of penalty abatement. A 6-month extension is available with Form 7004 if filed before the original deadline.",
   },
   {
     q: "Can I get an extension for Form 5472?",

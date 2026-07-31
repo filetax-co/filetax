@@ -34,6 +34,7 @@ const STATIC_ROUTES = [
   '/waitlist',
   '/terms',
   '/privacy',
+  '/refunds',
 ];
 
 const GROQ =

@@ -96,7 +96,7 @@ export function Terms() {
 
           <h2 style={styles.h2}>4. Fees, Payment, and Refunds</h2>
           <p style={styles.p}>
-            Fees for the Service are displayed at the point of purchase. Unless otherwise stated, fees are non-refundable once we have begun work on your filing. If you cancel before we have started work, we will issue a refund as described in our refund policy or at our reasonable discretion. All fees are exclusive of taxes you may owe in your own jurisdiction.
+            Fees for the Service are displayed at the point of purchase. You are charged when your forms are generated, not before, so a draft filing you never complete costs you nothing. Once forms have been generated the fee is non-refundable, subject to the exceptions in our <Link to="/refunds" style={{ color: "var(--tf-accent)" }}>Refund Policy</Link>, which covers our own errors, failed fax transmissions and duplicate charges. All fees are exclusive of taxes you may owe in your own jurisdiction.
           </p>
 
           <h2 style={styles.h2}>5. User Responsibilities</h2>
