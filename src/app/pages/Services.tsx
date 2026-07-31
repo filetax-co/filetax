@@ -156,10 +156,13 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            If you need to change how the IRS classifies your LLC for tax purposes, this service covers both Form 8832 (entity classification election) and Form 2553 (S-Corporation election).
+            If you need to change how the IRS classifies your LLC for tax purposes, this service prepares Form 8832, the entity classification election.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            Form 8832 is used when you want to elect C-Corporation treatment instead of the default disregarded entity status. Form 2553 is used when you want S-Corporation status. Both are standalone filings and must be mailed. The IRS fax add-on is not available for these forms, which must be mailed.
+            Form 8832 is used when you want the LLC taxed as a C-Corporation instead of the default disregarded entity status. It is a standalone filing and must be mailed. The IRS fax add-on is not available for it.
+          </p>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", lineHeight: 1.7, marginBottom: "1rem", fontWeight: 400 }}>
+            We do not prepare Form 2553, the S-Corporation election, because it is not available to the owners this service is built for. An S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot make the election. If your circumstances have changed, for example you are now a U.S. resident or a U.S. person is joining the ownership, speak to a CPA about whether an S election is open to you.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time filing. No ongoing fees.</p>
           {/* original CTA: <Link to="/portal">Start Filing</Link> - revert when services go live */}
@@ -182,7 +185,7 @@ export function Services() {
             One point is worth stating plainly now, because the rest of this market blurs it: a transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            When it launches, one ${PRICE_FAX} fee is intended to cover the whole job, however many years you are filing. It will be an add-on to Form 5472 filings only, and not available for Form 8832 or Form 2553, which must be mailed.
+            When it launches, one ${PRICE_FAX} fee is intended to cover the whole job, however many years you are filing. It will be an add-on to Form 5472 filings only, and not available for Form 8832, which must be mailed.
           </p>
           {/* original CTA: <Link to="/portal">Add to My Filing</Link> - revert when services go live */}
           <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>

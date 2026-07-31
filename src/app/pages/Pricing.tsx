@@ -78,7 +78,7 @@ const cards: PricingCard[] = [
     title: "LLC Tax Classification Change",
     price: "$50",
     priceNote: "per filing",
-    description: "Standalone. Form 8832 or Form 2553. Print-ready PDF. Must be mailed. Fax add-on not available.",
+    description: "Standalone Form 8832, electing to be taxed as a C-Corporation instead of the default disregarded entity. Print-ready PDF. Must be mailed. Fax add-on not available.",
     microcopy: "One-time filing. No ongoing fees.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"

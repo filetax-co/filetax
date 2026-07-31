@@ -304,7 +304,7 @@ export function Home() {
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832 or Form 2553. Print-ready PDF, mailed by you.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Start Filing</Link> */}
                 <Link
                   to="/waitlist?service=llc-classification"
