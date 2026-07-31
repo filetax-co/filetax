@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     q: "What is Form 8832 and when do I need it?",
-    a: "Form 8832 is an entity classification election that changes how the IRS treats your LLC for tax purposes. By default, a single-member LLC is treated as a disregarded entity. If you want to be taxed as a C-Corporation, you file Form 8832 to elect that status. Form 2553 is used specifically to elect S-Corporation status. Both are separate from the Form 5472 filing requirement.",
+    a: "Form 8832 is an entity classification election that changes how the IRS treats your LLC for tax purposes. By default, a single-member LLC is treated as a disregarded entity. If you want to be taxed as a C-Corporation instead, you file Form 8832 to elect that status. It is separate from the Form 5472 filing requirement, and electing C-Corporation treatment does not remove that requirement. People often ask about Form 2553, the S-Corporation election, at the same time. That one is not available here: an S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot elect S status at all.",
   },
   {
     q: "Is my transaction data safe?",
