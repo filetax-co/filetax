@@ -3,6 +3,7 @@ import { IRSClock } from "../components/IRSClock";
 import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
 // TEMPORARY: Services are not yet live. All pricing-card CTAs route
@@ -30,7 +31,7 @@ interface PricingCard {
 const cards: PricingCard[] = [
   {
     title: "Form 5472 + Pro Forma 1120: Past Year",
-    price: "$150",
+    price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",
     description: "Any prior unfiled year. Same output as current year. Pair with the CPA-Authored Reasonable Cause Letter for the strongest abatement case.",
     microcopy: "One-time filing. No ongoing fees.",
@@ -41,35 +42,35 @@ const cards: PricingCard[] = [
   },
   {
     title: "Form 5472 + Pro Forma 1120: Current Year",
-    price: "$150",
+    price: `$${PRICE_PER_YEAR}`,
     description: "One filing year. Print-ready PDF. Ready to mail or fax.",
-    microcopy: "One-time filing. No ongoing fees.",
+    microcopy: `One-time filing. No subscription. Your next two filings are guaranteed at $${PRICE_PER_YEAR}.`,
     tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
-    price: "+$200",
-    priceNote: "per year",
-    description: "Added to any past-year filing. Total with past-year filing: $350 per year. Written by a licensed CPA, auto-populated with your filing details.",
+    price: `+$${PRICE_RCL}`,
+    priceNote: "one letter, covers every year",
+    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty, auto-populated with your filing details. Charged once, however many years you are catching up on — never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },
   {
-    title: "Add-On: Additional Form 5472",
-    price: "+$75",
-    priceNote: "per form",
-    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is needed for each.",
-    note: "Volume discount: $50/form from the 4th form filed.",
+    title: "Add-On: Additional Related Party (Form 5472)",
+    price: `+$${PRICE_ADDITIONAL_PARTY}`,
+    priceNote: "per related party, per year",
+    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each party, for each year filed, with the totals reconciled on lines 1f and 1h.",
     cta: "Join the Waitlist",
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
     title: "Add-On: IRS Fax Transmission",
-    price: "+$30",
-    description: "You sign the completed forms. We transmit them by fax to the IRS. Digital transmission receipt for your records.",
-    note: "Not available for Form 8832.",
+    price: `+$${PRICE_FAX}`,
+    priceNote: "one fee, however many years",
+    description: "You sign the completed forms. We fax them to the IRS for you, so you never need a printer. You receive a transmission receipt recording the date, time and page count, stored against your filing permanently.",
+    note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },
@@ -84,8 +85,9 @@ const cards: PricingCard[] = [
   },
   {
     title: "Multi-Year Past Filing Package",
-    price: "Custom",
-    description: "3 or more unfiled years. Contact via portal. CPA-Authored Reasonable Cause Letter available per year.",
+    price: `$${PRICE_PER_YEAR}`,
+    priceNote: `per year + one $${PRICE_RCL} letter`,
+    description: `Catch up on several unfiled years at once, back to 2019. $${PRICE_PER_YEAR} per year, plus a single $${PRICE_RCL} reasonable cause letter covering all of them.`,
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },
@@ -104,12 +106,12 @@ export function Pricing() {
   usePageMeta({
     title: "Pricing | FileTax.co",
     description:
-      "Per-filing pricing. Form 5472 + Pro Forma 1120: $150. Past year with CPA-Authored Reasonable Cause Letter: $350 per year. No subscription. No ongoing fees.",
+      `Per-filing pricing. Form 5472 + Pro Forma 1120: $${PRICE_PER_YEAR}. One CPA-authored reasonable cause letter covers every late year for $${PRICE_RCL}, never per year. No subscription. No ongoing fees.`,
     canonical: "https://filetax.co/pricing",
   });
 
   // Service + offer catalog, derived from the same `cards` array the page
-  // renders. "Custom" is skipped because it has no numeric price.
+  // renders. Any card without a numeric price is skipped.
   useJsonLd("service", {
     "@context": "https://schema.org",
     "@type": "Service",

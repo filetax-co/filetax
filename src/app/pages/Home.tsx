@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from "../../lib/pricing";
 
 export function Home() {
   usePageMeta({
@@ -229,9 +230,9 @@ export function Home() {
                 Recommended for Late Filers
               </span>
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
-              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from $350</p>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from ${PRICE_PER_YEAR + PRICE_RCL}</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Catch up on a missed year. Filed correctly the first time.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>$150 filing + $200 reasonable cause letter per year. One-time cost.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>${PRICE_PER_YEAR} per year + one ${PRICE_RCL} reasonable cause letter covering every year. One-time cost.</p>
               <Link
                 to="/past-filings"
                 style={{
@@ -265,9 +266,9 @@ export function Home() {
               }}
             >
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
-              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>$150</p>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>${PRICE_PER_YEAR}</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Current-year filing. Two forms, one price.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>For LLCs filing on time or within the October 15 extension window.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>For LLCs filing on time or within the October 15 extension window. Your next two filings are guaranteed at ${PRICE_PER_YEAR}.</p>
               <Link
                 to="/check"
                 style={{
@@ -337,8 +338,8 @@ export function Home() {
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
-                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+$30 add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign the forms. We transmit them by fax to the IRS. Receipt for your records.</p>
+                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign the forms. We fax them to the IRS, so you never need a printer. Transmission receipt included.</p>
                 {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
                   to="/waitlist?service=irs-fax"
