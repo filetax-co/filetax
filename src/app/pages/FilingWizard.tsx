@@ -100,6 +100,23 @@ export default function FilingWizard() {
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
       const pkg = await generateFilingPackage(fi, txns ?? []);
 
+      // The IRS forms are rendered with WinAnsi-encoded fonts. Anything outside
+      // that set (Cyrillic, Arabic, CJK, Devanagari, …) cannot be drawn and is
+      // dropped, which would file a return with a name or address missing
+      // characters. Refuse to deliver such a package and say exactly which
+      // characters are the problem, so the filer can enter the romanized legal
+      // name the IRS expects on these forms.
+      if (pkg.unsupportedText?.length) {
+        const detail = pkg.unsupportedText
+          .map((u) => `"${u.value}" (${u.characters.join(' ')})`)
+          .join('; ');
+        throw new Error(
+          'These forms can only print Latin characters, so this filing cannot be '
+          + `generated as entered: ${detail}. Please edit the filing and enter the `
+          + 'romanized spelling of the name(s) as they should appear on the IRS forms.',
+        );
+      }
+
       // The button says "Generate & preview", so open the overlay straight away;
       // the package card stays on the page once it is dismissed.
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });

@@ -1,6 +1,6 @@
 // src/app/pages/Intake.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions } from '../../lib/filingMapping';
@@ -26,6 +26,7 @@ import {
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
+import { PRICE_RCL } from '../../lib/pricing';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -200,9 +201,23 @@ function getStepOrder(show1b: boolean): IntakeStep[] {
   return [1, 2, 3, 4, 5];
 }
 
-function getCategoryForTxType(txType: string): 1 | 2 | 3 | null {
+/**
+ * Risk tier for a transaction type against a particular counterparty.
+ *
+ * The tier is not a property of the type alone. A domestic disregarded entity
+ * and its sole owner are the same taxpayer: their dealings are not recognised
+ * for income tax and are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
+ * makes the LLC a corporation for section 6038A. So an owner loan is a
+ * bookkeeping entry, while the identical type against a non-owner related
+ * party is a real loan carrying interest and sourcing consequences. Tiering by
+ * type alone over-warns the common case and under-warns the dangerous one.
+ *
+ * `isOwner` is true for related party index 0, which is always the filer.
+ */
+function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null {
   const found = TX_TYPES.find((t) => t.value === txType);
-  return found ? found.category : null;
+  if (!found) return null;
+  return isOwner ? found.ownerCategory ?? found.category : found.category;
 }
 
 /**
@@ -605,6 +620,13 @@ export function Intake() {
   // can no longer pick a year that conflicts with the filing year.
   const [fiscalEndMonth, setFiscalEndMonth] = useState<number | ''>('');
 
+  // Eligibility re-confirmation (Step 1). The checker is a first-visit screen:
+  // a returning filer goes Dashboard -> startFiling -> here and never sees it
+  // again. But Form 5472 is an annual obligation, and what the checker screens
+  // for changes between years. Asked once per filing, not six questions again.
+  const [eligibilityConfirmed, setEligibilityConfirmed] = useState(false);
+  const [hasUsActivity, setHasUsActivity] = useState<boolean | null>(null);
+
   // Step 1b
   const [extensionFiled, setExtensionFiled] = useState<boolean | null>(null);
   const [includeReasonableCause, setIncludeReasonableCause] = useState(false);
@@ -728,7 +750,9 @@ export function Intake() {
     const i = stepOrder.indexOf(key);
     return i >= 0 ? `${i + 1}. ` : '';
   };
-  const txCategory = getCategoryForTxType(txType);
+  // Index 0 is always the filer, so a transaction against it is owner-to-DE.
+  const txCategory = getCategoryForTxType(txType, txRelatedPartyIdx === 0);
+  const txMeta = TX_TYPES.find((t) => t.value === txType);
   // Live money summary (reconciles with the generator's 1f/1h gross).
   const txSummary = summarizeTransactions(transactions);
 
@@ -865,6 +889,8 @@ export function Intake() {
         setJobYears([]);
       }
       setFinalReturn((f as any).final_return ?? false);
+      setEligibilityConfirmed((f as any).eligibility_confirmed ?? false);
+      setHasUsActivity((f as any).has_us_activity ?? null);
       setIsFiscalYear((f as any).is_fiscal_year ?? false);
       const storedEnd = (f as any).tax_period_end as string | null | undefined;
       setFiscalEndMonth(storedEnd ? Number(storedEnd.split('-')[1]) : '');
@@ -981,6 +1007,9 @@ export function Intake() {
     'is_fiscal_year', 'tax_period_begin', 'tax_period_end',
     'extension_filed', 'include_rcl', 'include_reasonable_cause',
     'reasonable_cause_reasons',
+    // Attested per tax year: circumstances change between years, which is the
+    // whole reason the question is asked again rather than carried forward.
+    'eligibility_confirmed', 'has_us_activity',
   ]);
 
   /** Strip year-specific fields so only shared company/owner data propagates. */
@@ -998,6 +1027,10 @@ export function Intake() {
       ein: ein.trim() || null,
       state_of_formation: stateOfFormation.trim() || null,
       tax_year: taxYear,
+      // Attested per tax year, so YEAR_SPECIFIC_FIELDS keeps these off sibling
+      // year rows in a multi-year job: each year is confirmed on its own facts.
+      eligibility_confirmed: eligibilityConfirmed,
+      has_us_activity: hasUsActivity,
       total_assets: totalAssets ? Number(totalAssets) : null,
       // Wizard columns (kept for resume/load compatibility)
       entity_date_of_incorporation: entityDOI.trim() || null,
@@ -1133,6 +1166,12 @@ export function Intake() {
 
   function validateStep1(): string[] {
     const errs: string[] = [];
+    if (!eligibilityConfirmed) {
+      errs.push('Please confirm the statements about your LLC before continuing. If any of them is no longer true, this flow is not the right one for this year.');
+    }
+    if (hasUsActivity === null) {
+      errs.push('Please answer whether the LLC had U.S. real estate or work performed inside the U.S. this year.');
+    }
     if (!llcName.trim()) errs.push('Enter your LLC or corporation name.');
     if (!ein.trim()) errs.push("Enter your LLC's EIN.");
     if (ein.trim() && !isValidEIN(ein)) errs.push('Enter a valid EIN in XX-XXXXXXX format.');
@@ -2159,6 +2198,116 @@ export function Intake() {
               </div>
             )}
 
+            {/* Eligibility re-confirmation.
+                The checker is a first-visit screen and Form 5472 is an annual
+                obligation, so a year-two filer never sees it again. What it
+                screens for changes between years: a second member joins, the
+                owner meets the Substantial Presence Test, an 8832/2553 gets
+                filed, U.S. activity starts. Asked once per filing rather than
+                re-running all six questions, which would cost the user twice
+                for the same answers. */}
+            <div
+              style={{
+                border: '1px solid var(--tf-border)',
+                borderRadius: '0.625rem',
+                padding: '1.125rem 1.25rem',
+                marginBottom: '1.5rem',
+                background: 'var(--tf-bg)',
+              }}
+            >
+              <h3 style={{ ...sectionLabelStyle, marginTop: 0 }}>Before you start this year</h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--tf-muted)', lineHeight: 1.65, marginBottom: '0.75rem' }}>
+                This flow prepares Form 5472 with a pro forma 1120 for a U.S. LLC that, for this
+                tax year:
+              </p>
+              <ul
+                style={{
+                  margin: '0 0 0.875rem 0',
+                  paddingLeft: '1.125rem',
+                  fontSize: '0.875rem',
+                  color: 'var(--tf-text)',
+                  lineHeight: 1.7,
+                }}
+              >
+                <li>has one owner only</li>
+                <li>is owned by a non-U.S. individual, meaning no U.S. citizenship, no Green Card, and the Substantial Presence Test not met</li>
+                <li>has no Form 8832 or Form 2553 election on file</li>
+              </ul>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.625rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.6,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={eligibilityConfirmed}
+                  onChange={(e) => setEligibilityConfirmed(e.target.checked)}
+                  disabled={isPaidLocked}
+                  style={{ marginTop: '3px', flexShrink: 0 }}
+                />
+                <span>All three still describe my LLC for this tax year.</span>
+              </label>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.625rem', lineHeight: 1.6 }}>
+                Not sure about any of them?{' '}
+                <Link to="/check" style={{ color: 'var(--tf-accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+                  Run the eligibility check
+                </Link>
+                . It takes about a minute and nothing you enter there is saved.
+              </p>
+
+              <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem' }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.65, marginBottom: '0.25rem' }}>
+                  During this tax year, did the LLC own or rent out U.S. real estate, or was any
+                  work performed by anyone physically inside the U.S.?
+                </p>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', lineHeight: 1.6, marginBottom: '0.625rem' }}>
+                  Services count as U.S.-source based on where the work was done, not where the
+                  customer is. Having U.S. customers, or a U.S. bank account, does not by itself
+                  make income U.S.-source.
+                </p>
+                <div style={{ display: 'flex', gap: '0.625rem' }}>
+                  {[
+                    { val: false, label: 'No' },
+                    { val: true, label: 'Yes' },
+                  ].map((o) => (
+                    <button
+                      key={String(o.val)}
+                      type="button"
+                      onClick={() => setHasUsActivity(o.val)}
+                      disabled={isPaidLocked}
+                      style={{
+                        padding: '0.5rem 1.5rem',
+                        borderRadius: '0.5rem',
+                        minHeight: '44px',
+                        cursor: isPaidLocked ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '0.875rem',
+                        border: hasUsActivity === o.val ? '1.5px solid var(--tf-accent)' : '1px solid var(--tf-border)',
+                        background: hasUsActivity === o.val ? 'var(--tf-accent)' : 'var(--tf-surface)',
+                        color: hasUsActivity === o.val ? '#fff' : 'var(--tf-text)',
+                      }}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {hasUsActivity === true && (
+                  <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
+                    <strong>This may mean a second filing that we do not prepare.</strong> Income
+                    the IRS treats as U.S.-source can make you personally liable to file Form
+                    1040-NR, and a return is required even when no tax is due. You can still
+                    prepare your Form 5472 here, because that obligation is separate and still
+                    applies. Please confirm your position with a CPA or tax adviser.
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Single-year multi-year nudge. Two situations lead to offering a
                 multi-year catch-up:
                   A) Filing the LATEST filable year, but the LLC was incorporated
@@ -2455,7 +2604,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Reasonable cause letter</h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
-                A reasonable cause letter can help reduce or waive the $25,000 penalty for late filing. It's a +$200 add-on that we draft for you alongside your forms.
+                A reasonable cause letter can help reduce or waive the $25,000 penalty for late filing. It's a +${PRICE_RCL} add-on that we draft for you alongside your forms, charged once however many years you are filing.
               </p>
               <label className={`select-card${includeReasonableCause ? ' is-selected' : ''}`} style={{ marginBottom: '1.25rem' }}>
                 <input
@@ -2464,7 +2613,7 @@ export function Intake() {
                   onChange={(e) => { setIncludeReasonableCause(e.target.checked); if (!e.target.checked) setReasonableCauseReasons([]); }}
                 />
                 <div>
-                  <div className="select-card-label">Yes, include a reasonable cause letter (+$200)</div>
+                  <div className="select-card-label">Yes, include a reasonable cause letter (+${PRICE_RCL})</div>
                   <div className="select-card-hint">We will draft a personalized letter to the IRS on your behalf.</div>
                 </div>
               </label>
@@ -2825,7 +2974,16 @@ export function Intake() {
               <h3 style={sectionLabelStyle}>{editingTxIdx !== null ? 'Edit transaction' : 'Add a transaction'}</h3>
 
               <Field label="Who was this transaction with?" required style={{ marginBottom: '1rem' }}>
-                <select value={txRelatedPartyIdx} onChange={(e) => setTxRelatedPartyIdx(Number(e.target.value))}>
+                <select
+                  value={txRelatedPartyIdx}
+                  onChange={(e) => {
+                    setTxRelatedPartyIdx(Number(e.target.value));
+                    // The tier is resolved against the counterparty, so changing
+                    // it can move this transaction from tier 1 to tier 3. Drop
+                    // any acknowledgment given for the previous pairing.
+                    setCat3Acknowledged(false);
+                  }}
+                >
                   {allPartyLabels.map((label, i) => (
                     <option key={i} value={i}>{label}</option>
                   ))}
@@ -2998,9 +3156,16 @@ export function Intake() {
                       1 → routine, nothing extra needed (green)
                       2 → reportable but straightforward, we handle it (amber/blue)
                       3 → complex, CPA review recommended + acknowledgment (red) */}
-                {/* Categories 1 (routine) and 2 (standard reportable) show no
-                    banner — we only surface a note when the user needs a warning
-                    or must give an explicit acknowledgment (category 3). */}
+                {/* Tier 1 (routine) shows no banner. Tier 2 gets an advisory
+                    note with no gate. Tier 3 gets a warning AND blocks the add
+                    until acknowledged. The tier is resolved against the chosen
+                    counterparty, so the same type can sit in a different tier
+                    for the owner than for a non-owner related party. */}
+                {txType && txCategory === 2 && (
+                  <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
+                    <strong>Worth a second look.</strong> We can prepare this from your answers, but this type is one where the tax treatment depends on the details. If you are unsure how it should be described, a CPA or tax adviser can confirm it before you file.
+                  </div>
+                )}
                 {txType && txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
@@ -3008,6 +3173,27 @@ export function Intake() {
                       <input type="checkbox" checked={cat3Acknowledged} onChange={(e) => setCat3Acknowledged(e.target.checked)} id="cat3ack" />
                       <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand, proceed anyway</label>
                     </div>
+                  </div>
+                )}
+
+                {/* Negative definition. Choosing the wrong type produces a wrong
+                    return rather than an error, and the confusable pairs land in
+                    different Parts of the form, so say what does NOT count. */}
+                {txType && txMeta?.notThis && (
+                  <div
+                    style={{
+                      background: 'var(--tf-bg)',
+                      border: '1px solid var(--tf-border)',
+                      borderRadius: '0.5rem',
+                      padding: '0.75rem 0.875rem',
+                      marginBottom: '1rem',
+                      fontSize: '0.8125rem',
+                      color: 'var(--tf-muted)',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <strong style={{ color: 'var(--tf-text)' }}>Not this: </strong>
+                    {txMeta.notThis}
                   </div>
                 )}
 
@@ -3195,7 +3381,7 @@ export function Intake() {
                       : extensionFiled ? 'Yes' : 'No'
                   }
                 />
-                <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? 'Yes (+$200)' : 'No'} />
+                <SummaryRow label="Reasonable cause letter" value={includeReasonableCause ? `Yes (+$${PRICE_RCL})` : 'No'} />
               </div>
                 {includeReasonableCause && reasonableCauseReasons.length > 0 && (
                   <div style={{ marginTop: '0.75rem' }}>

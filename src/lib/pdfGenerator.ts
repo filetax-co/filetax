@@ -91,12 +91,68 @@ const loadPdf = async (url: string): Promise<PDFDocument> => {
 // long values no longer crowd or clip when printed on the actual forms.
 const FORM_FIELD_FONT_SIZE = 8;
 
+// ─── character encoding guard ────────────────────────────────────────────────
+//
+// The IRS templates and every page we draw use the standard PDF fonts, which
+// are WinAnsi-encoded. Handing pdf-lib a character outside that set throws
+// (`WinAnsi cannot encode "В" (0x0412)`) — from drawText immediately, and from
+// save() for form fields, whose appearance is generated lazily. Unguarded,
+// that surfaced as an unhandled exception and NO package at all: a filer whose
+// legal name is in Cyrillic, Greek, Arabic, Devanagari or any CJK script could
+// not produce a filing, and the failure said nothing useful.
+//
+// Everything entered is therefore routed through toFormText():
+//   • Unicode-normalized to NFC, so a decomposed accent ("e" + U+0301) becomes
+//     the single WinAnsi-encodable "é" instead of failing. This alone rescues
+//     most Latin-script names.
+//   • Anything still unencodable is recorded, and the character is dropped
+//     rather than thrown on, so generation always completes.
+//
+// A dropped character must never silently reach a filed return, so the names
+// are collected and generateFilingPackage reports them (see unsupportedText).
+// Full non-Latin support requires embedding a Unicode font via @pdf-lib/fontkit;
+// until then intake should ask for the romanized legal name, which is what the
+// IRS expects on these forms anyway.
+
+/** Code points WinAnsiEncoding can represent, beyond printable ASCII. */
+const WINANSI_EXTRA = new Set(
+  ('€‚ƒ„…†‡ˆ‰Š‹ŒŽ'
+    + '‘’“”•–—˜™š›œžŸ')
+    .split(''),
+);
+const isFormSafeChar = (ch: string): boolean => {
+  const c = ch.codePointAt(0) ?? 0;
+  if (c >= 0x20 && c <= 0x7e) return true;          // printable ASCII
+  if (c >= 0xa0 && c <= 0xff) return true;          // Latin-1 supplement
+  return WINANSI_EXTRA.has(ch);
+};
+
+/** Characters this filing could not represent, keyed by the value they came from. */
+export interface UnsupportedText { value: string; characters: string[] }
+let unsupportedSink: UnsupportedText[] | null = null;
+
+/** Normalize to NFC and strip anything the PDF fonts cannot encode. */
+export const toFormText = (value: string | null | undefined): string => {
+  if (value == null) return '';
+  const nfc = String(value).normalize('NFC');
+  let bad: string[] | null = null;
+  let out = '';
+  for (const ch of nfc) {
+    if (isFormSafeChar(ch)) out += ch;
+    else (bad ??= []).push(ch);
+  }
+  if (bad && unsupportedSink) {
+    unsupportedSink.push({ value: String(value), characters: [...new Set(bad)] });
+  }
+  return out;
+};
+
 const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
   if (!fieldName) return;
   try {
     const field = doc.getForm().getField(fieldName);
     if (field instanceof PDFTextField) {
-      field.setText(value);
+      field.setText(toFormText(value));
       // Force a fixed size instead of the template's auto-size (0) so text is
       // the same size across every field and every page.
       field.setFontSize(FORM_FIELD_FONT_SIZE);
@@ -505,7 +561,9 @@ const drawWrapped = (
   const color  = opts.color    ?? rgb(0, 0, 0);
   const maxW   = opts.maxWidth ?? COL_W;
   const lineH  = size * 1.45;
-  const words  = text.split(' ');
+  // widthOfTextAtSize throws on an unencodable character just as drawText does,
+  // so sanitize before measuring, not just before drawing.
+  const words  = toFormText(text).split(' ');
   let   line   = '';
   let   drawY  = y;
 
@@ -680,7 +738,7 @@ export const buildPartVStatement = async (
     for (const [fieldLabel, fieldValue] of fields) {
       if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
       const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-      page.drawText(fieldLabel, { x: MARGIN + 12, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+      page.drawText(toFormText(fieldLabel), { x: MARGIN + 12, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
       cursor.y = drawWrapped(page, fieldValue, MARGIN + 12 + labelW, cursor.y,
         { size: FS_BODY, maxWidth: COL_W - 12 - labelW }, fonts);
     }
@@ -828,7 +886,7 @@ export const buildPartVIStatement = async (
       for (const [fieldLabel, fieldValue] of fields) {
         if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
         const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+        page.drawText(toFormText(fieldLabel), { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
         cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
           { size: FS_BODY, maxWidth: COL_W - 24 - labelW }, fonts);
       }
@@ -871,7 +929,7 @@ export const buildPartVIStatement = async (
       for (const [fieldLabel, fieldValue] of fields) {
         if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
         const labelW = bold.widthOfTextAtSize(fieldLabel, 10) + 6;
-        page.drawText(fieldLabel, { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+        page.drawText(toFormText(fieldLabel), { x: MARGIN + 24, y: cursor.y, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
         cursor.y = drawWrapped(page, fieldValue, MARGIN + 24 + labelW, cursor.y,
           { size: FS_BODY, maxWidth: COL_W - 24 - labelW }, fonts);
       }
@@ -1054,7 +1112,7 @@ export const buildInstructionsPage = async (
   for (const [label, value] of rows) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
     const startY = cursor.y;
-    page.drawText(label, { x: MARGIN, y: startY, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+    page.drawText(toFormText(label), { x: MARGIN, y: startY, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
     // A value may contain hard line breaks (address block).
     let vy = startY;
     for (const seg of value.split('\n')) {
@@ -1204,6 +1262,19 @@ const fill5472 = async (
 
   // ── Part IV — Monetary Transactions ──────────────────────────────────────────────
   if (txn.hasPartIV) {
+    // Loan-guarantee fees (lines 20 / 34) have no field in the 2019-2021 Form
+    // 5472 revision. Writing to the absent field is a silent no-op, which left
+    // the amount off the return entirely while it still counted toward the
+    // line 22 / 36 totals — a total with nothing behind it. When the dedicated
+    // line is unavailable, disclose the amount under "other amounts"
+    // (line 21 / 35) instead so it is reported and the totals still foot.
+    const guaranteeReceivedHasLine = !!F.LINE_20_LOAN_GUARANTEE_RECEIVED;
+    const guaranteePaidHasLine     = !!F.LINE_34_LOAN_GUARANTEE_PAID;
+    const otherReceived = txn.other_received
+      + (guaranteeReceivedHasLine ? 0 : txn.loan_guarantee_received);
+    const otherPaid = txn.other_paid
+      + (guaranteePaidHasLine ? 0 : txn.loan_guarantee_paid);
+
     setText(doc, F.LINE_9_SALES_RECEIVED,           fmt(txn.sales_received));
     setText(doc, F.LINE_10_TANGIBLE_PROP_RECEIVED,  fmt(txn.tangible_prop_received));
     setText(doc, F.LINE_13A_RENTS_RECEIVED,         fmt(txn.rents_received));
@@ -1216,7 +1287,7 @@ const fill5472 = async (
     setText(doc, F.LINE_18_INTEREST_RECEIVED,       fmt(txn.interest_received));
     setText(doc, F.LINE_19_INSURANCE_RECEIVED,      fmt(txn.insurance_received));
     setText(doc, F.LINE_20_LOAN_GUARANTEE_RECEIVED, fmt(txn.loan_guarantee_received));
-    setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(txn.other_received));
+    setText(doc, F.LINE_21_OTHER_RECEIVED,          fmt(otherReceived));
     setText(doc, F.LINE_22_TOTAL_RECEIVED,          fmt(totalReceived(txn)));
     setText(doc, F.LINE_23_SALES_PAID,              fmt(txn.sales_paid));
     setText(doc, F.LINE_24_TANGIBLE_PROP_PAID,      fmt(txn.tangible_prop_paid));
@@ -1230,7 +1301,7 @@ const fill5472 = async (
     setText(doc, F.LINE_32_INTEREST_PAID,           fmt(txn.interest_paid));
     setText(doc, F.LINE_33_INSURANCE_PAID,          fmt(txn.insurance_paid));
     setText(doc, F.LINE_34_LOAN_GUARANTEE_PAID,     fmt(txn.loan_guarantee_paid));
-    setText(doc, F.LINE_35_OTHER_PAID,              fmt(txn.other_paid));
+    setText(doc, F.LINE_35_OTHER_PAID,              fmt(otherPaid));
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(totalPaid(txn)));
   }
 
@@ -1403,7 +1474,7 @@ const drawEndingDateOver2ndWidget = async (
     }
 
     const font = await doc.embedFont(StandardFonts.Helvetica);
-    page.drawText(endText, {
+    page.drawText(toFormText(endText), {
       x: rect.x + 1,
       // Sit the baseline inside the box the same way an AcroForm field does.
       y: rect.y + (rect.height - FORM_FIELD_FONT_SIZE) / 2 + 1,
@@ -1504,6 +1575,13 @@ export interface FilingPackage {
   reasonableCauseLetter?: Uint8Array;
   /** Number of Form 5472s generated (Line 1g). */
   formCount: number;
+  /**
+   * Entered text that the PDF fonts could not represent, and which was
+   * therefore dropped from the forms. Non-empty means the package is NOT safe
+   * to file as-is: a name or address is missing characters. Callers must
+   * surface this and ask for a romanized spelling rather than deliver it.
+   */
+  unsupportedText?: UnsupportedText[];
 }
 
 // Each reason renders as its own paragraph, written in the FIRST PERSON as the
@@ -1769,6 +1847,11 @@ export const generateFilingPackage = async (
   const year =
     taxYear ?? (rawFiling.tax_year != null ? Number(rawFiling.tax_year) : new Date().getFullYear() - 1);
 
+  // Collect anything unencodable that comes up while this package is built.
+  const unsupported: UnsupportedText[] = [];
+  unsupportedSink = unsupported;
+  try {
+
   const filing = normalizeFiling(rawFiling);
   const period = resolvePeriod(filing, year);
   const yd = await buildYearDocs(filing, period, transactions);
@@ -1822,7 +1905,24 @@ export const generateFilingPackage = async (
     ownerDocs.docPartV  ? ownerDocs.docPartV.save()  : Promise.resolve<Uint8Array | undefined>(undefined),
   ]);
 
-  return { form5472, form1120, combined, statement_partVI, statement_partV, form7004, reasonableCauseLetter, formCount: yd.formCount };
+  // De-duplicate: the same name is drawn on several forms and statements.
+  const seen = new Set<string>();
+  const unsupportedText = unsupported.filter((u) => {
+    const k = u.value + ' ' + u.characters.join('');
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return {
+    form5472, form1120, combined, statement_partVI, statement_partV,
+    form7004, reasonableCauseLetter, formCount: yd.formCount,
+    ...(unsupportedText.length ? { unsupportedText } : {}),
+  };
+
+  } finally {
+    unsupportedSink = null;
+  }
 };
 
 /** @alias generateFilingPackage — kept for callers that use the old name */

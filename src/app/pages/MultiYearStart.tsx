@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { loadProfile } from '../../lib/filingProfile';
 import { REASONABLE_CAUSE_REASONS } from './intake/constants';
+import { PRICE_RCL } from '../../lib/pricing';
 
 const EARLIEST_YEAR = 2019;
 
@@ -328,7 +329,7 @@ export function MultiYearStart() {
         <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: 'pointer', marginBottom: '1.5rem' }}>
           <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }} />
           <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
-            <strong>Include a reasonable-cause letter ($200, recommended).</strong> One letter, covering every year
+            <strong>Include a reasonable-cause letter (${PRICE_RCL} once, recommended).</strong> One letter, covering every year
             above, asking the IRS to waive the late-filing penalty. Strongly recommended when filing late.
           </span>
         </label>

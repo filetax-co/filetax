@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PRICE_PER_YEAR, PRICE_RCL } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
 // TEMPORARY: Services are not yet live. The "Fix a Missed Year" CTA
@@ -12,7 +13,7 @@ export function PastFilings() {
   usePageMeta({
     title: "Missed Form 5472? Fix It Now | FileTax.co",
     description:
-      "Late Form 5472 filing with a CPA-prepared Reasonable Cause Letter costs $350 per year. File past-year returns and request IRS penalty abatement before exposure compounds.",
+      `Late Form 5472 filing costs $${PRICE_PER_YEAR} per year plus one $${PRICE_RCL} CPA-prepared Reasonable Cause Letter covering every year. File past-year returns and request IRS penalty abatement before exposure compounds.`,
   });
 
   return (
@@ -45,7 +46,7 @@ export function PastFilings() {
             <span style={{ color: "#B31D1D", fontSize: "0.8125rem", fontWeight: 600 }}>2 LLCs, 3 years</span>
           </div>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-            Two LLCs, three unfiled years = $150,000 in potential penalties. Our $350 total solution covers one year completely.
+            Two LLCs, three unfiled years = $150,000 in potential penalties. One missed year, filed completely with the letter, costs ${PRICE_PER_YEAR + PRICE_RCL}.
           </p>
         </div>
       </section>
@@ -75,18 +76,20 @@ export function PastFilings() {
           <div style={{ background: "var(--tf-bg)", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", padding: "1.75rem", marginBottom: "1.5rem", boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)" }}>
               <span style={{ fontWeight: 500, color: "var(--tf-text)", fontSize: "0.9375rem" }}>Past Year Form 5472 + Pro Forma 1120</span>
-              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>$150</span>
+              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>${PRICE_PER_YEAR} per year</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)" }}>
-              <span style={{ fontWeight: 500, color: "var(--tf-text)", fontSize: "0.9375rem" }}>CPA-Prepared Reasonable Cause Letter</span>
-              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>+$200</span>
+              <span style={{ fontWeight: 500, color: "var(--tf-text)", fontSize: "0.9375rem" }}>CPA-Prepared Reasonable Cause Letter <span style={{ color: "var(--tf-muted)", fontWeight: 400 }}>(one letter, covers every year)</span></span>
+              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1rem" }}>+${PRICE_RCL} once</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 0 0" }}>
-              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1.0625rem" }}>Total per year</span>
-              <span style={{ fontWeight: 700, color: "#0284C7", fontSize: "1.375rem" }}>$350</span>
+              <span style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1.0625rem" }}>One missed year, total</span>
+              <span style={{ fontWeight: 700, color: "#0284C7", fontSize: "1.375rem" }}>${PRICE_PER_YEAR + PRICE_RCL}</span>
             </div>
           </div>
-          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time cost. No subscription.</p>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>
+            One-time cost. No subscription. The letter is charged once no matter how many years you are catching up on, so three missed years is ${3 * PRICE_PER_YEAR} plus one ${PRICE_RCL} letter = ${3 * PRICE_PER_YEAR + PRICE_RCL}, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
+          </p>
 
           <div style={{ background: "#B31D1D", color: "white", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>
             <p style={{ fontWeight: 600, fontSize: "0.9375rem" }}>

@@ -39,6 +39,7 @@ export function Terms() {
   usePageMeta({
     title: `Terms of Service | ${COMPANY_NAME}`,
     description: `The terms and conditions that govern your use of ${COMPANY_NAME} services.`,
+    canonical: "https://filetax.co/terms",
   });
 
   return (
@@ -84,9 +85,9 @@ export function Terms() {
             To use certain features of the Service, you may need to create an account or provide information about yourself, your business, and your tax situation. You agree to:
           </p>
           <ul style={styles.ul}>
-            <li style={styles.li}>provide accurate, current, and complete information</li>
-            <li style={styles.li}>promptly update your information if anything changes</li>
-            <li style={styles.li}>maintain the confidentiality of your account credentials</li>
+            <li style={styles.li}>provide accurate, current, and complete information;</li>
+            <li style={styles.li}>promptly update your information if anything changes;</li>
+            <li style={styles.li}>maintain the confidentiality of your account credentials;</li>
             <li style={styles.li}>be responsible for all activity that occurs under your account.</li>
           </ul>
           <p style={styles.p}>
@@ -95,7 +96,7 @@ export function Terms() {
 
           <h2 style={styles.h2}>4. Fees, Payment, and Refunds</h2>
           <p style={styles.p}>
-            Fees for the Service are displayed at the point of purchase. Unless otherwise stated, fees are non-refundable once we have begun work on your filing. If you cancel before we have started work, we will issue a refund as described in our refund policy or at our reasonable discretion. All fees are exclusive of taxes you may owe in your own jurisdiction.
+            Fees for the Service are displayed at the point of purchase. You are charged when your forms are generated, not before, so a draft filing you never complete costs you nothing. Once forms have been generated the fee is non-refundable, subject to the exceptions in our <Link to="/refunds" style={{ color: "var(--tf-accent)" }}>Refund Policy</Link>, which covers our own errors, failed fax transmissions and duplicate charges. All fees are exclusive of taxes you may owe in your own jurisdiction.
           </p>
 
           <h2 style={styles.h2}>5. User Responsibilities</h2>
@@ -103,9 +104,9 @@ export function Terms() {
             You are responsible for:
           </p>
           <ul style={styles.ul}>
-            <li style={styles.li}>reviewing all prepared documents before they are filed and confirming they are accurate</li>
-            <li style={styles.li}>signing and authorizing any returns or filings as required by law</li>
-            <li style={styles.li}>retaining copies of all documents and records for your own records and as required by tax authorities</li>
+            <li style={styles.li}>reviewing all prepared documents before they are filed and confirming they are accurate;</li>
+            <li style={styles.li}>signing and authorizing any returns or filings as required by law;</li>
+            <li style={styles.li}>retaining copies of all documents and records for your own records and as required by tax authorities;</li>
             <li style={styles.li}>complying with all applicable laws and regulations in your own jurisdiction.</li>
           </ul>
 
@@ -114,10 +115,10 @@ export function Terms() {
             You agree not to use the Service to:
           </p>
           <ul style={styles.ul}>
-            <li style={styles.li}>submit false, misleading, or fraudulent information</li>
-            <li style={styles.li}>infringe the rights of others or violate applicable law</li>
-            <li style={styles.li}>interfere with, attack, or disrupt the Service or its underlying infrastructure</li>
-            <li style={styles.li}>reverse engineer, scrape, or attempt to extract source code or proprietary content</li>
+            <li style={styles.li}>submit false, misleading, or fraudulent information;</li>
+            <li style={styles.li}>infringe the rights of others or violate applicable law;</li>
+            <li style={styles.li}>interfere with, attack, or disrupt the Service or its underlying infrastructure;</li>
+            <li style={styles.li}>reverse engineer, scrape, or attempt to extract source code or proprietary content;</li>
             <li style={styles.li}>impersonate any person or entity or misrepresent your affiliation.</li>
           </ul>
 

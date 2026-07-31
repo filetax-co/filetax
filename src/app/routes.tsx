@@ -20,6 +20,7 @@ import FilingWizard from './pages/FilingWizard';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
+import { Refunds } from './pages/Refunds';
 import { ResetPassword } from './pages/ResetPassword';
 
 function NotFound() {
@@ -51,6 +52,7 @@ export const router = createBrowserRouter(
         { path: 'waitlist', Component: Waitlist },
         { path: 'terms', Component: Terms },
         { path: 'privacy', Component: Privacy },
+        { path: 'refunds', Component: Refunds },
         { path: 'reset-password', Component: ResetPassword },
         {
           Component: RequireAuth,
