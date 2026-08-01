@@ -122,6 +122,104 @@ console.log('\n— package assembly —');
     `combined=${combined.getPageCount()} parts=${parts}`);
 }
 
+// Every page the filer receives must be US Letter. The IRS prints and scans on
+// Letter; an A4 page opens fine on screen and prints scaled or clipped, and
+// nothing in the product would ever complain. scripts/verifyPageSize.mjs checks
+// the templates; this checks the ASSEMBLED output, which is what is actually
+// delivered and is the only place a merge or a hand-built page could go wrong.
+console.log('\n— page size (US Letter) —');
+{
+  const isLetter = (page) => {
+    const { width, height } = page.getSize();
+    const rot = ((page.getRotation().angle % 360) + 360) % 360;
+    const [w, h] = rot % 180 === 0 ? [width, height] : [height, width];
+    return Math.abs(w - 612) <= 1 && Math.abs(h - 792) <= 1;
+  };
+
+  const pkg = await generateFilingPackage(
+    { ...baseFiling, include_rcl: true, extension_filed: false },
+    [{ transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 }],
+    2025,
+  );
+
+  for (const [name, bytes] of Object.entries({
+    combined: pkg.combined,
+    form1120: pkg.form1120,
+    form5472: pkg.form5472,
+    statement_partV: pkg.statement_partV,
+    statement_partVI: pkg.statement_partVI,
+    reasonableCauseLetter: pkg.reasonableCauseLetter,
+  })) {
+    if (!bytes) continue;
+    const doc = await PDFDocument.load(bytes);
+    const pages = doc.getPages();
+    const bad = pages.filter((p) => !isLetter(p));
+    check(
+      `${name}: all ${pages.length} page(s) are US Letter`,
+      bad.length === 0,
+      bad.length ? `${bad.length} page(s) are not 612x792` : '',
+    );
+  }
+}
+
+// A drawn signature is optional, but when one is supplied it must actually
+// reach the two documents it applies to, and it must never be persisted. The
+// value assertions matter more than they look: every form is FLATTENED during
+// assembly and content streams are compressed, so a byte search for a drawn
+// mark can never match. Assert on behaviour, not on the rendering.
+console.log('\n— drawn signature —');
+{
+  // 1x1 transparent PNG. Enough to prove the plumbing; the visual result is not
+  // something a byte check can assert.
+  const PNG_1PX =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  const withSig = await generateFilingPackage(
+    { ...baseFiling, include_rcl: true },
+    [{ transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 }],
+    2025,
+    { drawnSignature: PNG_1PX },
+  );
+  check('package still generates with a drawn signature', !!withSig.combined && withSig.combined.length > 1000);
+  check('RCL still produced with a drawn signature', !!withSig.reasonableCauseLetter);
+
+  // A malformed signature must degrade to the typed name, never fail the package.
+  const withJunk = await generateFilingPackage(
+    { ...baseFiling, include_rcl: true },
+    [{ transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 }],
+    2025,
+    { drawnSignature: 'data:image/png;base64,not-actually-base64!!' },
+  );
+  check('a malformed signature degrades to the typed name instead of failing',
+    !!withJunk.combined && withJunk.combined.length > 1000);
+
+  // The fax hard block. An unsigned package must not be buildable for fax: on
+  // that path there is no hand between the PDF and Ogden, so a blank
+  // penalties-of-perjury jurat would transmit and report as delivered.
+  let blocked = false;
+  try {
+    await generateFilingPackage(
+      { ...baseFiling, include_rcl: true, owner_full_name: '' },
+      [{ transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 }],
+      2025,
+      { fax: true },
+    );
+  } catch {
+    blocked = true;
+  }
+  check('fax refuses to build a package with no signature at all', blocked);
+
+  // ...but the same filing with a drawn signature IS faxable, since the mark
+  // supplies what the missing typed name did not.
+  const faxable = await generateFilingPackage(
+    { ...baseFiling, include_rcl: true, owner_full_name: '' },
+    [{ transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 }],
+    2025,
+    { fax: true, drawnSignature: PNG_1PX },
+  );
+  check('a drawn signature unblocks the fax path', !!faxable.faxPayload);
+}
+
 // Form 1120 item E is one of only TWO things the Form 5472 instructions require
 // on the pro forma 1120 (item B is the other), so a silently missing checkbox
 // here is a defect in required content, not a cosmetic one.

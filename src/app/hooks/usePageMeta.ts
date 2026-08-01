@@ -76,11 +76,21 @@ export function usePageMeta({
     // robots.txt Disallow stops crawling but not indexing, a disallowed URL
     // with inbound links can still be indexed as a bare result. A noindex meta
     // is the only reliable signal, so it has to be emitted per page.
-    if (noindex) {
-      setOrCreate("name", "robots", "noindex, nofollow");
-    } else {
-      removeMeta("name", "robots");
-    }
+    //
+    // While this app is deployed to a GitHub Pages project subpath, the whole
+    // of it is noindexed, so this is unconditional and the per-page `noindex`
+    // flag below is inert. Two reasons: the app routes must never be crawled,
+    // and every marketing route here is duplicated from filetax.co, so anything
+    // indexed competes with the real site for its own queries. index.html
+    // carries the same tag statically; this line exists so that a page calling
+    // usePageMeta cannot strip it back off on the client.
+    //
+    // When the app moves onto filetax.co and the duplicate marketing routes are
+    // gone, restore the conditional:
+    //     if (noindex) setOrCreate(...) else removeMeta("name", "robots");
+    // and drop the tag from index.html at the same time.
+    void noindex;
+    setOrCreate("name", "robots", "noindex, nofollow");
 
     if (canonical) {
       setCanonical(canonical);

@@ -26,6 +26,12 @@ import {
   NormalizedFiling,
   NormalizedParty,
 } from './filingMapping';
+import {
+  DrawnSignature,
+  embedDrawnSignature,
+  drawSignatureInBox,
+  faxSignatureBlocker,
+} from './drawnSignature';
 
 // Re-export for consumers that import these types from pdfGenerator
 export type Form5472Fields = F5472Map;
@@ -984,6 +990,13 @@ export const buildReasonableCauseLetter = async (
   filing: NormalizedFiling,
   taxYears: number[],
   narrative: string | null | undefined,
+  /**
+   * Optional drawn signature, a PNG data URL. Drawn above the typed name in the
+   * signature block. See drawnSignature.ts for why this is an option rather
+   * than a stored asset, and why a drawn mark is legally equivalent to the
+   * typed name rather than superior to it.
+   */
+  drawnSignature?: DrawnSignature | null,
 ): Promise<PDFDocument> => {
   const doc  = await PDFDocument.create();
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -1078,7 +1091,38 @@ export const buildReasonableCauseLetter = async (
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
   cursor.y = drawWrapped(page, 'Signed under penalties of perjury,', MARGIN, cursor.y, { size: FS_BODY }, fonts);
-  cursor.y -= 24;
+
+  // ── Signature block ────────────────────────────────────────────────────────
+  // 26 CFR 301.6651-1(c)(1) requires the reasonable cause showing to be a
+  // written statement containing a declaration under penalties of perjury, so
+  // of everything in the package this is the document that most needs to read
+  // as signed.
+  //
+  // Layout is: drawn mark (if any), then the typed name, then the title. The
+  // typed name stays even when a mark is drawn. It is the printed name beneath
+  // the signature, which is what a reviewer expects to see, and it is
+  // independently a valid signature under IRM 10.10.1.3.1.1, so the letter is
+  // never worse off than before this feature existed.
+  const rclSignature = await embedDrawnSignature(doc, drawnSignature);
+  const SIG_BOX_H = 34;
+
+  if (rclSignature) {
+    // Reserve the box first so a tall signature cannot run off the bottom of
+    // the page and land on top of the closing paragraph.
+    if (cursor.y - SIG_BOX_H < MARGIN) ({ page, cursor } = newPage(doc));
+    cursor.y -= SIG_BOX_H + 2;
+    drawSignatureInBox(page, rclSignature, {
+      x: MARGIN,
+      y: cursor.y,
+      maxWidth: 200,
+      maxHeight: SIG_BOX_H,
+    });
+    cursor.y -= 12;
+  } else {
+    // Unchanged behaviour: whitespace for a pen on the printed copy.
+    cursor.y -= 24;
+  }
+
   cursor.y = drawWrapped(page, `${filing.owner.full_name || '________________________'}`,
     MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   drawWrapped(page, `${filing.signer_title ?? 'Managing Member'}, ${filing.llc_name ?? ''}`,
@@ -1533,9 +1577,81 @@ const fill5472 = async (
 
 // ─── Pro Forma 1120 filler ──────────────────────────────────────────────────────────────────────────
 
+/**
+ * Draw a signature image over an AcroForm text field's widget, and clear the
+ * field's text.
+ *
+ * Unlike the reasonable cause letter, the pro forma 1120 has no separate
+ * printed-name line under the signature: the "Signature of officer" field IS
+ * the line. Leaving the typed name in place and drawing over it would stack two
+ * marks in one box. So when a mark is drawn, it replaces the typed name rather
+ * than joining it. Both are acceptable signatures under IRM 10.10.1.3.1.1, and
+ * the officer's name is on the return regardless as the entity contact, so
+ * nothing is lost.
+ *
+ * The image is drawn onto the PAGE, not into the field's appearance stream, so
+ * it survives the flatten() that runs when the year package is merged.
+ *
+ * Returns true if the signature was drawn.
+ */
+const drawSignatureOverField = async (
+  doc: PDFDocument,
+  fieldName: string,
+  drawnSignature: DrawnSignature | null | undefined,
+): Promise<boolean> => {
+  if (!fieldName || !drawnSignature) return false;
+  try {
+    const image = await embedDrawnSignature(doc, drawnSignature);
+    if (!image) return false;
+
+    const field = doc.getForm().getField(fieldName);
+    if (!(field instanceof PDFTextField)) return false;
+
+    const widgets = field.acroField.getWidgets();
+    const widget = widgets[0];
+    if (!widget) return false;
+    const rect = widget.getRectangle();
+
+    // Locate the page that actually carries this widget rather than assuming
+    // page 1. getPages()[0] is right for every revision shipped today, but the
+    // signature block is near the foot of page 1 and a future template that
+    // paginates differently would silently put the mark on the wrong page.
+    const pages = doc.getPages();
+    const page =
+      pages.find((p) => {
+        const annots = p.node.Annots();
+        if (!annots) return false;
+        for (let i = 0; i < annots.size(); i++) {
+          if (annots.get(i) === widget.dict || annots.lookup(i) === widget.dict) return true;
+        }
+        return false;
+      }) ?? pages[0];
+    if (!page) return false;
+
+    // Clear the typed name so the box carries one mark, not two.
+    field.setText('');
+
+    // Inset slightly so the mark sits inside the ruled box rather than on it.
+    const pad = 1;
+    drawSignatureInBox(page, image, {
+      x: rect.x + pad,
+      y: rect.y + pad,
+      maxWidth: Math.max(rect.width - pad * 2, 1),
+      maxHeight: Math.max(rect.height - pad * 2, 1),
+    });
+    return true;
+  } catch {
+    // Field absent in this revision, or an unusable image. The typed name that
+    // is already in the field stands, which is itself a valid signature.
+    return false;
+  }
+};
+
 const fill1120 = async (
   filing: NormalizedFiling,
   period: ResolvedPeriod,
+  /** Optional drawn signature, applied to the officer signature line. */
+  drawnSignature?: DrawnSignature | null,
 ): Promise<PDFDocument> => {
   const url = get1120PdfUrl(period.year);
   const doc = await loadPdf(url);
@@ -1596,6 +1712,20 @@ const fill1120 = async (
   setText(doc, F.SIGNATURE, filing.owner.full_name);
   setText(doc, F.TITLE,     filing.signer_title ?? 'Managing Member');
   setText(doc, F.DATE,      fmtDateNumeric(filing.signature_date));
+
+  // A drawn mark, when one was collected, replaces the typed name on the
+  // signature line. Runs after setText so it overwrites the value just set.
+  //
+  // CAVEAT, recorded rather than resolved: a typed name is on the IRM
+  // 10.10.1.3.1.1 list of acceptable electronic signatures and so is a
+  // handwritten mark drawn on screen, but plain Form 1120 is NOT on the
+  // permanent electronic-signature list at IRM Exhibit 10.10.1-2, and neither
+  // is Form 5472 or 7004. That is equally true of the typed name this product
+  // has always used, so drawing a mark does not make the package worse. The
+  // owner, a practising CPA, extended the drawn signature from the reasonable
+  // cause letter to the 1120. Revisit before the 2027 season rather than
+  // inheriting it.
+  await drawSignatureOverField(doc, F.SIGNATURE, drawnSignature);
 
   return doc;
 };
@@ -1988,7 +2118,13 @@ interface YearDocs {
  * related party) WITHOUT saving or merging. Shared by the single-year and
  * multi-year entry points.
  */
-const buildYearDocs = async (filing: NormalizedFiling, period: ResolvedPeriod, transactions: Transaction[]): Promise<YearDocs> => {
+const buildYearDocs = async (
+  filing: NormalizedFiling,
+  period: ResolvedPeriod,
+  transactions: Transaction[],
+  /** Optional drawn signature, applied to the pro forma 1120 signature line. */
+  drawnSignature?: DrawnSignature | null,
+): Promise<YearDocs> => {
   // Partition transactions by related party (0 = owner; 1..n = others).
   const txByParty = new Map<number, Transaction[]>();
   for (const tx of transactions) {
@@ -2011,7 +2147,7 @@ const buildYearDocs = async (filing: NormalizedFiling, period: ResolvedPeriod, t
   );
   const fillOpts: Fill5472Opts = { numForms: formCount, grossAllForms };
 
-  const doc1120 = await fill1120(filing, period);
+  const doc1120 = await fill1120(filing, period, drawnSignature);
 
   const partyDocs: PartyDocs[] = await Promise.all(
     partiesToFile.map(async (party): Promise<PartyDocs> => {
@@ -2077,6 +2213,14 @@ export const generateFilingPackage = async (
     fax?: boolean;
     /** Sending fax number, printed in the cover page's From block. */
     senderFax?: string;
+    /**
+     * Drawn signature, a PNG data URL from the on-screen canvas. Applied to the
+     * reasonable cause letter and to the pro forma 1120 signature line.
+     *
+     * Passed per call and never persisted, which is what keeps the "we never
+     * store your documents" claim true. See drawnSignature.ts.
+     */
+    drawnSignature?: DrawnSignature | null;
   },
 ): Promise<FilingPackage> => {
   const year =
@@ -2089,7 +2233,7 @@ export const generateFilingPackage = async (
 
   const filing = normalizeFiling(rawFiling);
   const period = resolvePeriod(filing, year);
-  const yd = await buildYearDocs(filing, period, transactions);
+  const yd = await buildYearDocs(filing, period, transactions, opts?.drawnSignature);
 
   // A reasonable-cause letter is included when the filing opted in, honoring
   // either the canonical include_rcl flag or the older include_reasonable_cause
@@ -2108,7 +2252,9 @@ export const generateFilingPackage = async (
   let reasonableCauseLetter: Uint8Array | undefined;
   let rclDoc: PDFDocument | null = null;
   if (hasRCL) {
-    rclDoc = await buildReasonableCauseLetter(filing, [period.year], rclNarrativeFromReasons(rawFiling));
+    rclDoc = await buildReasonableCauseLetter(
+      filing, [period.year], rclNarrativeFromReasons(rawFiling), opts?.drawnSignature,
+    );
     reasonableCauseLetter = await rclDoc.save();
   }
 
@@ -2154,6 +2300,19 @@ export const generateFilingPackage = async (
   // mergeInto flattens its sources and yd has already been consumed.
   let faxPayload: Uint8Array | undefined;
   if (opts?.fax) {
+    // HARD BLOCK. On the mail path an unsigned package is recoverable: the
+    // filer prints it and pens the line in. On the fax path there is no hand
+    // between the PDF and Ogden, so an unsigned package would be transmitted
+    // and would come back from Sinch as `delivered`, which is a blank
+    // penalties-of-perjury jurat reported as a success. Refuse to build the
+    // payload at all rather than produce one that must not be sent.
+    const blocker = faxSignatureBlocker({
+      ownerFullName: filing.owner.full_name,
+      drawnSignature: opts.drawnSignature,
+      includesRCL: hasRCL,
+    });
+    if (blocker) throw new Error(blocker);
+
     const body = await PDFDocument.load(combined);
     // Drop the filer-facing instructions, which lead `combined`. It can run to
     // more than one page, so remove exactly as many as were generated rather
@@ -2235,7 +2394,17 @@ export interface MultiYearPackage {
  */
 export const generateMultiYearPackage = async (
   years: MultiYearYearInput[],
-  opts: { includeRCL: boolean; rclNarrative?: string | null },
+  opts: {
+    includeRCL: boolean;
+    rclNarrative?: string | null;
+    /**
+     * Drawn signature, applied to the single reasonable cause letter and to the
+     * pro forma 1120 of EVERY year in the catch-up. One drawing signs the whole
+     * package, which matches how the filer experiences it: they are signing one
+     * submission, not one document per year.
+     */
+    drawnSignature?: DrawnSignature | null;
+  },
 ): Promise<MultiYearPackage> => {
   if (years.length === 0) throw new Error('generateMultiYearPackage: no years provided');
 
@@ -2247,13 +2416,13 @@ export const generateMultiYearPackage = async (
     sorted.map((y) => {
       const f = normalizeFiling(y.filing);
       const p = resolvePeriod(f, y.taxYear);
-      return buildYearDocs(f, p, y.transactions);
+      return buildYearDocs(f, p, y.transactions, opts.drawnSignature);
     }),
   );
 
   // One RCL covering all years (use the most-recent year's entity/owner data).
   const rclDoc = opts.includeRCL
-    ? await buildReasonableCauseLetter(yearDocs[0].filing, taxYears, opts.rclNarrative)
+    ? await buildReasonableCauseLetter(yearDocs[0].filing, taxYears, opts.rclNarrative, opts.drawnSignature)
     : null;
 
   // Per-year PDFs: instructions page (page 1) → that year's forms. No RCL here
@@ -2282,7 +2451,8 @@ export const generateMultiYearPackage = async (
     // after flatten()), so rebuild from the same inputs.
     const rebuilt = await buildYearDocs(yd.filing, yd.period,
       // reconstruct this year's transactions from the input list
-      sorted.find((s) => s.taxYear === yd.period.year)!.transactions);
+      sorted.find((s) => s.taxYear === yd.period.year)!.transactions,
+      opts.drawnSignature);
     const y7004 = wants7004(yd.filing) ? await PDFDocument.load(await (await fill7004(yd.filing, yd.period)).save()) : null;
     const yearMerged = await assembleYear(rebuilt, [instructions], y7004);
     const yearCopy = await PDFDocument.load(await yearMerged.save());

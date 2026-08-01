@@ -1,0 +1,22 @@
+# FileTax product app.
+#
+# Nothing in this repository should be indexed.
+#
+# Two reasons. The app routes (portal, dashboard, intake, catch-up, filing,
+# auth, reset-password) have no reason to be crawlable at all. The rest of it
+# (pricing, services, resources, faq, terms, privacy, refunds) is duplicated
+# from the marketing site, so anything indexed here competes with filetax.co
+# for filetax.co's own queries.
+#
+# NOTE: this file only takes effect once the app is served from the root of a
+# domain it owns. While it is deployed to a GitHub Pages PROJECT subpath
+# (vidhichiraglathiya-source.github.io/5472/), crawlers read robots.txt from
+# the domain root only and never fetch /5472/robots.txt. The control that
+# actually works today is the noindex meta tag in index.html. Do not remove
+# that tag on the strength of this file.
+
+User-agent: *
+Disallow: /
+
+# No sitemap is advertised deliberately. The canonical sitemap is the
+# marketing site's, at https://filetax.co/sitemap.xml

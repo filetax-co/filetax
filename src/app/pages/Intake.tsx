@@ -1899,7 +1899,19 @@ export function Intake() {
   return (
     <>
       <style>{`
-        .intake-form input,
+        /* Text-like controls only.
+           This used to be a bare \`.intake-form input\`, which also matched
+           checkboxes and radios and gave them width:100%, a 0.5rem padding and
+           a border. Inside a flex row that makes the box a full-width item, so
+           its label gets whatever is left over, wraps to a few characters per
+           line, and spills outside the card. Two places had already been
+           patched with \`width: 1.1rem !important\` overrides scoped to
+           .select-card and .confirm-check-row, which hid the problem for those
+           rows and left it waiting for the next checkbox added anywhere else.
+           The eligibility attestation was that next checkbox.
+           Excluding the types here fixes it at the source; the two !important
+           overrides below are now belt-and-braces rather than load-bearing. */
+        .intake-form input:not([type="checkbox"]):not([type="radio"]),
         .intake-form select,
         .intake-form textarea {
           width: 100%;
@@ -1931,7 +1943,12 @@ export function Intake() {
         [data-theme="dark"] .intake-form select {
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394A3B8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         }
-        .intake-form input:focus,
+        /* Same exclusion as above. This ring is drawn with border-color plus a
+           box-shadow, and the checkbox overrides force \`border: none\` and
+           \`box-shadow: none\`, so applying it to a checkbox produced no visible
+           focus state at all. Leaving checkboxes and radios out means they keep
+           the browser's native focus ring, which is the accessible outcome. */
+        .intake-form input:not([type="checkbox"]):not([type="radio"]):focus,
         .intake-form select:focus,
         .intake-form textarea:focus {
           border-color: var(--tf-accent);
@@ -2274,24 +2291,27 @@ export function Intake() {
                 <li>is owned by a non-U.S. individual, meaning no U.S. citizenship, no Green Card, and the Substantial Presence Test not met</li>
                 <li>has no Form 8832 or Form 2553 election on file</li>
               </ul>
+              {/* Uses the shared .confirm-check-row rather than a hand-rolled
+                  flex row. The hand-rolled version is what surfaced the
+                  checkbox-width bug: it had no !important override to protect
+                  it, so the box took the full width and the label wrapped to a
+                  few characters and spilled out of the card. The root cause is
+                  fixed above, and matching the other opt-in rows also makes
+                  this one look like the controls it sits beside. */}
               <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.625rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.6,
-                }}
+                className={`confirm-check-row confirm-check-row--neutral${eligibilityConfirmed ? ' is-selected' : ''}`}
+                style={{ cursor: isPaidLocked ? 'not-allowed' : 'pointer', marginTop: 0 }}
               >
                 <input
                   type="checkbox"
                   checked={eligibilityConfirmed}
                   onChange={(e) => setEligibilityConfirmed(e.target.checked)}
                   disabled={isPaidLocked}
-                  style={{ marginTop: '3px', flexShrink: 0 }}
+                  style={{ accentColor: 'var(--tf-accent)' }}
                 />
-                <span>All three still describe my LLC for this tax year.</span>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                  All three still describe my LLC for this tax year.
+                </div>
               </label>
               <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.625rem', lineHeight: 1.6 }}>
                 Not sure about any of them?{' '}

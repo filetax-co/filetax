@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { PdfPreviewModal } from '../../components/PdfPreviewModal';
+import { SignaturePad } from '../components/SignaturePad';
+import type { DrawnSignature } from '../../lib/drawnSignature';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,27 @@ export default function FilingWizard() {
   // Whether the preview overlay is showing. Kept separate from `preview` so the
   // generated package can persist on the page after the overlay is dismissed.
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Drawn signature, held in memory for this tab only. Deliberately NOT written
+  // to the filing record or to storage: see the header of lib/drawnSignature.ts
+  // for why that is what keeps the "we never store your documents" claim true.
+  const [drawnSignature, setDrawnSignature] = useState<DrawnSignature | null>(null);
+
+  // Integrity, IRM 10.10.1.3.1. A signature is a statement about a specific
+  // document. If the filing changes after it was drawn, what the filer signed no
+  // longer exists, so the mark is discarded and has to be drawn again. This
+  // matters because 20260702_lock_paid_filings deliberately allows two
+  // post-payment corrections, so a signed filing CAN still change.
+  const filingFingerprint = filing
+    ? JSON.stringify([
+        filing.llc_name, filing.ein, filing.tax_year, filing.signer_title,
+        filing.signature_date, filing.final_return, filing.date_of_closure,
+        transactions.map((t) => [t.id, t.amount_usd, t.transaction_type, t.related_party_index]),
+      ])
+    : null;
+
+  useEffect(() => {
+    setDrawnSignature(null);
+  }, [filingFingerprint]);
 
   // Revoke the preview blob URL when it changes or the component unmounts.
   useEffect(() => {
@@ -96,7 +119,7 @@ export default function FilingWizard() {
       // disclosed in Part VI, and filing on time avoids the $25,000 penalty
       // even when no Part IV/V transaction occurred.
       const { generateFilingPackage } = await import('../../lib/pdfGenerator');
-      const pkg = await generateFilingPackage(fi, txns ?? []);
+      const pkg = await generateFilingPackage(fi, txns ?? [], undefined, { drawnSignature });
 
       // The IRS forms are rendered with WinAnsi-encoded fonts. Anything outside
       // that set (Cyrillic, Arabic, CJK, Devanagari, …) cannot be drawn and is
@@ -193,6 +216,9 @@ export default function FilingWizard() {
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
         rclNarrative: jobNarrative,
+        // One drawing signs the whole catch-up: the single reasonable cause
+        // letter and every year's pro forma 1120.
+        drawnSignature,
       });
 
       const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
@@ -443,6 +469,33 @@ export default function FilingWizard() {
             {genErr && (
               <div style={{ ...errorBannerStyle, marginBottom: '1rem' }}>{genErr}</div>
             )}
+
+            {/* ── Sign ─────────────────────────────────────────────────────
+                Placed immediately before the generate action, so the signature
+                is drawn against the filing as it is about to be rendered
+                rather than at some earlier step the filer may have edited
+                since. Optional: leaving it blank falls back to the typed name,
+                which IRM 10.10.1.3.1.1 accepts just as readily.
+            */}
+            <div style={{
+              paddingTop: '1.5rem',
+              marginBottom: '1.5rem',
+              borderTop: '1px solid var(--tf-border)',
+            }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+                Sign your filing (optional)
+              </h3>
+              <SignaturePad
+                onChange={setDrawnSignature}
+                signerName={filing?.owner_full_name ?? null}
+                documentDescription={
+                  filing?.include_rcl
+                    ? 'your reasonable cause statement and your Form 1120'
+                    : 'your Form 1120'
+                }
+                disabled={generating}
+              />
+            </div>
 
             {/* ── Action buttons ───────────────────────────────────────── */}
             <div style={{

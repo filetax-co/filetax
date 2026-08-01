@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Website creation request (Copy)</title>
+
+    <!--
+      Site-wide noindex. The app routes must never be crawled, and every
+      marketing route in this repo is duplicated from filetax.co, so indexing
+      any of it competes with the real site for its own queries. public/robots.txt
+      says the same thing, but a GitHub Pages PROJECT site serves that file at
+      /5472/robots.txt, which crawlers never read. This tag is the control that
+      works today. Remove it only when the app moves onto filetax.co and the
+      duplicate marketing routes are gone.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <title>FileTax Portal</title>
     <link rel="icon" href="data:,">
     <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
     <script type="text/javascript">
