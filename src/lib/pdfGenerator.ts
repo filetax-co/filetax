@@ -693,6 +693,20 @@ const PART_V_TYPE_LABELS: Record<string, string> = {
   formation_costs:      'Payment by Owner on Behalf of LLC (Formation / Start-up Costs)',
 };
 
+/**
+ * A readable description for a transaction type that has no entry above.
+ *
+ * PART_V_TYPES and PART_V_TYPE_LABELS currently hold the same four codes, so
+ * this is unreachable today. It exists because the previous fallback printed
+ * `tx.transaction_type` itself, meaning the day someone adds a fifth Part V
+ * code and forgets the label, an internal identifier like `capital_contribution`
+ * is what the IRS reads on the filer's statement. A humanised form is wrong in
+ * the sense of being unpolished; a raw code is wrong in the sense of being
+ * unprofessional on a filed return.
+ */
+const humanizeTxCode = (code: string): string =>
+  code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
 export const buildPartVStatement = async (
   filing: NormalizedFiling,
   txns: Transaction[],
@@ -760,7 +774,7 @@ export const buildPartVStatement = async (
   partVTxns.forEach((tx, idx) => {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
-    const label     = PART_V_TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type;
+    const label     = PART_V_TYPE_LABELS[tx.transaction_type] ?? humanizeTxCode(tx.transaction_type);
     const txDate    = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
     const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
       ? `$${tx.amount_usd.toLocaleString('en-US')}`

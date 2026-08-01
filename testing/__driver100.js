@@ -1,5 +1,5 @@
 /**
- * __driver100.js — browser driver for the 100-scenario run. Dev only.
+ * __driver100.js, browser driver for the 100-scenario run. Dev only.
  *
  * Everything happens in the page, through the real wizard: the same state the
  * filer's typing fills, every Save & continue, every validation message, the
@@ -26,7 +26,7 @@
  *   mismatch instead of agreeing with itself.
  *
  * Queue and results live in localStorage so the run survives the full page load
- * between scenarios — each scenario genuinely starts from a cold page.
+ * between scenarios, each scenario genuinely starts from a cold page.
  */
 (() => {
   // Bumped whenever the driver changes, so a run can prove which build it is
@@ -89,7 +89,7 @@
       })).catch((e) => errors.push('capture: ' + e));
       // Do NOT forward the click. The bytes are already on their way to the
       // receiver, and letting the real download proceed opens the browser's
-      // native "Save as" dialog when it is set to ask for a location — a modal
+      // native "Save as" dialog when it is set to ask for a location, a modal
       // that blocks the page and stalls the whole run until someone dismisses
       // it by hand. Swallowing the click keeps the run unattended.
       return undefined;
@@ -196,7 +196,7 @@
 
   async function readRow(filingId) {
     const sb = window.__supabase;
-    if (!sb) return { error: 'window.__supabase missing — is this a dev build?' };
+    if (!sb) return { error: 'window.__supabase missing, is this a dev build?' };
     const { data, error } = await sb.from('filings').select('*').eq('id', filingId).single();
     if (error) return { error: error.message };
     return { row: data };
@@ -471,7 +471,14 @@
     // different documents: one PDF per year plus the shared reasonable cause
     // letter, and a single bundled file. Both are things a filer receives, so
     // both are captured rather than assumed equivalent to the preview.
-    for (const label of ['Download each year + RCL', 'Download all-in-one PDF']) {
+    // Form 7004 has its own download, offered whenever the filing opted into an
+    // extension or reported one already filed. Record whether it was offered at
+    // all, separately from whether clicking it produced bytes: the defect this
+    // covers was the button being hidden for a package that already contained
+    // the form, which a pass/fail on the download alone would not have caught.
+    res.form7004Offered = !!btn((t) => t.startsWith('Download Form 7004'));
+
+    for (const label of ['Download Form 7004 (extension)', 'Download each year + RCL', 'Download all-in-one PDF']) {
       const extra = btn((t) => t === label);
       if (!extra) continue;
       const before = captured.length;

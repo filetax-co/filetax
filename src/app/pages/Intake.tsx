@@ -68,8 +68,77 @@ function formatEIN(raw: string): string {
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 }
 
+/**
+ * What is wrong with this EIN, or null when nothing is.
+ *
+ * Returns the specific problem rather than a boolean, so the filer is told which
+ * rule they broke instead of being handed one message for every kind of typo.
+ * An EIN is nine digits written XX-XXXXXXX: a two-digit prefix recording which
+ * IRS campus (or the online assignment system) issued it, then a seven-digit
+ * serial.
+ *
+ * The rules below are the structural ones, which hold regardless of which
+ * prefixes the IRS currently has in service. A prefix allowlist is deliberately
+ * NOT applied: the assigned set changes as campuses open and close, and a stale
+ * list would reject a real, currently issued EIN. That is a worse failure than
+ * accepting a well-formed but unissued one, because the filer has no way around
+ * it. See the handoff before adding one.
+ */
+function einProblem(val: string): string | null {
+  const raw = val.trim();
+  if (!raw) return 'Enter your EIN.';
+  const digits = raw.replace(/\D/g, '');
+  if (!/^\d{2}-\d{7}$/.test(raw)) {
+    if (digits.length !== 9) {
+      return `An EIN has 9 digits, written XX-XXXXXXX. You entered ${digits.length} ${digits.length === 1 ? 'digit' : 'digits'}.`;
+    }
+    return 'Write the EIN as XX-XXXXXXX, with a hyphen after the first two digits.';
+  }
+  if (!/[1-9]/.test(digits)) return 'An EIN cannot be all zeroes.';
+  if (digits.slice(0, 2) === '00') return 'An EIN cannot begin with 00. The first two digits identify the IRS office that issued it.';
+  if (digits.slice(2) === '0000000') return 'The seven digits after the hyphen cannot all be zero.';
+  return null;
+}
+
 function isValidEIN(val: string): boolean {
-  return /^\d{2}-\d{7}$/.test(val);
+  return einProblem(val) === null;
+}
+
+/**
+ * What is wrong with a money field, or null when nothing is.
+ *
+ * Every amount on this return is US dollars and cents, so more than two decimal
+ * places is not a rounding question, it is a value the filer did not mean. The
+ * exponent check matters because Number('5e3') is 5000: JavaScript accepts a
+ * notation no filer types, and it would reach the return as a different-looking
+ * number than what was entered.
+ */
+function amountProblem(raw: string, what: string): string | null {
+  const v = (raw ?? '').trim();
+  if (v === '') return null;
+  if (/e/i.test(v)) return `${what} cannot be written in exponent notation. Enter the number in full.`;
+  if (!/^-?\d*(\.\d+)?$/.test(v)) return `${what} must be a plain number. Remove any currency symbols, spaces or thousands separators.`;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return `${what} is not a number.`;
+  if (n < 0) return `${what} cannot be negative.`;
+  const dot = v.indexOf('.');
+  if (dot !== -1 && v.length - dot - 1 > 2) return `${what} cannot have more than two decimal places, US dollars and cents.`;
+  return null;
+}
+
+/** NAICS codes are exactly six digits. */
+function naicsProblem(raw: string, what: string): string | null {
+  const v = (raw ?? '').trim();
+  if (v === '') return null;
+  if (!/^\d+$/.test(v)) return `${what} must be digits only.`;
+  if (v.length !== 6) return `${what} must be exactly 6 digits. You entered ${v.length}.`;
+  return null;
+}
+
+/** Today as YYYY-MM-DD, for comparing against date inputs. */
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -200,6 +269,26 @@ function getFilingTimingStatus(
   if (!originalPassed) return { status: 'on_time', originalPassed, extendedPassed };
   if (!extendedPassed) return { status: 'within_extension', originalPassed, extendedPassed };
   return { status: 'delayed', originalPassed, extendedPassed };
+}
+
+/**
+ * The readable reason behind a thrown error, for showing to the filer.
+ *
+ * These catch blocks used to show "Something went wrong saving your filing" and
+ * put the real cause in console.error, where nobody sees it. A filer who hits a
+ * constraint violation or an RLS denial then has nothing to act on and nothing
+ * useful to quote to support. Supabase errors carry `message`, and often a
+ * `details`/`hint` pair that says considerably more than the message does.
+ */
+function describeError(e: unknown): string {
+  const err = e as { message?: string; details?: string; hint?: string; code?: string } | null;
+  const parts = [err?.message, err?.details, err?.hint]
+    .map((p) => (typeof p === 'string' ? p.trim() : ''))
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const text = parts.filter((p) => !seen.has(p) && seen.add(p)).join('. ');
+  if (!text) return typeof e === 'string' && e.trim() ? e.trim() : 'No further detail was returned.';
+  return err?.code ? `${text} (code ${err.code})` : text;
 }
 
 function isAddressComplete(address: Address, forceUS?: boolean): boolean {
@@ -1186,7 +1275,7 @@ export function Intake() {
       owner_us_tin: ownerSSN.trim() || null,
       owner_reference_id: ownerRefNumber.trim() || null,
       owner_naics_code: ownerBizCode.trim() || null,
-      signer_title: signerTitle.trim() || 'Managing Member',
+      signer_title: signerTitle.trim() || null,
       signature_date: signatureDate || null,
     };
     if (step === 3) return { related_parties: relatedParties };
@@ -1246,7 +1335,7 @@ export function Intake() {
       owner_us_tin: ownerSSN.trim() || null,
       owner_reference_id: ownerRefNumber.trim() || null,
       owner_naics_code: ownerBizCode.trim() || null,
-      signer_title: signerTitle.trim() || 'Managing Member',
+      signer_title: signerTitle.trim() || null,
       signature_date: signatureDate || null,
       // Step 3, related parties
       related_parties: relatedParties,
@@ -1262,14 +1351,13 @@ export function Intake() {
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
     else if (s === 2) errs = validateStep2();
-    else if (s === 3) errs = showRpForm ? ['open'] : [];
-    else if (s === 4) errs = (transactions.length === 0 && !noTransactionsConfirmed) ? ['none'] : [];
+    else if (s === 3) errs = showRpForm ? ['open'] : validateStep3();
+    else if (s === 4) errs = validateStep4();
     return errs.length === 0 ? 'complete' : 'incomplete';
   }
 
   const handleEinBlur = () => {
-    if (ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
-    else setEinErr(null);
+    setEinErr(ein ? einProblem(ein) : null);
   };
 
   function validateStep1(): string[] {
@@ -1282,9 +1370,33 @@ export function Intake() {
     }
     if (!llcName.trim()) errs.push('Enter your LLC or corporation name.');
     if (!ein.trim()) errs.push("Enter your LLC's EIN.");
-    if (ein.trim() && !isValidEIN(ein)) errs.push('Enter a valid EIN in XX-XXXXXXX format.');
+    if (ein.trim()) { const p = einProblem(ein); if (p) errs.push(p); }
     if (!stateOfFormation) errs.push('Select the state where your LLC was formed.');
     if (!taxYear) errs.push("Select the tax year you're filing for.");
+    // Total assets is written straight onto the return, so a negative or a
+    // non-number must be stopped here rather than printed. Blank is allowed:
+    // patchAll already stores null for it.
+    if (totalAssets.trim() !== '') {
+      const a = amountProblem(totalAssets, 'Total assets');
+      if (a) errs.push(a === 'Total assets cannot be negative.'
+        ? 'Total assets cannot be negative. Enter 0 if the LLC held no assets at the end of the year.'
+        : a);
+    }
+    // Ticking "fiscal year" without a month leaves the period undefined, and
+    // deriveFiscalPeriod is what every date on the return is measured against.
+    // Month 0 has to be tested separately from '': it is falsy, so a plain
+    // truthiness check reads a real out-of-range value as "not set yet".
+    if (isFiscalYear) {
+      if (fiscalEndMonth === '') errs.push('Select the month your fiscal year ends, or untick "My tax year is not the calendar year".');
+      else if (!Number.isInteger(Number(fiscalEndMonth)) || Number(fiscalEndMonth) < 1 || Number(fiscalEndMonth) > 12) {
+        errs.push('The fiscal year end month must be a month from January to December.');
+      }
+    }
+    // A year that has not finished cannot be filed. The dropdown only offers
+    // TAX_YEARS, but a resumed draft or an imported value can hold anything.
+    if (taxYear && !TAX_YEARS.includes(Number(taxYear))) {
+      errs.push(`${taxYear} is not a tax year you can file here. Choose one of ${TAX_YEARS[TAX_YEARS.length - 1]} to ${TAX_YEARS[0]}.`);
+    }
     if (!entityDOI) errs.push('Enter the date your LLC was formed.');
     if (entityDOI && taxYear) {
       const doiYear = Number(entityDOI.slice(0, 4));
@@ -1310,7 +1422,7 @@ export function Intake() {
     // Dissolution date. It ENDS the tax period, so it has to fall inside the
     // period being filed: on or after the first day, on or before the last.
     // Only the input's `max` used to guard this, which nothing read on submit
-    // and which was wrong for a fiscal filer anyway — for a March year-end the
+    // and which was wrong for a fiscal filer anyway, for a March year-end the
     // 2025 period runs to 31 Mar 2026, so a real February 2026 dissolution was
     // refused while a January 2025 one, months before the period opened, was
     // accepted. A date outside the period means the wrong tax year is being
@@ -1324,7 +1436,7 @@ export function Intake() {
         if (dateOfClosure < begin) {
           errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the ${taxYear} tax period begins (${periodLabel}). An LLC cannot be dissolved before the period it is filing for. Check the date, or file the final return for the year the LLC actually closed.`);
         } else if (dateOfClosure > end) {
-          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return — file the final return for the later year instead.`);
+          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return, file the final return for the later year instead.`);
         } else if (entityDOI && dateOfClosure < entityDOI) {
           errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the LLC was formed (${formatDateMMDDYYYY(entityDOI)}). Check both dates.`);
         }
@@ -1335,6 +1447,7 @@ export function Intake() {
     // the activity to reveal the free-text input, and a space is not an answer.
     if (!entityBizActivity.trim()) errs.push("Select or describe your LLC's type of business.");
     if (!entityBizCode.trim()) errs.push("Enter your LLC's business code.");
+    else { const n = naicsProblem(entityBizCode, "Your LLC's business code"); if (n) errs.push(n); }
     if (!isAddressComplete(mailing)) errs.push("Complete your LLC's mailing address.");
     return errs;
   }
@@ -1361,7 +1474,153 @@ export function Intake() {
     if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
     if (!ownerBizActivity.trim()) errs.push('Select or describe your type of business.');
     if (!ownerBizCode.trim()) errs.push('Enter your business code.');
+    else { const n = naicsProblem(ownerBizCode, 'Your business code'); if (n) errs.push(n); }
     if (!isAddressComplete(ownerAddress, false)) errs.push('Complete your address.');
+    return errs;
+  }
+
+  /**
+   * The signature block. The title is printed on the return under the signature
+   * and is how the IRS knows the signer had authority, so it cannot be blank,
+   * and it must not be quietly defaulted either: patchAll wrote
+   * `signerTitle.trim() || 'Managing Member'`, which invents an authority claim
+   * the filer never made. The date may be today or any past date, never a
+   * future one, because a return cannot be signed before it is signed.
+   */
+  function validateSignature(): string[] {
+    const errs: string[] = [];
+    if (!signerTitle.trim()) errs.push('Enter the title you are signing under, for example Managing Member.');
+    if (signatureDate) {
+      const today = todayISO();
+      if (signatureDate > today) {
+        errs.push(`The signature date (${formatDateMMDDYYYY(signatureDate)}) is in the future. Sign with today's date or an earlier one.`);
+      }
+    }
+    return errs;
+  }
+
+  /**
+   * Step 3, the related parties already added. `validateRelatedPartyDraft`
+   * guards the sub-form, but only while a party is being typed: once a row is
+   * in `relatedParties` nothing looks at it again. A row that arrived any other
+   * way, a resumed draft or a prefill from last year's profile, was never
+   * checked at all, and every one of these fields is printed on that party's
+   * Form 5472.
+   */
+  function validateStep3(): string[] {
+    const errs: string[] = [];
+    relatedParties.forEach((rp, i) => {
+      const who = rp.name?.trim() ? `Related party "${rp.name.trim()}"` : `Related party ${i + 1}`;
+      if (!rp.name?.trim()) errs.push(`${who} has no legal name. Every related party on Form 5472 has to be named.`);
+      if (!rp.country) errs.push(`${who} has no country of business.`);
+      if (!rp.country_residence) errs.push(`${who} has no country of tax residence.`);
+      if (!rp.biz_activity?.trim()) errs.push(`${who} has no type of business.`);
+      if (!rp.biz_code?.trim()) errs.push(`${who} has no business code.`);
+      else { const n = naicsProblem(rp.biz_code, `${who}: the business code`); if (n) errs.push(n); }
+      if (!isAddressComplete(rp.address ?? {}, false)) errs.push(`${who} has an incomplete address. It is printed on that party's Form 5472.`);
+    });
+
+    // Two parties with the same legal name are almost always one party entered
+    // twice, and the cost of that is not cosmetic: each one produces its own
+    // Form 5472, so the same amounts are reported to the IRS twice.
+    const byName = new Map<string, number>();
+    relatedParties.forEach((rp) => {
+      const key = (rp.name ?? '').trim().toLowerCase();
+      if (key) byName.set(key, (byName.get(key) ?? 0) + 1);
+    });
+    byName.forEach((count, key) => {
+      if (count > 1) {
+        const shown = relatedParties.find((rp) => (rp.name ?? '').trim().toLowerCase() === key)?.name?.trim();
+        errs.push(`"${shown}" is listed ${count} times. Each related party belongs on the return once, listing one twice reports the same amounts to the IRS twice. Remove the duplicate, or give them different legal names if they really are different parties.`);
+      }
+    });
+
+    // Reference codes identify a party on the return, so two parties cannot
+    // share one.
+    const byRef = new Map<string, number>();
+    relatedParties.forEach((rp) => {
+      const key = (rp.ref_number ?? '').trim().toUpperCase();
+      if (key) byRef.set(key, (byRef.get(key) ?? 0) + 1);
+    });
+    byRef.forEach((count, key) => {
+      if (count > 1) errs.push(`Reference code ${key} is used by ${count} related parties. Each party needs its own.`);
+    });
+
+    return errs;
+  }
+
+  /**
+   * Step 4, the transactions section. This had no validator at all: "Save &
+   * continue" only checked that the related-party sub-form was closed, so a
+   * transaction with no amount, a negative amount, or a party index pointing
+   * past the end of the party list went straight through. saveTransactions()
+   * then quietly filtered those rows out (and deleted any stored copy), so the
+   * filer's data disappeared with nothing on screen to say so and the package
+   * generated as though the transaction had never been entered.
+   */
+  function validateStep4(): string[] {
+    const errs: string[] = [];
+    if (transactions.length === 0 && !noTransactionsConfirmed) {
+      errs.push('Add at least one reportable transaction, or tick the box confirming this LLC had none this year. Form 5472 has to say which it is.');
+    }
+    // The confirmation and the list can disagree, and the return can only state
+    // one of them. Left alone, the box wins and every listed transaction is
+    // dropped from Parts IV to VI without the filer being told.
+    if (transactions.length > 0 && noTransactionsConfirmed) {
+      errs.push(`You have ticked "no reportable transactions", but ${transactions.length} ${transactions.length === 1 ? 'is' : 'are'} listed below. Untick the box, or remove the transactions.`);
+    }
+    const { begin: periodBegin, end: periodEnd } = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
+
+    transactions.forEach((t, i) => {
+      const n = i + 1;
+      const known = TX_TYPES.find((x) => x.value === t.transaction_type);
+      const label = known?.label ?? humanizeTxType(t.transaction_type);
+      const where = `Transaction ${n} (${label})`;
+
+      // An unrecognised or blank type has no line on the return to be reported
+      // on, so it would be carried to the generator and dropped there instead.
+      if (!t.transaction_type?.trim()) {
+        errs.push(`Transaction ${n} has no type. Choose what kind of transaction it was.`);
+      } else if (!known) {
+        errs.push(`Transaction ${n} has a type this form does not recognise ("${t.transaction_type}"). Choose one from the list.`);
+      }
+
+      // A date outside the filing period belongs on a different year's return.
+      // Only checked when a date was actually entered: the date is optional,
+      // and a blank one must keep flowing through untouched.
+      if (t.transaction_date && taxYear) {
+        if (t.transaction_date < periodBegin || t.transaction_date > periodEnd) {
+          errs.push(`${where} is dated ${formatDateMMDDYYYY(t.transaction_date)}, which is outside the tax period being filed (${formatDateMMDDYYYY(periodBegin)} to ${formatDateMMDDYYYY(periodEnd)}). Report it on the return for the year it falls in.`);
+        }
+      }
+
+      // The party list is [owner, ...relatedParties], so a valid index always
+      // addresses a row that exists. A stale index silently became the owner.
+      if (!Number.isInteger(t.related_party_index) || t.related_party_index < 0
+        || t.related_party_index >= allPartyLabels.length) {
+        errs.push(`${where} is attached to a related party that no longer exists. Choose the party it belongs to.`);
+      }
+
+      // Part V and Part VI types describe non-monetary events, so they are the
+      // only ones allowed to carry no amount.
+      const monetary = !PART_V_TYPES.has(t.transaction_type) && !PART_VI_TYPES.has(t.transaction_type);
+      const amt = (t.amount_usd ?? '').trim();
+      if (monetary && amt === '') {
+        errs.push(`${where} needs an amount in US dollars.`);
+      } else {
+        const a = amountProblem(amt, `${where}: the amount`);
+        if (a) {
+          errs.push(a.endsWith('cannot be negative.')
+            ? `${where}: the amount cannot be negative. Form 5472 reports gross amounts, use the paid/received direction to show which way the money went.`
+            : a);
+        }
+      }
+
+      if (LOAN_TYPES.has(t.transaction_type)) {
+        const b = amountProblem(t.loan_begin_usd ?? '', `${where}: the beginning balance`);
+        if (b) errs.push(b);
+      }
+    });
     return errs;
   }
 
@@ -1398,14 +1657,25 @@ export function Intake() {
     if (step === 2) return validateStep2();
     if (step === 3) {
       if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
-      return [];
+      return validateStep3();
     }
     if (step === 4) {
       if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
-      if (transactions.length === 0 && !noTransactionsConfirmed) return ['Confirm the LLC had no money dealings this year, or add at least one.'];
-      return [];
+      return validateStep4();
     }
     return [];
+  }
+
+  /**
+   * Everything that must hold before a package is generated, not just the step
+   * the filer happens to be looking at. The accordion lets a section be left
+   * untouched, so validating only the current step let an invalid step-1 or
+   * step-4 value reach the return by way of a submit from the review screen.
+   */
+  function validateForSubmit(): string[] {
+    if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
+    return [...validateStep1(), ...validateStep1b(), ...validateStep2(), ...validateStep3(),
+      ...validateStep4(), ...validateSignature()];
   }
 
   // Persist a field patch to the current filing (creating the row on first
@@ -1460,7 +1730,7 @@ export function Intake() {
       return filingId;
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong saving your filing. Please try again, if it keeps happening, email support@filetax.co.');
+      setError(`Your filing could not be saved: ${describeError(e)} Nothing was lost from this screen, try again, and if it keeps happening send that message to support@filetax.co.`);
       return null;
     } finally {
       setSaving(false);
@@ -1510,8 +1780,8 @@ export function Intake() {
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
     else if (s === 2) errs = validateStep2();
-    else if (s === 3 && showRpForm) errs = ['Finish or cancel the related party form before continuing.'];
-    else if (s === 4 && showRpForm) errs = ['Finish or cancel the related party form before continuing.'];
+    else if (s === 3) errs = showRpForm ? ['Finish or cancel the related party form before continuing.'] : validateStep3();
+    else if (s === 4) errs = showRpForm ? ['Finish or cancel the related party form before continuing.'] : validateStep4();
     setStepErrors(errs);
     if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (!saving && (filingId || llcName.trim())) await saveAll();
@@ -1643,7 +1913,7 @@ export function Intake() {
       return true;
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong saving your transactions. Please try again, if it keeps happening, email support@filetax.co.');
+      setError(`Your transactions could not be saved: ${describeError(e)} Nothing was lost from this screen, try again, and if it keeps happening send that message to support@filetax.co.`);
       return false;
     }
   };
@@ -1706,7 +1976,7 @@ export function Intake() {
           owner_business_activity: ownerBizActivity.trim() || null,
           owner_business_code: ownerBizCode.trim() || null,
           owner_naics_code: ownerBizCode.trim() || null,
-          signer_title: signerTitle.trim() || 'Managing Member',
+          signer_title: signerTitle.trim() || null,
           related_parties: relatedParties,
         });
       }
@@ -1715,10 +1985,10 @@ export function Intake() {
   };
 
   const handleSubmit = async () => {
-    const errs = validateCurrentStep();
+    const errs = validateForSubmit();
     setStepErrors(errs);
-    if (errs.length > 0) return;
-    if (!filingId) { setError('Something went wrong loading this filing. Please refresh and try again.'); return; }
+    if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (!filingId) { setError('This filing has no id yet, which usually means the page was opened directly rather than from the dashboard. Go back to the dashboard and open the filing from there.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -1765,7 +2035,7 @@ export function Intake() {
           owner_business_code: ownerBizCode.trim() || null,
           owner_naics_code: ownerBizCode.trim() || null,
           owner_address: ownerAddress,
-          signer_title: signerTitle.trim() || 'Managing Member',
+          signer_title: signerTitle.trim() || null,
           related_parties: relatedParties,
         });
       } catch { /* profile save is non-critical */ }
@@ -1796,7 +2066,7 @@ export function Intake() {
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong submitting your filing. Please try again, if it keeps happening, email support@filetax.co.');
+      setError(`Your filing could not be submitted: ${describeError(e)} Your answers are still saved, try again, and if it keeps happening send that message to support@filetax.co.`);
     } finally {
       setSaving(false);
     }
@@ -1959,7 +2229,11 @@ export function Intake() {
     const preset = resolveBizPreset(o.owner_business_activity, ownerCode);
     setOwnerBizActivity(str(o.owner_business_activity).trim() || preset?.label || '');
     setOwnerBizCode(ownerCode);
-    setSignerTitle(str(o.signer_title) || 'Managing Member');
+    // Load exactly what the scenario says. Substituting a default here made a
+    // blank signer title impossible to test: the loader filled it back in
+    // before any validation could see it, so the scenario silently passed on
+    // data it never actually used.
+    setSignerTitle(str(o.signer_title));
     setSignatureDate(str(o.signature_date));
 
     // Steps 3 & 4
@@ -2426,7 +2700,7 @@ export function Intake() {
                 <Link to="/check" style={{ color: 'var(--tf-accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
                   Run the eligibility check
                 </Link>
-                {' '}— about a minute, nothing is saved.
+                {' '} (about a minute, nothing is saved).
               </p>
 
               <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem' }}>

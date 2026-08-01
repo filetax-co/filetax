@@ -1,5 +1,5 @@
 /**
- * checkSignatures — proves, from the captured bytes, whether each PDF carries a
+ * checkSignatures, proves, from the captured bytes, whether each PDF carries a
  * DRAWN signature or fell back to the TYPED name.
  *
  *   node scripts/checkSignatures.mjs [pdfDir] [scenariosFile]
@@ -11,7 +11,7 @@
  *
  * Reports, per scenario: what the scenario ASKED for (signature_mode) against
  * what the file actually CONTAINS. A drawn scenario whose PDF has no image, or
- * a typed one that somehow has a signature image, is a real defect — the filer
+ * a typed one that somehow has a signature image, is a real defect, the filer
  * would be handing the IRS a return signed differently from how they signed it.
  */
 import { readFile, readdir } from 'node:fs/promises';
@@ -25,7 +25,14 @@ const scenPath = process.argv[3] ?? path.resolve(here, '../testing/__scenarios10
 const scenarios = JSON.parse(await readFile(scenPath, 'utf8')).scenarios;
 const byId = Object.fromEntries(scenarios.map((s) => [s.scenario_id, s]));
 
-const files = (await readdir(pdfDir)).filter((f) => f.toLowerCase().endsWith('.pdf')).sort();
+// Only the filing package carries the filer's signature. The standalone Form
+// 7004 is captured alongside it (an extension application, which the product
+// does not sign), so checking it against the scenario's signature_mode reports
+// a mismatch for a file that is never meant to hold a signature at all.
+const files = (await readdir(pdfDir))
+  .filter((f) => f.toLowerCase().endsWith('.pdf'))
+  .filter((f) => !/form-7004/i.test(f))
+  .sort();
 if (files.length === 0) {
   console.log('No PDFs captured yet.');
   process.exit(0);
@@ -68,6 +75,6 @@ for (const r of rows) {
 const bad = rows.filter((r) => r.verdict === 'MISMATCH');
 console.log(`\n${rows.length} PDFs, ${rows.filter((r) => r.verdict === 'MATCH').length} match, ${bad.length} mismatch`);
 if (bad.length) {
-  console.log('\nMISMATCHES — the signature on the file is not the one the scenario asked for:');
+  console.log('\nMISMATCHES, the signature on the file is not the one the scenario asked for:');
   for (const r of bad) console.log(`  #${r.id} asked ${r.asked}, file has ${r.images} image(s): ${r.file}`);
 }

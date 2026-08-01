@@ -248,11 +248,14 @@ export default function FilingWizard() {
     ['distribution', 'dividend', 'capital_contribution', 'formation_costs'].includes(t.transaction_type)
   );
   // Part VI is always generated, hardcoded true in pdfGenerator.ts
-  // Form 7004 is downloadable ONLY when this filing is an extension filing
-  // (include_7004). A filing where the owner merely reports that they already
-  // filed 7004 elsewhere (extension_filed) does not re-generate the form, and we
-  // never offer a "7004 only" filing, the 7004 accompanies the full package.
-  const has7004 = filing?.include_7004 === true;
+  // Form 7004 belongs in the package whenever the filing opted into an extension
+  // (include_7004) OR the owner reported one was already filed (extension_filed),
+  // including when someone else filed it for them: they still need a copy of what
+  // was filed on their behalf. This must stay in step with wants7004() in
+  // pdfGenerator.ts, which decides what the package actually contains. Narrowing
+  // this to include_7004 alone silently hid a 7004 that was already merged into
+  // the combined PDF, because nothing in the app ever writes include_7004.
+  const has7004 = filing?.include_7004 === true || filing?.extension_filed === true;
 
   // Standalone Form 7004 download (accompanies an extension filing).
   const handleDownload7004 = async () => {
