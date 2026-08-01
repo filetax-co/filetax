@@ -612,13 +612,10 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
   return (
     <div
       style={{
-        position: 'relative',
         background: 'var(--tf-surface)',
         border: '1px solid var(--tf-border)',
         borderRadius: '0.75rem',
-        // The extra top padding is what keeps the corner control clear of the
-        // action column. Both columns start below it, so nothing can overlap.
-        padding: showDelete ? '3rem 1.5rem 1.25rem' : '1.25rem 1.5rem',
+        padding: '1.25rem 1.5rem',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -626,15 +623,6 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
         flexWrap: 'wrap',
       }}
     >
-      {showDelete && (
-        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem' }}>
-          <DeleteCardButton
-            onClick={() => onDelete!(f)}
-            busy={deleting}
-            title={`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}`}
-          />
-        </div>
-      )}
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
@@ -650,13 +638,26 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
           {(f.status === 'draft' || f.status === 'in_progress') ? ` · Step ${f.current_step} of 5` : ''}
         </p>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+      {/* Delete sits INLINE, after Continue, in the row that already exists.
+          It was briefly absolute in the top-right corner, which needed 3rem of
+          card padding to clear the action column and left a visibly empty band
+          across the top of every deletable card. Inline costs no vertical space
+          at all, and it matches the per-year rows inside a catch-up job, which
+          already put the trash at the end of the row. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', whiteSpace: 'nowrap' }}>
         <Link
           to={filingPath(f)}
           style={{ background: f.status === 'completed' ? 'transparent' : 'var(--tf-accent)', color: f.status === 'completed' ? 'var(--tf-accent)' : 'var(--tf-on-accent)', border: f.status === 'completed' ? '1px solid var(--tf-border)' : 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
         >
           {actionLabel(f.status)}
         </Link>
+        {showDelete && (
+          <DeleteCardButton
+            onClick={() => onDelete!(f)}
+            busy={deleting}
+            title={`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}`}
+          />
+        )}
       </div>
     </div>
   );
@@ -694,17 +695,8 @@ function JobCard({
   const showJobDelete = jobDeletable && !!onDeleteJob;
 
   return (
-    <div style={{ position: 'relative', background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
-      {showJobDelete && (
-        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 1 }}>
-          <DeleteCardButton
-            onClick={() => onDeleteJob!(filings)}
-            busy={busy === `del-job-${sorted[0]?.job_id}`}
-            title={`Delete the whole catch-up for ${llc}, all ${sorted.length} years`}
-          />
-        </div>
-      )}
-      <div style={{ padding: showJobDelete ? '3rem 1.5rem 1.25rem' : '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
+    <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
             <Pill bg="var(--tf-accent)" fg="var(--tf-on-accent)" uppercase>
@@ -718,12 +710,24 @@ function JobCard({
           </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
-          <Link
-            to={filingPath(target)}
-            style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
-          >
-            {remaining > 0 ? 'Continue' : 'Download all'}
-          </Link>
+          {/* Delete inline after the primary action, same as the filing card
+              and the per-year rows below. "Add or remove years" stays on its
+              own line underneath. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Link
+              to={filingPath(target)}
+              style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', textDecoration: 'none', minHeight: '40px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+            >
+              {remaining > 0 ? 'Continue' : 'Download all'}
+            </Link>
+            {showJobDelete && (
+              <DeleteCardButton
+                onClick={() => onDeleteJob!(filings)}
+                busy={busy === `del-job-${sorted[0]?.job_id}`}
+                title={`Delete the whole catch-up for ${llc}, all ${sorted.length} years`}
+              />
+            )}
+          </div>
           {!allReady && sorted[0]?.job_id && (
             <Link
               to={`/catch-up?job=${sorted[0].job_id}`}
