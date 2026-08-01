@@ -24,8 +24,7 @@ const TAX_YEARS = Array.from(
 // It is reached via /filing/:id, which the Dashboard routes to for
 // paid / completed filings. Data entry (steps 1-3) lives in Intake (/intake/:id).
 //
-// Combined PDF order is owned by generateFilingPackage() in pdfGenerator.ts —
-// Instructions → reasonable-cause letter (if any) → Pro Forma 1120 → Form 7004
+// Combined PDF order is owned by generateFilingPackage() in pdfGenerator.ts, // Instructions → reasonable-cause letter (if any) → Pro Forma 1120 → Form 7004
 // (if any) → owner's Form 5472 with its Part V / Part VI statements → a Form
 // 5472 per remaining related party. Do not restate it here; the previous copy
 // of this comment had drifted and described a sequence no longer produced.
@@ -33,8 +32,7 @@ const TAX_YEARS = Array.from(
 // statement_partVI is always included (hardcoded true in pdfGenerator.ts).
 // statement_partV is included only when distributions, contributions, dividends,
 // or formation-cost payments are present (hasPartV === true).
-// property_transfer and nonmonetary_other are disclosed in statement_partVI only —
-// they do NOT trigger hasPartV.
+// property_transfer and nonmonetary_other are disclosed in statement_partVI only, // they do NOT trigger hasPartV.
 
 export default function FilingWizard() {
   const { id } = useParams<{ id?: string }>();
@@ -223,11 +221,11 @@ export default function FilingWizard() {
   const hasPartV = transactions.some(t =>
     ['distribution', 'dividend', 'capital_contribution', 'formation_costs'].includes(t.transaction_type)
   );
-  // Part VI is always generated — hardcoded true in pdfGenerator.ts
+  // Part VI is always generated, hardcoded true in pdfGenerator.ts
   // Form 7004 is downloadable ONLY when this filing is an extension filing
   // (include_7004). A filing where the owner merely reports that they already
   // filed 7004 elsewhere (extension_filed) does not re-generate the form, and we
-  // never offer a "7004 only" filing — the 7004 accompanies the full package.
+  // never offer a "7004 only" filing, the 7004 accompanies the full package.
   const has7004 = filing?.include_7004 === true;
 
   // Standalone Form 7004 download (accompanies an extension filing).
@@ -249,7 +247,7 @@ export default function FilingWizard() {
 
   return (
     <>
-      {/* Scoped input styles — matches Intake.tsx, fixes dark mode visibility */}
+      {/* Scoped input styles, matches Intake.tsx, fixes dark mode visibility */}
       <style>{`
         .filing-wizard input,
         .filing-wizard select,
@@ -308,7 +306,7 @@ export default function FilingWizard() {
         </h2>
         {filing && (
           <p style={{ fontSize: '0.875rem', color: 'var(--tf-muted)', marginBottom: '1.75rem' }}>
-            {filing.llc_name ?? '—'} · Tax year {filing.tax_year ?? '—'}
+            {filing.llc_name ?? 'Not provided'} · Tax year {filing.tax_year ?? 'Not provided'}
           </p>
         )}
 
@@ -339,7 +337,7 @@ export default function FilingWizard() {
               }}>
                 <SummaryRow label="LLC / Corp"      value={filing.llc_name} />
                 <SummaryRow label="EIN"             value={filing.ein} />
-                <SummaryRow label="Tax year"        value={String(filing.tax_year ?? '—')} />
+                <SummaryRow label="Tax year"        value={String(filing.tax_year ?? 'Not provided')} />
                 <SummaryRow label="State"           value={filing.state_of_formation} />
                 <SummaryRow label="Owner"           value={filing.owner_full_name} />
                 <SummaryRow label="Country"         value={filing.owner_country_residence} />
@@ -414,7 +412,7 @@ export default function FilingWizard() {
               </section>
             )}
 
-            {/* No transactions — informational, not a blocker. A return with no
+            {/* No transactions, informational, not a blocker. A return with no
                 reportable transactions is still valid and worth filing. */}
             {transactions.length === 0 && (
               <div style={{
@@ -428,7 +426,7 @@ export default function FilingWizard() {
               }}>
                 <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>No reportable transactions this year.</p>
                 <p style={{ fontSize: '0.8125rem' }}>
-                  That is fine — you can still generate and file. Your Form 5472 discloses the
+                  That is fine, you can still generate and file. Your Form 5472 discloses the
                   managerial services you provide as the owner, and filing on time protects you
                   from the $25,000 penalty even in a year with no transactions.
                 </p>
@@ -599,7 +597,7 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
         fontWeight: 500,
         color: value ? 'var(--tf-text)' : 'var(--tf-muted)',
       }}>
-        {value || '—'}
+        {value || 'Not provided'}
       </div>
     </div>
   );

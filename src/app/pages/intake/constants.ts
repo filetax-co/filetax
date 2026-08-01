@@ -77,23 +77,23 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
 
 // ── TX_TYPES ──────────────────────────────────────────────────────────────
 // Each entry has:
-//   value          — internal key stored in DB
-//   label          — short label shown on the card
-//   sentence       — plain-English sentence; uses {party} and {amount} as placeholders
-//   category       — 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
-//   part           — 'IV' | 'V' | 'VI'
-//   showDirection  — whether to show the paid/received dropdown (Part IV monetary flows only)
-//   amountLabel    — custom label for the amount field
-//   amountHint     — optional hint shown under amount
-//   amountOptional — true if amount can be omitted
-//   notThis        — plain-English NEGATIVE definition: what this is NOT.
+//   value, internal key stored in DB
+//   label, short label shown on the card
+//   sentence, plain-English sentence; uses {party} and {amount} as placeholders
+//   category, 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
+//   part, 'IV' | 'V' | 'VI'
+//   showDirection, whether to show the paid/received dropdown (Part IV monetary flows only)
+//   amountLabel, custom label for the amount field
+//   amountHint, optional hint shown under amount
+//   amountOptional, true if amount can be omitted
+//   notThis, plain-English NEGATIVE definition: what this is NOT.
 //                    Picking the wrong type produces a wrong return rather
 //                    than an error, and the pairs people actually confuse
 //                    (a capital contribution called a loan, a service fee
 //                    called a royalty) land in different Parts of the form.
 //                    Saying what does not count prevents more damage than
 //                    restating what does.
-//   ownerCategory  — tier to use when the counterparty IS the sole owner.
+//   ownerCategory, tier to use when the counterparty IS the sole owner.
 //                    Transactions between a disregarded entity and its own
 //                    owner are not recognised for income tax purposes; they
 //                    are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
@@ -117,7 +117,7 @@ export const TX_TYPES: {
   notThis?: string;
 }[] = [
 
-  // ── Part IV — Goods & property ─────────────────────────────────────────
+  // ── Part IV, Goods & property ─────────────────────────────────────────
   {
     value: 'tangible_purchase',
     label: 'Purchase of goods or inventory',
@@ -143,7 +143,7 @@ export const TX_TYPES: {
     showDirection: false,
   },
 
-  // ── Part IV — Services ─────────────────────────────────────────────────
+  // ── Part IV, Services ─────────────────────────────────────────────────
   {
     value: 'service_payment',
     label: 'Payment for services',
@@ -169,7 +169,7 @@ export const TX_TYPES: {
     showDirection: true,
   },
 
-  // ── Part IV — Rent, royalty, interest ─────────────────────────────────
+  // ── Part IV, Rent, royalty, interest ─────────────────────────────────
   {
     value: 'rent',
     label: 'Rent paid or received',
@@ -197,11 +197,11 @@ export const TX_TYPES: {
     showDirection: true,
   },
 
-  // ── Part IV — Loans ────────────────────────────────────────────────────
+  // ── Part IV, Loans ────────────────────────────────────────────────────
   {
     value: 'loan_to_llc',
     label: 'Loan to the LLC',
-    sentence: '{party} lent money to the LLC — enter the year-end closing balance',
+    sentence: '{party} lent money to the LLC, enter the year-end closing balance',
     category: 2,
     ownerCategory: 1,
     part: 'IV',
@@ -214,7 +214,7 @@ export const TX_TYPES: {
   {
     value: 'loan_from_llc',
     label: 'Loan from the LLC',
-    sentence: 'The LLC lent money to {party} — enter the year-end closing balance',
+    sentence: 'The LLC lent money to {party}, enter the year-end closing balance',
     category: 2,
     ownerCategory: 1,
     part: 'IV',
@@ -225,7 +225,7 @@ export const TX_TYPES: {
       'Taking profit out of the LLC is not a loan. A loan needs an agreed repayment date and an interest rate. If there is no such agreement, use "Distribution to owner" instead.',
   },
 
-  // ── Part IV — Complex / CPA-level ─────────────────────────────────────
+  // ── Part IV, Complex / CPA-level ─────────────────────────────────────
   {
     value: 'intangible',
     label: 'Sale or license of intellectual property',
@@ -288,7 +288,7 @@ export const TX_TYPES: {
     showDirection: true,
   },
 
-  // ── Part V — Contributions, distributions & entity events ─────────────
+  // ── Part V, Contributions, distributions & entity events ─────────────
   // Most common items first (contributions/distributions), rare structural events last.
   // Direction is hidden entirely for Part V.
   {
@@ -330,7 +330,7 @@ export const TX_TYPES: {
   {
     value: 'formation_tx',
     label: 'LLC formation',
-    sentence: 'The LLC was formed — this records the structural transaction with {party}',
+    sentence: 'The LLC was formed, this records the structural transaction with {party}',
     category: 1,
     part: 'V',
     showDirection: false,
@@ -374,7 +374,7 @@ export const TX_TYPES: {
     amountOptional: true,
   },
 
-  // ── Part VI — Nonmonetary / less-than-FMV ─────────────────────────────
+  // ── Part VI, Nonmonetary / less-than-FMV ─────────────────────────────
   {
     value: 'nonmonetary_transfer',
     label: 'Transfer of assets without cash',
@@ -415,7 +415,7 @@ export const TX_TYPES: {
 
 // ── Two-tier transaction entry ────────────────────────────────────────────
 // SIMPLE_TX: the handful of everyday owner↔LLC dealings that cover ~90% of
-// filings — shown as one-tap options by default. Each maps to an existing
+// filings, shown as one-tap options by default. Each maps to an existing
 // TX_TYPES value, so nothing downstream changes.
 //
 // DETAILED_TX_GROUPS: everything else (the less-common Part IV / V / VI types),
@@ -564,7 +564,7 @@ export const TX_CATEGORIES: {
   {
     key: 'complex',
     label: 'IP, insurance & other',
-    description: 'Intellectual property transfers, insurance, cost-sharing, and other complex items — CPA review recommended',
+    description: 'Intellectual property transfers, insurance, cost-sharing, and other complex items, CPA review recommended',
     parts: ['IV'],
     values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'other'],
   },
@@ -843,7 +843,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Zimbabwe', label: 'Zimbabwe' },
 ];
 
-// ── LLC Business Activities (Step 1 — entity's own activity) ─────────────
+// ── LLC Business Activities (Step 1, entity's own activity) ─────────────
 export const BIZ_ACTIVITIES: { code: string; label: string }[] = [
   { code: '541511', label: 'Software Development' },
   { code: '513210', label: 'SaaS / Software Publisher' },
@@ -870,7 +870,7 @@ export const BIZ_ACTIVITIES: { code: string; label: string }[] = [
   { code: '541990', label: 'Other Professional Services' },
 ];
 
-// ── RP_NAICS (Steps 2 & 3 — owner and related party business type) ────────
+// ── RP_NAICS (Steps 2 & 3, owner and related party business type) ────────
 export const RP_NAICS: { code: string; label: string; hint: string }[] = [
   {
     code: '541511',
@@ -972,8 +972,7 @@ export const RP_NAICS: { code: string; label: string; hint: string }[] = [
  * older records: `owner_business_activity` and `owner_business_code` are
  * separate DB columns, and a row seeded from `owner_naics_code` can carry the
  * code with a blank activity. Matching on the label only, such a row would
- * render as "Select type" — or, once touched, as "Other (enter manually)" —
- * which reads as data loss on a filing that is already paid and locked.
+ * render as "Select type", or, once touched, as "Other (enter manually)", * which reads as data loss on a filing that is already paid and locked.
  *
  * So: prefer the label, fall back to the code when the activity is blank.
  *

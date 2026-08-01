@@ -5,6 +5,6 @@
 // When the refactor happens, extract the Step 1 JSX from FilingWizard.tsx
 // into this component and import it there.
 //
-// NOTHING is imported from this file yet — it is intentionally a placeholder.
+// NOTHING is imported from this file yet, it is intentionally a placeholder.
 
 export {};

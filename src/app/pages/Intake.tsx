@@ -117,7 +117,7 @@ function resolveBizActivityLabel(activity: string): string {
 
 // ── Money formatting ────────────────────────────────────────────────────────
 // Amount fields display with thousands separators (1,000,000) while storing a
-// plain numeric string in state. Only dollar amounts are formatted — never
+// plain numeric string in state. Only dollar amounts are formatted, never
 // EIN / TIN / reference IDs, which stay raw.
 
 /** Strip everything except digits and a single decimal point. */
@@ -130,8 +130,7 @@ function stripMoney(raw: string): string {
 }
 
 // ── Fiscal period derivation ────────────────────────────────────────────────
-// A fiscal tax year is DESIGNATED by the calendar year in which it BEGINS —
-// the IRS convention. So "tax year Y" begins on the first day of month (M+1) in
+// A fiscal tax year is DESIGNATED by the calendar year in which it BEGINS, // the IRS convention. So "tax year Y" begins on the first day of month (M+1) in
 // year Y and ends on the last day of month M in the FOLLOWING year (Y+1).
 // e.g. fiscal year ending March, tax year 2025 → April 1, 2025 through
 // March 31, 2026 (filed on the 2025 form). A December end (M=12) is the plain
@@ -221,7 +220,7 @@ function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null
 }
 
 /**
- * Accessible info tooltip — a small "i" the user can hover OR click/focus to
+ * Accessible info tooltip, a small "i" the user can hover OR click/focus to
  * reveal a plain-language hint. Click/focus toggles it so it works on touch and
  * for keyboard users (not hover-only). Uses --tf-* tokens so it adapts to dark
  * mode. The popover is a sibling positioned relative to the trigger.
@@ -276,7 +275,7 @@ function InfoTooltip({ text, label }: { text: string; label?: string }) {
           // Filled accent circle so the info affordance is easy to spot
           // (previously a low-contrast outlined "i" that was hard to find).
           // Kept small: the fill alone makes it findable, so it does not need
-          // the size as well — at 16px it competed with the field label.
+          // the size as well, at 16px it competed with the field label.
           width: '14px', height: '14px', borderRadius: '9999px',
           border: 'none', background: 'var(--tf-accent)',
           color: 'var(--tf-on-accent)', fontSize: '9.5px', fontWeight: 700,
@@ -333,7 +332,7 @@ function Field({
   // Exactly one helper per field: the (i) tooltip carries all guidance. Any
   // legacy `hint` becomes tooltip text (so nothing is duplicated or lost).
   // `status` is the only thing shown inline, for short state words like
-  // "optional" — not guidance.
+  // "optional", not guidance.
   const tip = tooltip ?? hint;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', ...style }}>
@@ -415,12 +414,12 @@ function AddressFields({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      {/* Row 1 — street */}
+      {/* Row 1, street */}
       <Field label="Street address" required>
         <input placeholder="Street address" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} />
       </Field>
 
-      {/* Row 2 — city + postal code */}
+      {/* Row 2, city + postal code */}
       <div style={rows}>
         <Field label="City" required>
           <input placeholder="City" value={value.city ?? ''} onChange={(e) => set('city', e.target.value)} />
@@ -430,7 +429,7 @@ function AddressFields({
         </Field>
       </div>
 
-      {/* Row 3 — state/region + country */}
+      {/* Row 3, state/region + country */}
       <div style={rows}>
         <Field
           label={isUS ? 'State' : 'State or region'}
@@ -480,7 +479,7 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
         {label}
       </div>
       <div style={{ fontSize: '0.95rem', fontWeight: 500, color: value ? 'var(--tf-text)' : 'var(--tf-muted)' }}>
-        {value || '—'}
+        {value || 'Not provided'}
       </div>
     </div>
   );
@@ -497,7 +496,7 @@ function formatAddress(a?: { line1?: string; city?: string; region?: string; pos
 
 /**
  * Reportable-total + money-bucket panel. Shows what the user entered AND the
- * true Form 5472 gross-payments figure (line 1f/1h — Part IV flows, closing loan
+ * true Form 5472 gross-payments figure (line 1f/1h, Part IV flows, closing loan
  * balances, Part V contributions/distributions/formation costs and any Part VI
  * amount), so the form number is honest while nothing looks missing. Reused on
  * the transaction step (live) and the review step (static).
@@ -524,8 +523,8 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
       </div>
       <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
         {summary.formGross === summary.totalEntered
-          ? 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form — your Part IV dealings, money you put in or took out, closing loan balances, formation costs you paid for the LLC, and any amount recorded against a property transfer. Every amount you entered is counted.'
-          : 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form. It can sit below the amount you entered because a loan’s opening balance is not counted — only the closing balance is, so the same loan is not reported twice. That is expected.'}
+          ? 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form, your Part IV dealings, money you put in or took out, closing loan balances, formation costs you paid for the LLC, and any amount recorded against a property transfer. Every amount you entered is counted.'
+          : 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form. It can sit below the amount you entered because a loan’s opening balance is not counted, only the closing balance is, so the same loan is not reported twice. That is expected.'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
@@ -638,7 +637,7 @@ export function Intake() {
   //   • extension filed → late once the EXTENDED deadline has passed too
   //     (a 7004 only buys until the extended date; past that the return is late)
   // While the extension is still valid (within_extension) the filing is on time,
-  // so no reasonable-cause letter — and no "not required" message — is shown.
+  // so no reasonable-cause letter, and no "not required" message, is shown.
   const isLateForRcl =
     extensionFiled === true
       ? filingTiming.extendedPassed
@@ -662,7 +661,7 @@ export function Intake() {
   // Signing title (goes on the 1120 signature block + RCL). Defaults to
   // "Managing Member", the usual role for a single-member LLC owner.
   const [signerTitle, setSignerTitle] = useState('Managing Member');
-  // Date the owner signs — printed on the Form 1120 "Date" line (all years) so
+  // Date the owner signs, printed on the Form 1120 "Date" line (all years) so
   // the package prints ready to mail. ISO YYYY-MM-DD.
   const [signatureDate, setSignatureDate] = useState('');
 
@@ -694,17 +693,17 @@ export function Intake() {
   // generated (unless an actual non-monetary transaction exists).
   const [partViManagerial, setPartViManagerial] = useState(true);
   // True once we auto-fill entity/owner data from the saved profile, so we can
-  // show a "we pre-filled this — please review" banner on a returning user.
+  // show a "we pre-filled this, please review" banner on a returning user.
   const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
   // For a multi-year job: is there another draft year AFTER this one to file?
   const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
-  // Sibling year filings in the same catch-up job — drives the year tab strip.
+  // Sibling year filings in the same catch-up job, drives the year tab strip.
   const [jobYears, setJobYears] = useState<{ id: string; tax_year: string; status: string }[]>([]);
   // Once a filing has been completed at least once (submitted / paid), every
-  // step is freely navigable — from step 1 the user can jump straight to step 5.
+  // step is freely navigable, from step 1 the user can jump straight to step 5.
   const [completedOnce, setCompletedOnce] = useState(false);
   // Payment-integrity state: a paid filing locks its identity fields forever
   // and allows only a capped number of corrections to other fields.
@@ -724,7 +723,7 @@ export function Intake() {
   // the user asks for it (the quick list covers the common ~90%).
   const [showDetailedTx, setShowDetailedTx] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
-  // Free-text search for the "What happened?" combo box — filters across ALL
+  // Free-text search for the "What happened?" combo box, filters across ALL
   // transaction types by label/plain-English sentence.
   const [txSearch, setTxSearch] = useState('');
 
@@ -743,7 +742,7 @@ export function Intake() {
    * with step 1b present the title read "3. Owner Details" while that very
    * section's header read "2. Owner Details", and 1b was numbered in one place
    * but not the other. Both now derive from the same array, so the numbering
-   * holds together — and it shifts correctly for an on-time filer, who has no
+   * holds together, and it shifts correctly for an on-time filer, who has no
    * step 1b at all.
    */
   const stepNumber = (key: IntakeStep): string => {
@@ -773,7 +772,7 @@ export function Intake() {
 
   // Continue/Back: land at the TOP of the new step, not wherever the previous
   // step was scrolled to. Intake changes steps via a query param (?step=N), so
-  // the router's pathname-based ScrollToTop does not fire here — we do it.
+  // the router's pathname-based ScrollToTop does not fire here, we do it.
   useEffect(() => {
     if (loadingFiling) return;
     // Let the new step render before scrolling to it.
@@ -792,7 +791,7 @@ export function Intake() {
     });
   }, [stepErrors, error, einErr]);
 
-  // When the filing turns out to be late (deadline passed — for a 7004 filer,
+  // When the filing turns out to be late (deadline passed, for a 7004 filer,
   // the EXTENDED deadline), pre-select the reasonable-cause letter so the user
   // is asked by default. If the extension is still valid, ensure it is off.
   const rclSectionShown = !jobId && isLateForRcl;
@@ -916,7 +915,7 @@ export function Intake() {
 
       // Backfill entity/owner identity from the saved profile for any field the
       // filing row itself left empty. This matters for multi-year jobs, where a
-      // per-year row may have been seeded before the profile existed — e.g. the
+      // per-year row may have been seeded before the profile existed, e.g. the
       // owner's country should carry across every year, not be re-selected each
       // time. Only empty fields are filled; nothing the row already has is touched.
       try {
@@ -991,7 +990,7 @@ export function Intake() {
   }, [filingId]);
 
   // Auto-generate the owner reference code whenever we have an owner name but no
-  // reference code yet — covers the case where the name was prefilled from the
+  // reference code yet, covers the case where the name was prefilled from the
   // database/profile (not typed), so the user never triggered the onChange path.
   useEffect(() => {
     if (ownerName.trim() && !ownerRefNumber.trim()) {
@@ -1052,7 +1051,7 @@ export function Intake() {
     };
     if (step === '1b') {
       // A reasonable-cause letter only applies to a genuinely late filing. The
-      // filing is late once the applicable deadline has passed — the ORIGINAL
+      // filing is late once the applicable deadline has passed, the ORIGINAL
       // deadline with no extension, or the EXTENDED deadline for a 7004 filer.
       // If the 7004 extension is still valid the filing is on time, so no RCL.
       const rclApplies = includeReasonableCause && isLateForRcl;
@@ -1092,14 +1091,14 @@ export function Intake() {
     return {};
   }
 
-  // The whole-form patch — the union of every step's fields. In the accordion
+  // The whole-form patch, the union of every step's fields. In the accordion
   // model all field state is in memory at once, so we persist everything on
   // section-collapse and at submit instead of one step at a time. Built by
   // temporarily reading each step's subset via patchFromCurrentStep.
   function patchAll(): Partial<Filing> & Record<string, unknown> {
     const rclApplies = includeReasonableCause && isLateForRcl;
     return {
-      // Step 1 — LLC
+      // Step 1, LLC
       llc_name: llcName.trim() || null,
       ein: ein.trim() || null,
       state_of_formation: stateOfFormation.trim() || null,
@@ -1118,12 +1117,12 @@ export function Intake() {
       is_fiscal_year: isFiscalYear,
       tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
       tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
-      // Step 1b — filing status
+      // Step 1b, filing status
       extension_filed: extensionFiled,
       include_reasonable_cause: rclApplies,
       reasonable_cause_reasons: rclApplies ? reasonableCauseReasons : [],
       include_rcl: rclApplies,
-      // Step 2 — owner
+      // Step 2, owner
       owner_full_name: ownerName.trim() || null,
       owner_country: ownerCountry.trim() || null,
       owner_country_residence: ownerCountryRes.trim() || null,
@@ -1140,9 +1139,9 @@ export function Intake() {
       owner_naics_code: ownerBizCode.trim() || null,
       signer_title: signerTitle.trim() || 'Managing Member',
       signature_date: signatureDate || null,
-      // Step 3 — related parties
+      // Step 3, related parties
       related_parties: relatedParties,
-      // Step 4 — transactions meta
+      // Step 4, transactions meta
       no_transactions_confirmed: noTransactionsConfirmed,
       part_vi_managerial: partViManagerial,
     };
@@ -1329,7 +1328,7 @@ export function Intake() {
       return filingId;
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong saving your filing. Please try again — if it keeps happening, email support@filetax.co.');
+      setError('Something went wrong saving your filing. Please try again, if it keeps happening, email support@filetax.co.');
       return null;
     } finally {
       setSaving(false);
@@ -1400,7 +1399,7 @@ export function Intake() {
 
   /**
    * The catch-up year the Review button will open next. Mirrors the selection
-   * handleSubmit makes (earliest remaining draft, this filing excluded) — the
+   * handleSubmit makes (earliest remaining draft, this filing excluded), the
    * `jobYears` list is already sorted ascending, so `find` picks the same row.
    */
   const nextDraftYear =
@@ -1417,7 +1416,7 @@ export function Intake() {
    *
    * The next section is derived from the same `stepOrder` that
    * `continueFromSection` walks, so the label can never drift from where the
-   * button really goes — including when step 1b is absent for an on-time filer.
+   * button really goes, including when step 1b is absent for an on-time filer.
    */
   const continueLabel = (key: string): string => {
     if (saving) return 'Saving…';
@@ -1501,7 +1500,7 @@ export function Intake() {
       return true;
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong saving your transactions. Please try again — if it keeps happening, email support@filetax.co.');
+      setError('Something went wrong saving your transactions. Please try again, if it keeps happening, email support@filetax.co.');
       return false;
     }
   };
@@ -1536,7 +1535,7 @@ export function Intake() {
 
   // Switch a single-year filing to the multi-year catch-up. Persist whatever
   // company/owner details have been entered so far to the user's profile so the
-  // year picker + each year's intake prefill them — the user doesn't re-type
+  // year picker + each year's intake prefill them, the user doesn't re-type
   // Step 1/2. Best-effort: navigate even if the profile write fails.
   const goToMultiYearWithDetails = async () => {
     try {
@@ -1586,8 +1585,7 @@ export function Intake() {
 
       if (isPaidLocked) {
         // Paid filing: this submit is a correction round. Increment the edit
-        // counter (DB enforces the cap) and go straight to the download page —
-        // do NOT touch status (it stays paid/completed).
+        // counter (DB enforces the cap) and go straight to the download page, // do NOT touch status (it stays paid/completed).
       if (editsRemaining > 0) {
         const { error: incErr } = await supabase.rpc('increment_post_payment_edit', {
         p_filing_id: filingId,
@@ -1655,7 +1653,7 @@ export function Intake() {
       navigate(`/filing/${filingId}`);
     } catch (e: unknown) {
       console.error(e);
-      setError('Something went wrong submitting your filing. Please try again — if it keeps happening, email support@filetax.co.');
+      setError('Something went wrong submitting your filing. Please try again, if it keeps happening, email support@filetax.co.');
     } finally {
       setSaving(false);
     }
@@ -1761,15 +1759,15 @@ export function Intake() {
   };
 
   /**
-   * DEV ONLY — drop a test scenario into the form's state.
+   * DEV ONLY, drop a test scenario into the form's state.
    *
    * It fills exactly the state the tester's own typing would fill, then stops.
    * Nothing is validated, saved or submitted here: the tester still clicks
    * through every step, so a negative scenario fails where it is supposed to
    * fail rather than being waved through by the loader.
    *
-   * A multi-year scenario has no single filing of its own — it carries shared
-   * fields plus one entry per year — so we load the shared data and the FIRST
+   * A multi-year scenario has no single filing of its own, it carries shared
+   * fields plus one entry per year, so we load the shared data and the FIRST
    * year, and say so in the message. The remaining years come from the
    * multi-year start flow, which is the thing that scenario is testing anyway.
    */
@@ -1779,7 +1777,7 @@ export function Intake() {
     const o = s.owner ?? s.shared_owner_fields ?? {};
     const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
-    // Step 1 — LLC
+    // Step 1, LLC
     setLlcName(str(f.llc_name));
     setEin(str(f.ein));
     setStateOfFormation(str(f.state_of_formation));
@@ -1794,12 +1792,12 @@ export function Intake() {
     setIsFiscalYear(Boolean(f.is_fiscal_year));
     setFiscalEndMonth(f.fiscal_end_month ? Number(f.fiscal_end_month) : '');
 
-    // Step 1b — lateness and the reasonable-cause letter
+    // Step 1b, lateness and the reasonable-cause letter
     setExtensionFiled(f.extension_filed ?? null);
     setIncludeReasonableCause(Boolean(f.include_reasonable_cause ?? s.include_rcl ?? false));
     setReasonableCauseReasons(f.reasonable_cause_reasons ?? s.reasonable_cause_reasons ?? []);
 
-    // Step 2 — owner. A legacy row may carry a code with a blank activity, so
+    // Step 2, owner. A legacy row may carry a code with a blank activity, so
     // recover the preset the same way the filing loader does.
     setOwnerName(str(o.owner_full_name));
     setOwnerCountry(str(o.owner_primary_country));
@@ -1841,9 +1839,9 @@ export function Intake() {
 
     const txCount = (s.transactions ?? yearOne?.transactions ?? []).length;
     const rpCount = (s.related_parties ?? []).length;
-    const base = `Loaded ${str(f.llc_name) || 'scenario'} · ${rpCount} related ${rpCount === 1 ? 'party' : 'parties'} · ${txCount} transaction${txCount === 1 ? '' : 's'}. Now work through the form yourself — nothing has been saved.`;
+    const base = `Loaded ${str(f.llc_name) || 'scenario'} · ${rpCount} related ${rpCount === 1 ? 'party' : 'parties'} · ${txCount} transaction${txCount === 1 ? '' : 's'}. Now work through the form yourself, nothing has been saved.`;
     return s.year_specific_filings
-      ? `${base} This is a ${s.year_specific_filings.length}-year job; only ${yearOne?.tax_year} was loaded — start the rest from the multi-year flow.`
+      ? `${base} This is a ${s.year_specific_filings.length}-year job; only ${yearOne?.tax_year} was loaded, start the rest from the multi-year flow.`
       : base;
   };
 
@@ -1934,7 +1932,7 @@ export function Intake() {
         .acc-progress-dot.is-complete { background: var(--tf-accent); border-color: var(--tf-accent); }
         .acc-trigger-chevron { color: var(--tf-muted); display: flex; transition: transform 0.2s ease; flex-shrink: 0; }
         .acc-trigger-chevron.is-open { transform: rotate(180deg); }
-        /* Generous body padding — the form reads as dense otherwise, with
+        /* Generous body padding, the form reads as dense otherwise, with
            fields running straight into the section edge. */
         .acc-body { padding: 1.75rem 1.5rem 1.5rem; }
         @media (max-width: 520px) { .acc-body { padding: 1.25rem 1rem; } }
@@ -2042,7 +2040,7 @@ export function Intake() {
 
         /* ── Confirm no-transactions row ──
            A checkbox the filer must tick, so it is styled as a control (full
-           rounded border on the page surface), not as an amber notice — it used
+           rounded border on the page surface), not as an amber notice, it used
            to wear the banner's fill and read as something to skim past. */
         .confirm-check-row {
           display: flex; gap: 0.75rem; align-items: flex-start;
@@ -2076,8 +2074,8 @@ export function Intake() {
 
         /* ── Notices (green = routine, amber = review, red = complex) ──
            A notice is something to READ; a .select-card is something to CLICK.
-           They used to share one look — a full saturated border around a tinted
-           fill — so each read as the other. Notices now carry a left accent bar
+           They used to share one look, a full saturated border around a tinted
+           fill, so each read as the other. Notices now carry a left accent bar
            and no full outline; the enclosing box is the page surface, not a
            control. Anything clickable keeps the full rounded border. Never give
            a notice a complete border, and never give a control a left bar. */
@@ -2107,7 +2105,7 @@ export function Intake() {
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
-        {/* Intake page header — a clean, consistent title bar above the sections */}
+        {/* Intake page header, a clean, consistent title bar above the sections */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
           <div style={{ minWidth: 0 }}>
             <button
@@ -2135,7 +2133,7 @@ export function Intake() {
           </div>
         )}
 
-        {/* Year tabs — switch between the years selected for this catch-up job. */}
+        {/* Year tabs, switch between the years selected for this catch-up job. */}
         {jobId && jobYears.length > 1 && (
           <div style={{ marginBottom: '1.25rem' }}>
             <div className="year-tabs" role="tablist" aria-label="Tax years in this catch-up">
@@ -2314,7 +2312,7 @@ export function Intake() {
                      in an earlier year. We first ASK whether earlier returns
                      were already filed. If yes → caught up, no nudge. If no →
                      offer multi-year.
-                  B) Filing a year that is NOT the latest — earlier years are
+                  B) Filing a year that is NOT the latest, earlier years are
                      almost certainly outstanding, so offer multi-year directly. */}
             {!jobId && !isPaidLocked && (() => {
               const latestFilable = new Date().getUTCFullYear() - 1;
@@ -2483,7 +2481,7 @@ export function Intake() {
                     />
                   </Field>
                 )}
-                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code that matches what your LLC does. We fill it in automatically when you pick a type of business above — you can also type it yourself.">
+                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code that matches what your LLC does. We fill it in automatically when you pick a type of business above, you can also type it yourself.">
                   <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
@@ -2594,7 +2592,7 @@ export function Intake() {
               <section style={sectionStyle}>
                 <div className="cat-banner-green">
                   <strong>Your reasonable cause letter is handled for the whole catch-up.</strong> You
-                  chose whether to include it, and gave your reasons, when you selected your years — one
+                  chose whether to include it, and gave your reasons, when you selected your years, one
                   letter covers every year, so there's nothing to repeat here.
                 </div>
               </section>
@@ -2779,7 +2777,7 @@ export function Intake() {
                     />
                   </Field>
                 )}
-                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code for your own business. We fill it in when you pick a type above — you can also type it yourself.">
+                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code for your own business. We fill it in when you pick a type above, you can also type it yourself.">
                   <input value={ownerBizCode} onChange={(e) => setOwnerBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
@@ -2903,7 +2901,7 @@ export function Intake() {
                         />
                       </Field>
                     )}
-                    <Field label="Business code" required tooltip="The 6-digit IRS business-activity code. We fill it in when you pick a type above — you can also type it yourself.">
+                    <Field label="Business code" required tooltip="The 6-digit IRS business-activity code. We fill it in when you pick a type above, you can also type it yourself.">
                       <input
                         value={rpDraft.biz_code}
                         onChange={(e) => setRpDraft((p) => ({ ...p, biz_code: e.target.value }))}
@@ -2949,13 +2947,13 @@ export function Intake() {
               Tell us about any money or assets that moved between the LLC and you (or another related party) this year: money you put in, money you took out, loans, and so on. Don’t include normal business sales to customers or payments to vendors like Stripe or AWS.
             </p>
 
-            {/* Owner managerial-services Part VI disclosure — pre-selected, can opt out */}
+            {/* Owner managerial-services Part VI disclosure, pre-selected, can opt out */}
             <label className={`confirm-check-row confirm-check-row--neutral${partViManagerial ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: 0, marginBottom: '1.5rem' }}>
               <input type="checkbox" checked={partViManagerial} onChange={(e) => setPartViManagerial(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
                   I run the LLC myself (include the standard owner-services note)
-                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on your Form 5472, and we include a standard statement for you. Untick only if this does not apply — then no such statement is generated." label="About owner services" />
+                  <InfoTooltip text="As the foreign owner, you typically provide management and services to the LLC that have no set market price. The IRS expects this disclosed on your Form 5472, and we include a standard statement for you. Untick only if this does not apply, then no such statement is generated." label="About owner services" />
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
                   Recommended for almost all single-owner LLCs. Untick if it doesn’t apply.
@@ -3024,7 +3022,7 @@ export function Intake() {
                       <div style={{ ...errorSummaryStyle, marginBottom: '0.75rem' }}>Choose an option below.</div>
                     )}
 
-                    {/* Searchable combo box — type to filter every transaction type. */}
+                    {/* Searchable combo box, type to filter every transaction type. */}
                     <input
                       type="text"
                       value={txSearch}
@@ -3055,7 +3053,7 @@ export function Intake() {
                       )
                     ) : (
                     <>
-                    {/* Quick options — owner gets first-person shortcuts;
+                    {/* Quick options, owner gets first-person shortcuts;
                         a related party gets neutral, LLC<->party wording. */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
                       {quickList.map((q) => (
@@ -3151,7 +3149,7 @@ export function Intake() {
                   </div>
                 )}
 
-                {/* Tier note — revealed only AFTER a transaction type is picked, so we
+                {/* Tier note, revealed only AFTER a transaction type is picked, so we
                     never pre-signal complexity in the picker. Driven by TX_TYPES.category:
                       1 → routine, nothing extra needed (green)
                       2 → reportable but straightforward, we handle it (amber/blue)
@@ -3249,7 +3247,7 @@ export function Intake() {
             )}
             </div>
 
-            {/* Right column — live list of everything added this year. */}
+            {/* Right column, live list of everything added this year. */}
             <section style={{ ...sectionStyle, marginBottom: 0 }}>
               <div style={{ ...sectionLabelStyle, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                 Transactions
@@ -3261,7 +3259,7 @@ export function Intake() {
               </div>
               {transactions.length === 0 ? (
                 <div style={{ border: '1px dashed var(--tf-border)', borderRadius: '0.625rem', padding: '1.5rem 1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.5 }}>
-                  No transactions yet. Fill in the form and select “Add transaction” — each one you add shows up here.
+                  No transactions yet. Fill in the form and select “Add transaction”, each one you add shows up here.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -3351,7 +3349,7 @@ export function Intake() {
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
                 <SummaryRow label="Accounting period" value={isFiscalYear ? 'Fiscal year' : 'Calendar year'} />
-                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : '—'} />}
+                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : 'Not provided'} />}
                 {earlierReturnsFiled !== null && (
                   <SummaryRow label="Earlier years already filed" value={earlierReturnsFiled ? 'Yes' : 'No'} />
                 )}
@@ -3360,7 +3358,7 @@ export function Intake() {
 
             {/* Filing status is shown unconditionally. It used to render only
                 when step 1b was reachable (`show1b`), which hid the extension and
-                reasonable-cause answers from an on-time filer's review — the user
+                reasonable-cause answers from an on-time filer's review, the user
                 could not see what had been decided on their behalf. */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Filing status</h3>
@@ -3377,7 +3375,7 @@ export function Intake() {
                   label="Extension (Form 7004) filed"
                   value={
                     extensionFiled === null
-                      ? (show1b ? '—' : 'Not applicable — filing on time')
+                      ? (show1b ? 'Not provided' : 'Not applicable, filing on time')
                       : extensionFiled ? 'Yes' : 'No'
                   }
                 />
@@ -3446,8 +3444,8 @@ export function Intake() {
                   return (
                     <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.5rem' }}>
                       <SummaryRow label="Type" value={meta?.label ?? t.transaction_type} />
-                      <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? '—'} />
-                      <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : '—'} />
+                      <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? 'Not provided'} />
+                      <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : 'Not provided'} />
                       {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? `USD ${Number(t.loan_begin_usd).toLocaleString()}` : 'USD 0'} />}
                       {DIRECTION_TYPES.has(t.transaction_type) && <SummaryRow label="Direction" value={t.direction === 'received' ? 'Money in' : 'Money out'} />}
                       <SummaryRow label="Date" value={t.transaction_date || null} />

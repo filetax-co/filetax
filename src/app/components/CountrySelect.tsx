@@ -1,5 +1,5 @@
 /**
- * CountrySelect — reusable searchable country <select> component.
+ * CountrySelect, reusable searchable country <select> component.
  *
  * Usage:
  *   <CountrySelect

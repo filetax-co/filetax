@@ -3,8 +3,7 @@
  *
  * The LLC's details and the owner's details almost never change between years,
  * so we remember them in `user_profiles` and prefill each NEW filing from the
- * profile for the user to review/edit. "Edits apply to future filings only" —
- * editing a filing does not retroactively change other filings; the profile is
+ * profile for the user to review/edit. "Edits apply to future filings only", * editing a filing does not retroactively change other filings; the profile is
  * refreshed only when a filing is submitted.
  *
  * This is the same carry-forward mechanism the multi-year catch-up flow uses to

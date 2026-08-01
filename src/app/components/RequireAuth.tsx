@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 // SECURITY: real auth runs by default in dev too. Set VITE_SKIP_AUTH=true in
 // .env.local ONLY for local-only experimentation. Never set this in any shared
-// or preview environment (Codespaces, staging, demo) — it leaves every gated
+// or preview environment (Codespaces, staging, demo), it leaves every gated
 // route wide open.
 const DEV_SKIP_AUTH = import.meta.env.DEV && import.meta.env.VITE_SKIP_AUTH === 'true';
 
@@ -15,7 +15,7 @@ export function RequireAuth() {
 
   useEffect(() => {
     if (DEV_SKIP_AUTH) return;
-    // Only redirect once we're sure there's no session — never redirect while
+    // Only redirect once we're sure there's no session, never redirect while
     // still loading, to avoid a flash-redirect when the session is already
     // present in storage but hasn't resolved yet.
     if (!loading && !user) {

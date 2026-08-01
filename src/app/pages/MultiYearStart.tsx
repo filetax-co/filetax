@@ -1,5 +1,5 @@
 /**
- * Multi-year catch-up — year picker.
+ * Multi-year catch-up, year picker.
  *
  * The filer selects every tax year they missed (2019 → most recent filing
  * year). We create ONE filing_jobs row (which carries the single, shared
@@ -338,7 +338,7 @@ export function MultiYearStart() {
           <div style={{ marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.625rem' }}>
               <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Why were these years filed late? (select all that apply — asked once for every year){rclReasons.length > 0 ? ` · ${rclReasons.length} selected` : ''}
+                Why were these years filed late? (select all that apply, asked once for every year){rclReasons.length > 0 ? ` · ${rclReasons.length} selected` : ''}
               </p>
               {rclReasons.length > 0 && (
                 <button
@@ -402,7 +402,7 @@ export function MultiYearStart() {
               ? 'Select at least one year'
               : editJobId
                 ? `Save ${selected.size} year${selected.size > 1 ? 's' : ''}`
-                : `Start filing — begin with ${Math.min(...selected)}`}
+                : `Start filing, begin with ${Math.min(...selected)}`}
         </button>
         <button
           onClick={() => navigate('/dashboard')}

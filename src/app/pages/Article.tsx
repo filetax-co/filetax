@@ -2,6 +2,24 @@ import { useParams, Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { PRICE_PER_YEAR, PRICE_RCL } from "../../lib/pricing";
 
+// Same wording as the marketing site's article disclaimer, which on 1 Aug 2026
+// moved out of the 30 Sanity post bodies and into that repo's Article layout.
+// These eight articles are hardcoded here and predate all of that, so they had
+// never carried a disclaimer at all.
+//
+// NOTE: these are NOT the blog. The blog is 30 Sanity posts served from
+// filetax.co. This file is an older, separate set of eight static articles that
+// this app publishes at the same /resources/:slug path shape, to GitHub Pages,
+// with no robots.txt. They should almost certainly be deleted rather than
+// maintained; see section 20 item 4 of the handoff.
+const DISCLAIMER =
+  "This article provides general information about US tax filing requirements for " +
+  "foreign-owned single-member LLCs. It does not constitute legal or tax advice. " +
+  "FileTax.co is a software platform for generating IRS forms based on user inputs. " +
+  "It is not a law firm and does not provide legal or tax advice. Forms are generated " +
+  "according to the official IRS Instructions for Form 5472 (Rev. December 2024). " +
+  "For advice on your specific situation, consult a qualified tax professional.";
+
 const articles: Record<string, {
   title: string;
   date: string;
@@ -226,6 +244,16 @@ export function Article() {
           <Link to="/resources" style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "0.875rem", textDecoration: "none" }}>
             Back to Resources
           </Link>
+
+          {/* Legal disclaimer, matching the marketing site's article layout. */}
+          <aside
+            aria-label="Disclaimer"
+            style={{ marginTop: "2.5rem", paddingTop: "1.25rem", borderTop: "1px solid var(--tf-border)" }}
+          >
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", lineHeight: 1.65, fontWeight: 400, margin: 0 }}>
+              <strong style={{ fontWeight: 600 }}>Disclaimer:</strong> {DISCLAIMER}
+            </p>
+          </aside>
         </div>
       </section>
     </>

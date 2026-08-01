@@ -10,7 +10,7 @@
  *   (Instructions → reasonable-cause letter, if any → Pro Forma 1120 → Form
  *   7004, if any → owner's Form 5472 with its Part V / Part VI statements →
  *   Form 5472 for each remaining related party). Do not restate the order here
- *   — the previous copy of this comment drifted out of date and described a
+ *, the previous copy of this comment drifted out of date and described a
  *   sequence the generator had long since stopped producing.
  *
  *   AcroForm fields flattened (values baked in, renders correctly everywhere)
@@ -38,7 +38,7 @@ const STATUS_LABELS: Record<Status, string> = {
   fetching:   'Loading filing data...',
   generating: 'Generating PDF...',
   done:       'Downloaded!',
-  error:      'Failed — try again',
+  error:      'Failed, try again',
 };
 
 /** The generated package, held so preview and download never rebuild it twice. */
@@ -54,7 +54,7 @@ export function DownloadPackageButton({ filingId, taxYear, llcName, onSuccess }:
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // The object URL outlives a render, so it is revoked on unmount rather than
-  // on a timer — a preview left open must not have its source pulled away.
+  // on a timer, a preview left open must not have its source pulled away.
   const builtRef = useRef<BuiltPackage | null>(null);
   builtRef.current = built;
   useEffect(() => () => {

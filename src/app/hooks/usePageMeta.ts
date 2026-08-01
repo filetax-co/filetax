@@ -34,7 +34,7 @@ interface PageMeta {
    * Optional. When omitted, the canonical is left to <CanonicalTag> in
    * Layout.tsx, which derives it from the current pathname. Layout is a parent
    * of every page and parent effects flush after child effects, so Layout's
-   * value wins either way — passing one here only matters when the canonical
+   * value wins either way, passing one here only matters when the canonical
    * must differ from the pathname.
    */
   canonical?: string;
@@ -73,7 +73,7 @@ export function usePageMeta({
     setOrCreate("name", "twitter:description", description);
     setOrCreate("name", "twitter:image", ogImage);
 
-    // robots.txt Disallow stops crawling but not indexing — a disallowed URL
+    // robots.txt Disallow stops crawling but not indexing, a disallowed URL
     // with inbound links can still be indexed as a bare result. A noindex meta
     // is the only reliable signal, so it has to be emitted per page.
     if (noindex) {

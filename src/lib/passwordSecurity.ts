@@ -3,15 +3,15 @@
  * -------------------
  * Two independent password-security checks used on signup:
  *
- *  1. strengthScore  — zxcvbn offline strength check (0–4).
+ *  1. strengthScore, zxcvbn offline strength check (0–4).
  *                      Blocks common, guessable, and pattern-based passwords.
  *
- *  2. isBreached     — HaveIBeenPwned k-anonymity range API.
+ *  2. isBreached, HaveIBeenPwned k-anonymity range API.
  *                      Checks if the exact password appeared in a known breach.
  *                      Only the first 5 chars of the SHA-1 hash are sent; the
  *                      full password never leaves the browser.
  *
- * Both are called in Portal.tsx during signup — strength check runs first
+ * Both are called in Portal.tsx during signup, strength check runs first
  * (fast, offline), HIBP only runs if the password passes strength.
  */
 
@@ -45,7 +45,7 @@ export function meetsAllRules(password: string): boolean {
   return PASSWORD_RULES.every((r) => r.test(password));
 }
 
-/** Which rules currently pass — used to render the live checklist. */
+/** Which rules currently pass, used to render the live checklist. */
 export function ruleStatus(password: string): Record<string, boolean> {
   return Object.fromEntries(PASSWORD_RULES.map((r) => [r.key, r.test(password)]));
 }
@@ -118,14 +118,14 @@ export async function isBreached(password: string): Promise<boolean> {
       .split('\n')
       .some((line) => line.split(':')[0] === suffix);
   } catch (err) {
-    // Network error or SubtleCrypto unavailable — fail open.
+    // Network error or SubtleCrypto unavailable, fail open.
     console.warn('[passwordSecurity] HIBP check error:', err);
     return false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// 3. Combined validator — used by Portal.tsx on signup submit
+// 3. Combined validator, used by Portal.tsx on signup submit
 // ---------------------------------------------------------------------------
 
 export interface PasswordValidationResult {
@@ -141,7 +141,7 @@ export interface PasswordValidationResult {
 export async function validatePassword(
   password: string,
 ): Promise<PasswordValidationResult> {
-  // Step 0 — explicit requirements (length + character classes). These are the
+  // Step 0, explicit requirements (length + character classes). These are the
   // same rules shown as a live checklist next to the field.
   if (!meetsAllRules(password)) {
     const missing = PASSWORD_RULES.filter((r) => !r.test(password)).map((r) => r.label.toLowerCase());
@@ -151,7 +151,7 @@ export async function validatePassword(
     };
   }
 
-  // Step 1 — strength
+  // Step 1, strength
   const { score, feedback } = await checkStrength(password);
   if (score < 3) {
     return {
@@ -160,7 +160,7 @@ export async function validatePassword(
     };
   }
 
-  // Step 2 — breach check
+  // Step 2, breach check
   const breached = await isBreached(password);
   if (breached) {
     return {

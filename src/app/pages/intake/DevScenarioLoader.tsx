@@ -3,13 +3,13 @@
 // Dev-only scenario loader for the intake wizard.
 //
 // The 100 test scenarios are the fastest way to exercise the form, but typing
-// one in by hand takes several minutes and is itself error-prone — which makes
+// one in by hand takes several minutes and is itself error-prone, which makes
 // a failed test ambiguous. This panel takes a pasted scenario and drops it into
 // the form's state, so the tester spends their time on the part that matters:
 // clicking Continue and reading what the product does.
 //
 // It fills the SAME state the user's own typing fills. It does not skip
-// validation, does not write to Supabase, and does not submit anything — every
+// validation, does not write to Supabase, and does not submit anything, every
 // Continue, every error and every generated PDF is the real path. That is the
 // difference between this and `npm run seed`, which writes rows straight to the
 // database and therefore proves nothing about the form.
@@ -24,7 +24,7 @@ function extractScenario(raw: string, wantedId: string): { scenario?: any; error
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    return { error: `Not valid JSON — ${(e as Error).message}` };
+    return { error: `Not valid JSON, ${(e as Error).message}` };
   }
 
   const list: any[] | null = Array.isArray(parsed)
@@ -42,7 +42,7 @@ function extractScenario(raw: string, wantedId: string): { scenario?: any; error
   if (list.length === 0) return { error: 'That file has no scenarios in it.' };
   if (!wantedId.trim()) {
     return {
-      error: `That is a file of ${list.length} scenarios — put a scenario number in the box above (${list[0].scenario_id}-${list[list.length - 1].scenario_id}).`,
+      error: `That is a file of ${list.length} scenarios, put a scenario number in the box above (${list[0].scenario_id}-${list[list.length - 1].scenario_id}).`,
     };
   }
   const id = Number(wantedId);
@@ -76,7 +76,7 @@ export function DevScenarioLoader({
       setMsg({ kind: 'ok', body: summary });
     } catch (e) {
       setScenario(null);
-      setMsg({ kind: 'err', body: `Loaded the JSON but could not apply it — ${(e as Error).message}` });
+      setMsg({ kind: 'err', body: `Loaded the JSON but could not apply it, ${(e as Error).message}` });
     }
   };
 

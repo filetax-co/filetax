@@ -17,7 +17,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     flowType: 'pkce',
     // Explicitly tell the client to parse tokens from the URL on page load.
     // Critical on GitHub Pages where the app is served from a sub-path
-    // (/5472/) — without this, recovery/confirmation redirects are silently
+    // (/5472/), without this, recovery/confirmation redirects are silently
     // ignored and the user is never signed in.
     detectSessionInUrl: true,
   },
@@ -95,9 +95,9 @@ export type Filing = {
   /** Pro Forma 1120 header checkboxes */
   name_change?: boolean | null;
   address_change?: boolean | null;
-  /** 1120 item E "Final return" — LLC dissolved/closed this tax year. */
+  /** 1120 item E "Final return", LLC dissolved/closed this tax year. */
   final_return?: boolean | null;
-  /** Non-calendar (fiscal-year) filer — drives the review notice. */
+  /** Non-calendar (fiscal-year) filer, drives the review notice. */
   is_fiscal_year?: boolean | null;
   /**
    * Owner managerial-services Part VI disclosure toggle.
@@ -147,7 +147,7 @@ export type Filing = {
   owner_business_activity?: string | null;
 
   /**
-   * Part III 8e — which relationship checkbox to tick.
+   * Part III 8e, which relationship checkbox to tick.
    * true  = related party is ONLY related to the 25% shareholder (not the shareholder itself)
    * false / undefined = related party IS the 25% shareholder (default for SMLLC)
    */
@@ -226,7 +226,7 @@ export type FilingTransaction = {
 };
 
 /**
- * Transaction — canonical type used by pdfGenerator and DownloadPackageButton.
+ * Transaction, canonical type used by pdfGenerator and DownloadPackageButton.
  * Maps to the reportable_transactions table in Supabase.
  */
 export type Transaction = {

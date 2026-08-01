@@ -1,5 +1,5 @@
 /**
- * IRS Pro Forma Form 1120 (page 1) — per-year AcroForm field map
+ * IRS Pro Forma Form 1120 (page 1), per-year AcroForm field map
  *
  * Form 5472 attaches to a Pro Forma 1120 (page 1 only). The IRS releases a
  * new revision of Form 1120 each year and they routinely rename internal
@@ -17,7 +17,7 @@
  *
  * The "logical" key set is shared (CORP_NAME, CORP_ADDRESS, CITY_STATE_ZIP,
  * EIN, INITIAL_RETURN, ...). A field with name '' means the revision lacks
- * that field — setText/setCheck no-op when the field name is empty.
+ * that field, setText/setCheck no-op when the field name is empty.
  *
  * ADDING A NEW YEAR
  *   1. Drop the AcroForm PDF into public/pdf/.
@@ -76,7 +76,7 @@ function emptyMap(): F1120Map {
   };
 }
 
-// Fallback "Form-1120-Page-1.pdf" — the canonical Pro Forma page-1 template.
+// Fallback "Form-1120-Page-1.pdf", the canonical Pro Forma page-1 template.
 // Also used for tax year 2025 (Form-1120-2025.pdf), which is the same shape
 // plus DateIncorporated / TotalAssets fields.
 const F1120_FALLBACK: F1120Map = {
@@ -132,8 +132,7 @@ const F1120_2023: F1120Map = {
 };
 
 // 2024 PDF uses a distinct naming scheme (CompanyName/CompanyEIN/etc.). As of
-// the updated template it exposes THREE separate masthead date fields —
-// BeginningDate, EndingDate, EndingYear — so the fiscal/short-year beginning
+// the updated template it exposes THREE separate masthead date fields, // BeginningDate, EndingDate, EndingYear, so the fiscal/short-year beginning
 // date now fills its own box (previously the beginning blank shared the
 // EndingDate field and printed the ending date).
 const F1120_2024: F1120Map = {

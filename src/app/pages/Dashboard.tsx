@@ -8,7 +8,7 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
 
-// ── Status buckets — group filings into a small, human set on the dashboard ──
+// ── Status buckets, group filings into a small, human set on the dashboard ──
 type Bucket = 'action' | 'in_progress' | 'ready' | 'done';
 
 const BUCKET_OF: Record<Filing['status'], Bucket> = {
@@ -29,7 +29,7 @@ const BUCKET_TITLE: Record<Bucket, string> = {
 
 const BUCKET_ORDER: Bucket[] = ['action', 'ready', 'in_progress', 'done'];
 
-/** "December 1, 2025" — the one human date format used across the product. */
+/** "December 1, 2025", the one human date format used across the product. */
 function humanDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
@@ -84,7 +84,7 @@ function formatDate(iso: string): string {
 }
 
 /**
- * Seed tax year for a brand-new filing. Never returns null — the filings table
+ * Seed tax year for a brand-new filing. Never returns null, the filings table
  * requires tax_year, and the wizard lets the user change it in step 1 anyway.
  * The "3-plus" / unknown catch-up case defaults to the most recent filable year.
  */
@@ -185,7 +185,7 @@ export function Dashboard() {
   }
 
   // Delete an unpaid (draft / in-progress) filing. Paid or completed filings are
-  // never deletable — a payment must remain auditable. Its transactions cascade
+  // never deletable, a payment must remain auditable. Its transactions cascade
   // (FK on delete), and if it was the last year of a multi-year job we also
   // remove the now-empty job row.
   async function deleteFiling(f: Filing) {

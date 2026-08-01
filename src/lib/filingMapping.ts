@@ -1,17 +1,17 @@
 /**
- * Canonical mapping layer — the single source of truth that reconciles the
+ * Canonical mapping layer, the single source of truth that reconciles the
  * three vocabularies that exist across the app:
  *
  *   1. Intake UI       (src/app/pages/intake/constants.ts + Intake.tsx)
  *   2. Database        (supabase/schema.sql column names + CHECK constraints)
- *   3. PDF generator   (src/lib/pdfGenerator.ts — the only generator the app
+ *   3. PDF generator   (src/lib/pdfGenerator.ts, the only generator the app
  *                       actually invokes; the generate-forms edge function is
  *                       dead code, see its header note)
  *
  * Historically these drifted: the intake form emitted ~30 transaction-type
  * codes and an address shape `{line1, region, postal_code}`, while the
  * generator understood ~18 canonical codes and read `{street, state, zip}`
- * from differently-named columns. The result was silent data loss — rows that
+ * from differently-named columns. The result was silent data loss, rows that
  * never reached the form, fields that printed blank.
  *
  * This module is the seam. Intake calls `toCanonicalTxType` at persist time so
@@ -41,26 +41,26 @@ import type { Filing, Address, Transaction } from './supabase';
 export type CanonicalTxType = Transaction['transaction_type'];
 
 const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
-  // ── Part IV — goods & property ──────────────────────────────────────────
+  // ── Part IV, goods & property ──────────────────────────────────────────
   tangible_purchase: 'tangible_property',
   tangible_sale:     'tangible_property',
   sales:             'sales',
 
-  // ── Part IV — services ──────────────────────────────────────────────────
+  // ── Part IV, services ──────────────────────────────────────────────────
   service_payment: 'service_payment',
   tech_services:   'service_payment',
   commission:      'commission',
 
-  // ── Part IV — rent, royalty, interest ───────────────────────────────────
+  // ── Part IV, rent, royalty, interest ───────────────────────────────────
   rent:     'rent_royalty', // is_royalty = false
   royalty:  'rent_royalty', // is_royalty = true
   interest: 'interest',
 
-  // ── Part IV — loans ─────────────────────────────────────────────────────
+  // ── Part IV, loans ─────────────────────────────────────────────────────
   loan_to_llc:   'loan_to_llc',
   loan_from_llc: 'loan_from_llc',
 
-  // ── Part IV — complex / CPA-level ───────────────────────────────────────
+  // ── Part IV, complex / CPA-level ───────────────────────────────────────
   intangible:            'intangible',
   // The 5472 has dedicated platform-contribution / cost-sharing lines
   // (11/12/25/26) but the generator does not expose them yet, so these are
@@ -75,7 +75,7 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   loan_guarantee_fee:    'loan_guarantee',
   other:                 'other',
 
-  // ── Part V — contributions, distributions & entity events ───────────────
+  // ── Part V, contributions, distributions & entity events ───────────────
   capital_contribution: 'capital_contribution',
   distribution:         'distribution',
   dividend:             'dividend',
@@ -86,13 +86,13 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   // A dissolution / wind-down payout is reported as an "other amount paid"
   // (Form 5472 Part IV, line 35). Part IV renders per related party, so a
   // dissolution distribution to a related party's trust actually prints on
-  // that party's 5472 — unlike Part V, which is generated for the owner only.
+  // that party's 5472, unlike Part V, which is generated for the owner only.
   dissolution_tx:       'other',
   acquisition_tx:       'capital_contribution',
   disposition_tx:       'distribution',
   other_part_v:         'capital_contribution',
 
-  // ── Part VI — nonmonetary / less-than-FMV ───────────────────────────────
+  // ── Part VI, nonmonetary / less-than-FMV ───────────────────────────────
   nonmonetary_transfer:  'property_transfer',
   less_than_fmv:         'property_transfer',
   property_transfer_fmv: 'property_transfer',
@@ -118,7 +118,7 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
 //   • formGross   = Form 5472 gross payments (line 1f / 1h): Part IV flows plus
 //                   the ending loan balances (17b/31b) and the monetary Part V
 //                   contributions/distributions/dividends.
-//   • totalEntered= every reportable amount the user entered, any type — shown
+//   • totalEntered= every reportable amount the user entered, any type, shown
 //                   alongside formGross so nothing looks "missing".
 //   • buckets     = friendly Money in / Money out / Other split.
 
@@ -145,9 +145,9 @@ const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
   'commission', 'interest', 'insurance', 'loan_guarantee', 'other',
   'loan_to_llc', 'loan_from_llc',
   'distribution', 'dividend', 'capital_contribution',
-  // Part V — owner-paid formation / start-up costs (feeds formation_costs_paid).
+  // Part V, owner-paid formation / start-up costs (feeds formation_costs_paid).
   'formation_costs',
-  // Part VI — property transfers and other nonmonetary items carry an amount
+  // Part VI, property transfers and other nonmonetary items carry an amount
   // only when the filer recorded consideration; that amount feeds part_vi_amount.
   'property_transfer', 'nonmonetary_other',
 ]);
@@ -155,7 +155,7 @@ const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
 export interface TxMoneySummary {
   /** Sum of every reportable amount entered (any type). */
   totalEntered: number;
-  /** Form 5472 gross payments (1f/1h) — Part IV flows + loan balances + Part V. */
+  /** Form 5472 gross payments (1f/1h), Part IV flows + loan balances + Part V. */
   formGross: number;
   bucketIn: { count: number; total: number };
   bucketOut: { count: number; total: number };
@@ -195,7 +195,7 @@ export function summarizeTransactions(
       s.bucketOther.count++; s.bucketOther.total += a;
     }
 
-    // Form gross (1f/1h) — Part IV flows + ending loan balances + monetary Part V.
+    // Form gross (1f/1h), Part IV flows + ending loan balances + monetary Part V.
     if (GROSS_PAYMENT_CANONICAL.has(toCanonicalTxType(r.transaction_type))) {
       s.formGross += a;
     }
@@ -384,19 +384,19 @@ export function normalizeFiling(raw: Filing & Record<string, unknown>): Normaliz
         raw.owner_reference_id as string,
         raw['owner_ref_number'] as string,
       ) ?? '',
-    // "Country where you do business" (Intake step 2) — literal user answer.
+    // "Country where you do business" (Intake step 2), literal user answer.
     country_business:
       pick<string>(
         raw['owner_country'] as string,
         raw.owner_primary_country as string,
       ) ?? '',
-    // "Country where you pay taxes" — residence / tax residence.
+    // "Country where you pay taxes", residence / tax residence.
     country_residence:
       pick<string>(
         raw.owner_country_residence as string,
         raw.owner_resident_country as string,
       ) ?? '',
-    // Citizenship (individual) — newly collected; falls back to residence.
+    // Citizenship (individual), newly collected; falls back to residence.
     country_citizenship:
       pick<string>(
         raw.owner_country_citizenship as string,

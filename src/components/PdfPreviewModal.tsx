@@ -3,8 +3,8 @@
  *
  * A contained preview of a generated PDF: a centred panel over a blurred page,
  * NOT a full-window document viewer. Embedding the PDF inline at full height
- * handed the whole screen to the browser's built-in viewer — toolbar, zoom
- * controls, thumbnail rail and all — so it read as though the app had been
+ * handed the whole screen to the browser's built-in viewer, toolbar, zoom
+ * controls, thumbnail rail and all, so it read as though the app had been
  * replaced by Adobe. Here the document sits inside a panel with our own header,
  * and the filing page stays visible (blurred) behind it.
  *

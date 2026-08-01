@@ -205,7 +205,7 @@ export function Services() {
               Removed two entries that don't represent real obligations for foreign-owned LLCs:
                 - "Annual report for Delaware" (id: "delaware-annual"): Delaware LLCs do not file
                   annual reports; they pay a $300 annual franchise tax instead.
-                - "Annual reports for Wyoming and New Mexico" (id: "wy-nm-annual"): split — only
+                - "Annual reports for Wyoming and New Mexico" (id: "wy-nm-annual"): split, only
                   Wyoming kept; New Mexico LLCs have no annual or biennial report requirement.
             */}
             {[

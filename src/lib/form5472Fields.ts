@@ -1,8 +1,8 @@
 /**
- * IRS Form 5472 — AcroForm field name map (per-revision)
+ * IRS Form 5472, AcroForm field name map (per-revision)
  *
  * Field names verified by live PDF dump (scripts/audit-pdf-fields.mjs).
- * These are simple flat AcroForm names — NOT XFA dot-paths.
+ * These are simple flat AcroForm names, NOT XFA dot-paths.
  *
  * TEMPLATE COVERAGE
  *   Tax year 2024+      -> public/pdf/Form-5472.pdf            (78 fields)
@@ -16,7 +16,7 @@
  *   - The 74-field 2019-2021 template predates Part VIII (cost-sharing). Fields
  *     PARTS_VIII_COUNT, CORP_DATE_OF_INCORPORATION ('Incorp Date'),
  *     LINE_20_LOAN_GUARANTEE_RECEIVED, and LINE_34_LOAN_GUARANTEE_PAID
- *     ('GuaranteePaid') are intentionally empty strings — setText() no-ops
+ *     ('GuaranteePaid') are intentionally empty strings, setText() no-ops
  *     when the field name is ''.
  *   - Rows 5/6/7 (additional shareholders) are NOT present as separate fields;
  *     every template has one combined ShareholderNameAddress field for row 4.
@@ -34,13 +34,13 @@
 // and override only the keys that changed.
 const F5472_LATEST = {
 
-  // ── Header — Tax Year dates
+  // ── Header, Tax Year dates
   TAX_YEAR_BEGIN:       'BegDate',          // e.g. "January 1"
   TAX_YEAR_BEGIN_YEAR:  'BegYear',          // e.g. "2025"
   TAX_YEAR_END:         'EndDate',          // e.g. "December 31"
   TAX_YEAR_END_YEAR:    'EndYear',          // e.g. "2025"
 
-  // ── Part I — Reporting Corporation
+  // ── Part I, Reporting Corporation
   CORP_NAME:            'CorporationName',
   CORP_ADDRESS:         'StreetAddress',
   CORP_EIN:             'EIN',
@@ -65,8 +65,8 @@ const F5472_LATEST = {
   FOREIGN_OWNS_50PCT:           'Atleast50%',          // checkbox 2
   CORP_IS_FOREIGN_OWNED_DE:     'Foreign-owned US DE', // checkbox 3
 
-  // ── Part II — 25% Foreign Shareholders
-  SURROGATE_CORP_CHECKBOX:      '',   // not present in this template — skip
+  // ── Part II, 25% Foreign Shareholders
+  SURROGATE_CORP_CHECKBOX:      '',   // not present in this template, skip
 
   SHAREHOLDER_NAME:               'ShareholderNameAddress',
   SHAREHOLDER_US_TIN:             'ShareholderEINSSN',
@@ -76,7 +76,7 @@ const F5472_LATEST = {
   SHAREHOLDER_COUNTRY_CITIZENSHIP:'ShareholderCitizenCountry',
   SHAREHOLDER_RESIDENT_COUNTRY:   'ShareholderResidentCountry',
 
-  // ── Part III — Related Party
+  // ── Part III, Related Party
   RP_IS_FOREIGN_PERSON:       'RPForeignPerson',
   RP_IS_US_PERSON:            'RPUSPerson',
 
@@ -94,7 +94,7 @@ const F5472_LATEST = {
   RP_COUNTRY_BUSINESS:        'RPBusinessCountry',
   RP_RESIDENT_COUNTRY:        'RPResCountry',
 
-  // ── Part IV — Monetary Transactions
+  // ── Part IV, Monetary Transactions
   // Lines 9–22  = AMOUNTS RECEIVED by reporting corp
   // Lines 23–36 = AMOUNTS PAID by reporting corp
 
@@ -136,13 +136,13 @@ const F5472_LATEST = {
   LINE_35_OTHER_PAID:             'OtherPayments',
   LINE_36_TOTAL_PAID:             'TotalPaid',
 
-  // Part V — foreign-owned DE transactions (checkbox only)
+  // Part V, foreign-owned DE transactions (checkbox only)
   PART_V_CHECKBOX:   'TransactionsWithOwner',
 
-  // Part VI — nonmonetary transactions (checkbox only)
+  // Part VI, nonmonetary transactions (checkbox only)
   PART_VI_CHECKBOX:  'NonMonetoryTransactionsWithOwner',
 
-  // Part VII Yes/No — NOT present in this template; skipped
+  // Part VII Yes/No, NOT present in this template; skipped
 
 } as const;
 
@@ -150,8 +150,7 @@ export type F5472FieldKey = keyof typeof F5472_LATEST;
 export type F5472Map = Record<F5472FieldKey, string>;
 
 // Per-revision overrides. Only specify keys whose AcroForm name differs from
-// F5472_LATEST. An empty string means "field is absent in this revision —
-// setText() will no-op."
+// F5472_LATEST. An empty string means "field is absent in this revision, // setText() will no-op."
 // 2022 + 2023 use the same field names as the latest (2024+/2025) revision.
 // Keep the constant for future divergences but leave it empty for now.
 const OVERRIDES_2022_2023: Partial<F5472Map> = {};

@@ -16,10 +16,10 @@ export function Auth() {
     if (loading) return;
     const next = searchParams.get('next');
     if (session) {
-      // Already signed in — go to the deep-link destination or dashboard.
+      // Already signed in, go to the deep-link destination or dashboard.
       navigate(next ?? '/dashboard', { replace: true });
     } else {
-      // Not signed in — forward to Portal, preserving the deep link.
+      // Not signed in, forward to Portal, preserving the deep link.
       const portalUrl = next
         ? `/portal?mode=login&next=${encodeURIComponent(next)}`
         : '/portal?mode=login';
