@@ -84,6 +84,65 @@ function formatDate(iso: string): string {
 }
 
 /**
+ * The one pill used across the dashboard.
+ *
+ * There were five hand-rolled versions with four different font sizes (0.7,
+ * 0.72, 0.75) and three different paddings, so pills that sat next to each
+ * other were not the same height: the status and due-date pills on a filing
+ * card measured 22px and 21.3px. Half a pixel of mismatch is not something
+ * anyone can name, but a row of almost-matching pills reads as sloppy.
+ *
+ * Two things fix the cramped look, and neither is more padding on its own:
+ *
+ *   - `line-height: 1` with `inline-flex` + `align-items: center`. Previously
+ *     the inherited 1.5 line-height meant the GLYPHS sat off-centre inside a
+ *     symmetric 2px/2px padding box, measured at 2.8px above and 4.1px below.
+ *     Adding padding to that would have made a bigger lopsided pill.
+ *   - a fixed `minHeight`, so every pill is exactly the same height regardless
+ *     of its text, rather than being sized by its own font.
+ */
+function Pill({
+  children,
+  bg,
+  fg,
+  uppercase = false,
+}: {
+  children: React.ReactNode;
+  bg: string;
+  fg: string;
+  uppercase?: boolean;
+}) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        minHeight: '22px',
+        padding: uppercase ? '0 0.7rem' : '0 0.625rem',
+        background: bg,
+        color: fg,
+        borderRadius: '9999px',
+        fontSize: '0.75rem',
+        fontWeight: 700,
+        lineHeight: 1,
+        letterSpacing: uppercase ? '0.04em' : '0.01em',
+        textTransform: uppercase ? 'uppercase' : 'none',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Background and foreground for the due-date pill, by urgency. */
+const DUE_TONE: Record<'ok' | 'warn' | 'late', { bg: string; fg: string }> = {
+  ok:   { bg: 'var(--tf-offset)',          fg: 'var(--tf-muted)' },
+  warn: { bg: 'var(--tf-banner-amber-bg)', fg: 'var(--tf-banner-amber-text)' },
+  late: { bg: 'var(--tf-banner-red-bg)',   fg: 'var(--tf-banner-red-text)' },
+};
+
+/**
  * Seed tax year for a brand-new filing. Never returns null, the filings table
  * requires tax_year, and the wizard lets the user change it in step 1 anyway.
  * The "3-plus" / unknown catch-up case defaults to the most recent filable year.
@@ -276,9 +335,9 @@ export function Dashboard() {
       <section style={{ background: 'var(--tf-bg)', padding: '3rem 1rem 2rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <span style={{ display: 'inline-block', background: 'var(--tf-success)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.2rem 0.875rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.875rem' }}>
-              Dashboard
-            </span>
+            <div style={{ marginBottom: '0.875rem' }}>
+              <Pill bg="var(--tf-success)" fg="var(--tf-on-accent)" uppercase>Dashboard</Pill>
+            </div>
             <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', marginBottom: '0.5rem', lineHeight: 1.2 }}>
               Welcome back, {displayName}.
             </h1>
@@ -581,13 +640,9 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
           </p>
-          <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.03em' }}>
-            {STATUS_LABEL[f.status]}
-          </span>
+          <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
           {due && (
-            <span style={{ background: due.tone === 'late' ? 'var(--tf-banner-red-bg)' : due.tone === 'warn' ? 'var(--tf-banner-amber-bg)' : 'var(--tf-offset)', color: due.tone === 'late' ? 'var(--tf-banner-red-text)' : due.tone === 'warn' ? 'var(--tf-banner-amber-text)' : 'var(--tf-muted)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.72rem', fontWeight: 600 }}>
-              {due.label}
-            </span>
+            <Pill bg={DUE_TONE[due.tone].bg} fg={DUE_TONE[due.tone].fg}>{due.label}</Pill>
           )}
         </div>
         <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>
@@ -652,9 +707,9 @@ function JobCard({
       <div style={{ padding: showJobDelete ? '3rem 1.5rem 1.25rem' : '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
-            <span style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <Pill bg="var(--tf-accent)" fg="var(--tf-on-accent)" uppercase>
               Multi-year catch-up
-            </span>
+            </Pill>
           </div>
           <p style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--tf-text)' }}>{llc}</p>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', marginTop: '0.1rem' }}>
@@ -697,7 +752,7 @@ function JobCard({
               <Link to={filingPath(f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 0.75rem 0.75rem 1.5rem', textDecoration: 'none' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.1rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}>{STATUS_LABEL[f.status]}</span>
+                  <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
                   <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
                 </span>
               </Link>
