@@ -613,6 +613,12 @@ export function Intake() {
   const [earlierReturnsFiled, setEarlierReturnsFiled] = useState<boolean | null>(null);
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
+  // Date the LLC was dissolved with its state of formation. This is what ends
+  // the tax period on a final return: resolvePeriod truncates endISO to it, the
+  // mirror of the way an initial return begins on the formation date. Before
+  // this was collected, an LLC dissolved in June still printed a period running
+  // to 31 December on both the Form 5472 header and the pro forma 1120.
+  const [dateOfClosure, setDateOfClosure] = useState('');
   // Form 1120 item E, boxes 3 and 4. Both columns and both checkBox() calls in
   // fill1120 already existed; nothing in the UI ever set them, so neither box
   // has ever been checked on a generated packet.
@@ -898,6 +904,7 @@ export function Intake() {
         setJobYears([]);
       }
       setFinalReturn((f as any).final_return ?? false);
+      setDateOfClosure((f as any).date_of_closure ?? '');
       setNameChange((f as any).name_change ?? false);
       setAddressChange((f as any).address_change ?? false);
       setEligibilityConfirmed((f as any).eligibility_confirmed ?? false);
@@ -1014,7 +1021,7 @@ export function Intake() {
   // sibling year-rows in a multi-year job. Everything else in a Step-1/2 patch
   // is company/owner identity that is shared across every year.
   const YEAR_SPECIFIC_FIELDS = new Set<string>([
-    'tax_year', 'total_assets', 'initial_return', 'final_return',
+    'tax_year', 'total_assets', 'initial_return', 'final_return', 'date_of_closure',
     // Item E boxes 3 and 4. Year-specific because in a multi-year job the flag
     // belongs on ONE year, the earliest, not carried across all of them.
     'name_change', 'address_change',
@@ -1060,6 +1067,7 @@ export function Intake() {
       initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
       // Final return + fiscal-year (non-calendar) period.
       final_return: finalReturn,
+      date_of_closure: finalReturn ? (dateOfClosure.trim() || null) : null,
       name_change: nameChange,
       address_change: addressChange,
       is_fiscal_year: isFiscalYear,
@@ -1131,6 +1139,7 @@ export function Intake() {
       naics_description: entityBizActivity.trim() || null,
       initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
       final_return: finalReturn,
+      date_of_closure: finalReturn ? (dateOfClosure.trim() || null) : null,
       name_change: nameChange,
       address_change: addressChange,
       is_fiscal_year: isFiscalYear,
@@ -1818,6 +1827,7 @@ export function Intake() {
     setEntityBizActivity(str(f.naics_description ?? f.entity_business_activity));
     setEntityBizCode(str(f.naics_code ?? f.entity_business_code));
     setFinalReturn(Boolean(f.final_return ?? yearOne?.final_return ?? false));
+    setDateOfClosure(str(f.date_of_closure ?? yearOne?.date_of_closure));
     setNameChange(Boolean(f.name_change ?? yearOne?.name_change ?? false));
     setAddressChange(Boolean(f.address_change ?? yearOne?.address_change ?? false));
     setNameChange(Boolean(f.name_change ?? yearOne?.name_change ?? false));
@@ -2569,6 +2579,33 @@ export function Intake() {
                   </div>
                 </div>
               </label>
+
+              {/* The dissolution date ends the tax period. Asked only when the
+                  final-return box is ticked, because on any other year it has
+                  nothing to shorten and would just be a question with no
+                  consequence. */}
+              {finalReturn && (
+                <>
+                  <div style={{ ...gridStyle, marginTop: '0.875rem' }}>
+                    <Field
+                      label="Date the LLC was dissolved"
+                      required
+                      tooltip="The date the dissolution took effect with your state of formation, shown on the Certificate of Dissolution or Cancellation the state issued. Not the date you stopped trading, and not the date you closed the bank account."
+                    >
+                      <input
+                        type="date"
+                        value={dateOfClosure}
+                        onChange={(e) => setDateOfClosure(e.target.value)}
+                        max={`${taxYear}-12-31`}
+                      />
+                    </Field>
+                  </div>
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--tf-muted)' }}>
+                    Your tax period ends on this date rather than December 31, because the
+                    LLC no longer existed after it. Both forms will show the shorter period.
+                  </div>
+                </>
+              )}
 
               {/* Form 1120 item E, boxes 3 and 4.
                   Shown only on the EARLIEST year of a job. Every year in a
@@ -3428,6 +3465,12 @@ export function Intake() {
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
+                {finalReturn && (
+                  <SummaryRow
+                    label="Dissolved"
+                    value={dateOfClosure ? formatDateMMDDYYYY(dateOfClosure) : 'Not provided'}
+                  />
+                )}
                 {nameChange && <SummaryRow label="Name change" value="Yes" />}
                 {addressChange && <SummaryRow label="Address change" value="Yes" />}
                 <SummaryRow label="Accounting period" value={isFiscalYear ? 'Fiscal year' : 'Calendar year'} />

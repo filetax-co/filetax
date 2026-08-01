@@ -268,25 +268,31 @@ export interface ResolvedPeriod {
   endText: string;
   /** Whether this filing is an initial return. */
   isInitial: boolean;
+  /** Whether this filing is a final return (the LLC was dissolved). */
+  isFinal: boolean;
   /** Four-digit tax year. */
   year: number;
 }
 
-const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPeriod => {
+// Exported for the verification harness. The period is the one value that
+// reaches all three forms (the 5472 header, the 1120 header and Form 7004), and
+// once a package is assembled every field is flattened, so a test cannot read
+// it back off the PDF. Asserting on this directly is the only precise check.
+export const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPeriod => {
   const year = filing.tax_year != null ? Number(filing.tax_year) : taxYear;
 
   const incorpISO = filing.date_of_incorporation ?? null;
 
   // The nominal period is the fiscal period if supplied, else the calendar year.
   const nominalBegin = filing.tax_period_begin ?? `${year}-01-01`;
-  const endISO = filing.tax_period_end ?? `${year}-12-31`;
+  const nominalEnd = filing.tax_period_end ?? `${year}-12-31`;
 
   // An initial return is one whose formation date falls WITHIN the nominal
   // period (inclusive). This works for both calendar and fiscal years, a
   // fiscal period can span two calendar years, so we compare against the period
   // bounds, not just the tax-year number.
   const incorpInPeriod =
-    !!incorpISO && incorpISO >= nominalBegin && incorpISO <= endISO;
+    !!incorpISO && incorpISO >= nominalBegin && incorpISO <= nominalEnd;
   const isInitial = filing.initial_return ?? incorpInPeriod;
 
   // Short-year begin: an initial return begins on the formation date (the entity
@@ -295,12 +301,32 @@ const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPerio
   const beginISO =
     isInitial && incorpISO && incorpISO > nominalBegin ? incorpISO : nominalBegin;
 
+  // Short-year END, the mirror of the line above, and the one that was missing.
+  // A final return ends when the entity ceased to exist, which for this product
+  // is the date the LLC was dissolved with its state of formation. Without this
+  // an LLC dissolved in June printed a period running to 31 December on both the
+  // Form 5472 header and the pro forma 1120, covering months in which the entity
+  // did not exist.
+  //
+  // Take the EARLIER of the nominal end and the dissolution date, so a closure
+  // date after period end (a dissolution filed in a later year) cannot extend
+  // the period, and a fiscal filer who dissolves mid-period is truncated too.
+  // Gated on final_return: a dissolution date recorded against a year that is
+  // not the final one must not shorten that year.
+  const closureISO = filing.date_of_closure ?? null;
+  const isFinal = filing.final_return === true;
+  const endISO =
+    isFinal && closureISO && closureISO > beginISO && closureISO < nominalEnd
+      ? closureISO
+      : nominalEnd;
+
   return {
     beginISO,
     endISO,
     beginText: fmtDate(beginISO),
     endText: fmtDate(endISO),
     isInitial,
+    isFinal,
     year,
   };
 };
@@ -1679,8 +1705,16 @@ const fill7004 = async (
   setText(doc, 'LLC_ZIP',            addr?.zip ?? '');
 
   // Calendar-year filers: just the year. Short/fiscal years: fill the period.
+  //
+  // BOTH ends have to be tested. Testing only the start meant a calendar-year
+  // LLC dissolved mid-year still counted as a calendar-year filer, because a
+  // final return begins on 1 January like any other, so Form 7004 ticked
+  // "calendar year" and printed no short period at all. The 1120 filler has
+  // always tested both; this one had not been updated to match.
   const isCalendarYear =
-    !filing.is_fiscal_year && period.beginISO === `${period.year}-01-01`;
+    !filing.is_fiscal_year &&
+    period.beginISO === `${period.year}-01-01` &&
+    period.endISO === `${period.year}-12-31`;
   if (isCalendarYear) {
     setText(doc, 'LLC_Calendar_Year', twoDigitYear(period.year));
   } else {

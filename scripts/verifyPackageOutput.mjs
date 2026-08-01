@@ -144,5 +144,67 @@ console.log('\n— Form 1120 item E field names resolve on every revision —');
   }
 }
 
+// A final return ends when the LLC was dissolved with its state of formation,
+// not on 31 December. date_of_closure was a dead column until 1 Aug 2026, so a
+// mid-year dissolution printed a full calendar period on every form, covering
+// months in which the entity did not exist.
+//
+// Asserted against resolvePeriod rather than the rendered PDFs, because the
+// package flattens every form during assembly and a content stream is
+// compressed, so a byte search for "June 30, 2025" can never match.
+console.log('\n— final return truncates the tax period to the dissolution date —');
+{
+  const { resolvePeriod } = await import('../src/lib/pdfGenerator.ts');
+  const { normalizeFiling } = await import('../src/lib/filingMapping.ts');
+  const period = (over) => resolvePeriod(normalizeFiling({ ...baseFiling, ...over }), 2025);
+
+  check('dissolved 30 June ends the period on 30 June',
+    period({ final_return: true, date_of_closure: '2025-06-30' }).endISO === '2025-06-30',
+    period({ final_return: true, date_of_closure: '2025-06-30' }).endISO);
+
+  check('a closure date on a NON-final year does not shorten it',
+    period({ final_return: false, date_of_closure: '2025-06-30' }).endISO === '2025-12-31',
+    period({ final_return: false, date_of_closure: '2025-06-30' }).endISO);
+
+  check('a closure date after period end cannot extend the period',
+    period({ final_return: true, date_of_closure: '2026-03-01' }).endISO === '2025-12-31',
+    period({ final_return: true, date_of_closure: '2026-03-01' }).endISO);
+
+  check('a final return with no closure date keeps the full year',
+    period({ final_return: true, date_of_closure: null }).endISO === '2025-12-31',
+    period({ final_return: true, date_of_closure: null }).endISO);
+
+  check('isFinal is reported on the period',
+    period({ final_return: true, date_of_closure: '2025-06-30' }).isFinal === true);
+}
+
+// The truncated end date has to reach all THREE forms. The 5472 and 1120
+// headers read period.endISO directly, so they follow automatically. Form 7004
+// decided calendar-vs-short from the period START alone, which meant a
+// calendar-year LLC dissolved mid-year still ticked "calendar year" and printed
+// no short period. Form 7004 is saved BEFORE the merge flattens it, so unlike
+// the other two its fields can be read back.
+console.log('\n— a short final year reaches Form 7004 —');
+{
+  const pkg = await generateFilingPackage(
+    { ...baseFiling, extension_filed: true, final_return: true, date_of_closure: '2025-06-30' },
+    [], 2025);
+  const f = (await PDFDocument.load(pkg.form7004)).getForm();
+  const val = (n) => { try { return f.getTextField(n).getText() ?? ''; } catch { return null; } };
+  check('7004 does not claim a calendar year for a short final year',
+    !val('LLC_Calendar_Year'), `LLC_Calendar_Year="${val('LLC_Calendar_Year')}"`);
+  check('7004 prints the short period start', val('LLC_Beginning_Date') === 'January 1',
+    `LLC_Beginning_Date="${val('LLC_Beginning_Date')}"`);
+  check('7004 marks the final return', (() => {
+    try { return f.getCheckBox('Final_Return').isChecked(); } catch { return false; }
+  })());
+
+  const normal = await generateFilingPackage({ ...baseFiling, extension_filed: true }, [], 2025);
+  const nf = (await PDFDocument.load(normal.form7004)).getForm();
+  const nval = (n) => { try { return nf.getTextField(n).getText() ?? ''; } catch { return null; } };
+  check('an ordinary calendar year still uses the calendar-year box',
+    nval('LLC_Calendar_Year') === '25', `LLC_Calendar_Year="${nval('LLC_Calendar_Year')}"`);
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);
