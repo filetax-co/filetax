@@ -1,10 +1,10 @@
 {
   "meta": {
-    "generated": "2026-08-01T17:30:28.997Z",
+    "generated": "2026-08-01T18:39:25.772Z",
     "count": 200,
     "portal": "Desktop/CNL 5472/5472",
     "note": "Authored against the portal as at August 2026. signature_mode and expected_result are read by the driver, not by the wizard.",
-    "negatives": 68,
+    "negatives": 69,
     "multi_year": 7,
     "drawn": 78,
     "typed": 122
@@ -2130,8 +2130,8 @@
     },
     {
       "scenario_id": 34,
-      "title": "Owner has no foreign tax ID",
-      "tests": "owner_foreign_tax_id blank; must not print \"undefined\"",
+      "title": "Owner has no foreign tax ID, passport number instead",
+      "tests": "The passport fallback on owner_foreign_tax_id",
       "signature_mode": "drawn",
       "filing": {
         "llc_name": "S034 Duneside Ventures LLC",
@@ -2158,20 +2158,20 @@
       },
       "owner": {
         "owner_full_name": "Nadia Farouk",
-        "owner_primary_country": "India",
-        "owner_country_residence": "India",
-        "owner_country_citizenship": "India",
+        "owner_primary_country": "United Arab Emirates",
+        "owner_country_residence": "United Arab Emirates",
+        "owner_country_citizenship": "United Arab Emirates",
         "owner_us_tin": "",
-        "owner_foreign_tax_id": "",
+        "owner_foreign_tax_id": "P4821996",
         "owner_reference_id": "REF034",
         "owner_business_activity": "Software Developer / Programmer",
         "owner_naics_code": "541511",
         "owner_address": {
-          "line1": "12 MG Road",
-          "city": "Bengaluru",
-          "region": "Karnataka",
-          "postal_code": "560001",
-          "country": "India"
+          "line1": "Office 1204, Boulevard Plaza Tower 1",
+          "city": "Dubai",
+          "region": "",
+          "postal_code": "",
+          "country": "United Arab Emirates"
         },
         "signer_title": "Managing Member",
         "signature_date": "2026-08-01"
@@ -2193,8 +2193,8 @@
     },
     {
       "scenario_id": 35,
-      "title": "Owner has neither a US TIN nor a foreign TIN",
-      "tests": "Both identifiers absent, the common real case",
+      "title": "Owner with no identifier at all",
+      "tests": "Neither a US TIN, a foreign tax ID, nor a passport number",
       "signature_mode": "typed",
       "filing": {
         "llc_name": "S035 Everbrook Ventures LLC",
@@ -2252,7 +2252,8 @@
         }
       ],
       "no_transactions_confirmed": false,
-      "part_vi_managerial": true
+      "part_vi_managerial": true,
+      "expected_result": "REJECTED at step 2; the return needs an identifying number for the owner"
     },
     {
       "scenario_id": 36,

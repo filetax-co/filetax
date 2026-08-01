@@ -246,9 +246,16 @@ one('Foreign mailing address for the LLC', 'Non-US entity address; country line 
 
 one('Owner holds a US ITIN', 'owner_us_tin populated; both TIN fields present',
   { owner: { owner_us_tin: '912-34-5678' } });
-one('Owner has no foreign tax ID', 'owner_foreign_tax_id blank; must not print "undefined"',
-  { owner: { owner_foreign_tax_id: '' } });
-one('Owner has neither a US TIN nor a foreign TIN', 'Both identifiers absent, the common real case',
+// Owners in the UAE, Cayman and the Bahamas are issued no tax ID at all. The
+// field stays required, because the return needs an identifying number, but a
+// passport number is accepted in its place. So the positive case is "no tax ID,
+// passport instead", and a genuinely empty identifier is still a negative.
+one('Owner has no foreign tax ID, passport number instead', 'The passport fallback on owner_foreign_tax_id',
+  { owner: { owner_primary_country: 'United Arab Emirates', owner_country_residence: 'United Arab Emirates',
+    owner_country_citizenship: 'United Arab Emirates', owner_foreign_tax_id: 'P4821996',
+    owner_address: { line1: 'Office 1204, Boulevard Plaza Tower 1', city: 'Dubai', region: '', postal_code: '', country: 'United Arab Emirates' } } });
+bad('Owner with no identifier at all', 'Neither a US TIN, a foreign tax ID, nor a passport number',
+  'REJECTED at step 2; the return needs an identifying number for the owner',
   { owner: { owner_us_tin: '', owner_foreign_tax_id: '' } });
 one('Non-Latin owner name', 'WinAnsi encoding path; Cyrillic must not throw in pdf-lib',
   { owner: { owner_full_name: 'Дмитрий Волков', owner_primary_country: 'Kazakhstan', owner_country_residence: 'Kazakhstan', owner_country_citizenship: 'Kazakhstan' } }, 'drawn');

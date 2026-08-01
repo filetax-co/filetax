@@ -291,6 +291,34 @@ function describeError(e: unknown): string {
   return err?.code ? `${text} (code ${err.code})` : text;
 }
 
+/**
+ * Countries and territories that operate no postal code system at all, so an
+ * address there is complete without one.
+ *
+ * Matched loosely (lowercased, trimmed) against whatever the country field
+ * holds, because it carries display names rather than ISO codes. A country
+ * missing from this list only means its filers are still asked for a postal
+ * code, which is the safe direction to be wrong in: adding one is a one-line
+ * change, while wrongly exempting a country loses a real piece of the address.
+ */
+const NO_POSTAL_CODE_COUNTRIES = new Set([
+  'hong kong', 'macau', 'macao', 'united arab emirates', 'uae', 'panama',
+  'ireland', 'qatar', 'kuwait', 'bahrain', 'oman', 'yemen', 'syria', 'libya',
+  'angola', 'belize', 'bolivia', 'botswana', 'burkina faso', 'burundi',
+  'cameroon', 'central african republic', 'chad', 'comoros', 'congo',
+  'democratic republic of the congo', 'ivory coast', "cote d'ivoire", 'djibouti',
+  'dominica', 'equatorial guinea', 'eritrea', 'fiji', 'gambia', 'ghana',
+  'grenada', 'guyana', 'north korea', 'malawi', 'mali', 'mauritania',
+  'namibia', 'nauru', 'niue', 'qatar', 'rwanda', 'saint kitts and nevis',
+  'saint lucia', 'samoa', 'sao tome and principe', 'seychelles',
+  'sierra leone', 'solomon islands', 'somalia', 'suriname', 'east timor',
+  'timor-leste', 'togo', 'tokelau', 'tonga', 'trinidad and tobago', 'tuvalu',
+  'uganda', 'vanuatu', 'zimbabwe',
+]);
+
+const countryUsesPostalCode = (country?: string): boolean =>
+  !NO_POSTAL_CODE_COUNTRIES.has((country ?? '').trim().toLowerCase());
+
 function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   if (!address.line1?.trim()) return false;
   if (!address.city?.trim()) return false;
@@ -299,7 +327,10 @@ function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   // address without a region is still complete.
   const isUS = forceUS || isUSCountry(address.country);
   if (isUS && !address.region?.trim()) return false;
-  if (!address.postal_code?.trim()) return false;
+  // Same reasoning, applied to the postal code. It had been required of every
+  // country, which left filers in Hong Kong, the UAE, Panama and much of
+  // Ireland unable to complete an address they had entered correctly.
+  if ((isUS || countryUsesPostalCode(address.country)) && !address.postal_code?.trim()) return false;
   if (!forceUS && !address.country?.trim()) return false;
   return true;
 }
@@ -1298,6 +1329,17 @@ export function Intake() {
       ein: ein.trim() || null,
       state_of_formation: stateOfFormation.trim() || null,
       tax_year: taxYear,
+      // The two step-1 attestations. patchAll omitted them, and since every
+      // "Save & continue" in the accordion saves through here, both columns
+      // were null on every filing ever written, including submitted ones that
+      // generated PDFs. Saving them means a filer who resumes THIS year's draft
+      // is not asked to confirm again.
+      //
+      // They are listed in YEAR_SPECIFIC_FIELDS, which is what keeps them off
+      // the other years of a multi-year job: a new year must be attested on its
+      // own facts and must never inherit last year's answer.
+      eligibility_confirmed: eligibilityConfirmed,
+      has_us_activity: hasUsActivity,
       total_assets: totalAssets ? Number(totalAssets) : null,
       entity_date_of_incorporation: entityDOI.trim() || null,
       entity_principal_country: entityPrincipalCountry.trim() || null,
@@ -1470,7 +1512,13 @@ export function Intake() {
     if (!ownerCountry) errs.push('Select the country where you do business.');
     if (!ownerCountryRes) errs.push('Select the country where you pay taxes.');
     if (!ownerCountryCitizenship) errs.push('Select your country of citizenship.');
-    if (!ownerForeignTaxId.trim()) errs.push('Enter your foreign tax ID.');
+    // Still required, but no longer required to be a *tax* ID. Plenty of
+    // countries issue none at all, and those owners were stuck on this step
+    // with nothing they could truthfully type. A passport number is an
+    // identifying number they always have.
+    if (!ownerForeignTaxId.trim()) {
+      errs.push('Enter your foreign tax ID. If your country does not issue one, enter your passport number instead.');
+    }
     if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
     if (!ownerBizActivity.trim()) errs.push('Select or describe your type of business.');
     if (!ownerBizCode.trim()) errs.push('Enter your business code.');
@@ -3237,8 +3285,8 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Your foreign tax ID" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="The tax ID number your home country issues you, such as PAN (India), UTR (UK), NIF (Spain), or SIN (Canada). If your country does not issue one, enter 'None'.">
-                  <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Your local tax ID" disabled={isPaidLocked} />
+                <Field label="Your foreign tax ID" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="The tax ID number your home country issues you, such as PAN (India), UTR (UK), NIF (Spain), or SIN (Canada). Some countries, including the UAE, the Cayman Islands and the Bahamas, do not issue one at all. If yours does not, enter your passport number instead, which is an identifying number the IRS accepts here. Do not enter 'None': the box cannot be left without an identifier.">
+                  <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Local tax ID, or passport number" disabled={isPaidLocked} />
                 </Field>
                 <Field label="U.S. tax ID" tooltip="Only if you happen to have a U.S. tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
