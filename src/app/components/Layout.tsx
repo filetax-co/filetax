@@ -27,7 +27,7 @@ function CanonicalTag() {
   return null;
 }
 
-// Site-wide identity graph. Renders nothing — head-only JSON-LD.
+// Site-wide identity graph. Renders nothing, head-only JSON-LD.
 function SiteJsonLd() {
   useJsonLd("organization", {
     "@context": "https://schema.org",

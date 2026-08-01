@@ -53,7 +53,7 @@ const cards: PricingCard[] = [
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
     price: `+$${PRICE_RCL}`,
     priceNote: "one letter, covers every year",
-    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty, auto-populated with your filing details. Charged once, however many years you are catching up on — never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
+    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty, auto-populated with your filing details. Charged once, however many years you are catching up on, never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },
@@ -133,7 +133,7 @@ export function Pricing() {
         price: card.price.replace(/[^0-9.]/g, ""),
         priceCurrency: "USD",
         url: "https://filetax.co/pricing",
-        // Nothing is purchasable yet — every CTA on this page routes to the
+        // Nothing is purchasable yet, every CTA on this page routes to the
         // waitlist. Advertising these as InStock would be false, so the prices
         // are published as pre-order until the product opens.
         availability: "https://schema.org/PreOrder",

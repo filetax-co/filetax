@@ -104,7 +104,7 @@ export function Dashboard() {
                   <div style={{ minWidth: '0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.375rem' }}>
                       <span style={{ fontWeight: 700, fontSize: '1rem' }}>{f.form_type}</span>
-                      <span style={{ fontSize: '0.875rem', color: 'var(--tf-muted)' }}>— Tax Year {f.tax_year}</span>
+                      <span style={{ fontSize: '0.875rem', color: 'var(--tf-muted)' }}>Tax Year {f.tax_year}</span>
                     </div>
                     {f.notes && <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>{f.notes}</p>}
                     {f.created_at && (

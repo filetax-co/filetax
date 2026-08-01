@@ -497,8 +497,8 @@ export function Article() {
           image: socialImage ? [socialImage] : undefined,
           datePublished: post.publishedAt,
           dateModified: post.publishedAt,
-          // Every post currently carries author "FileTax" — a brand, not a
-          // person — so it must be typed as an Organization. A real byline
+          // Every post currently carries author "FileTax", a brand, not a
+          // person, so it must be typed as an Organization. A real byline
           // (e.g. the reviewing CPA) would be typed Person and is worth adding:
           // named, credentialed authorship is a direct E-E-A-T signal on tax
           // content, and the author field is not displayed on the page today.
