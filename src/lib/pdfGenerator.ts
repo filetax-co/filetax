@@ -1720,9 +1720,16 @@ const mergeInto = async (dest: PDFDocument, src: PDFDocument): Promise<void> => 
 // ─── public entry point ────────────────────────────────────────────────────────────────────────────
 
 export interface FilingPackage {
-  /** The OWNER's Form 5472 (AcroForm, field values still editable). */
+  // NOTE: both of these are FLATTENED, despite what this comment used to claim.
+  // assembleYear merges the same PDFDocument objects into the combined package,
+  // and mergeInto calls getForm().flatten() on its source, so the fields are
+  // gone by the time these are saved. That is the behaviour we want, nobody
+  // should be able to alter an IRS form after it is generated, but do not build
+  // anything that expects to read or set a field on these bytes: a test that
+  // reads a checkbox back off form1120 will find no fields at all.
+  /** The OWNER's Form 5472, flattened. */
   form5472: Uint8Array;
-  /** Pro Forma 1120 (AcroForm, field values still editable). */
+  /** Pro Forma 1120, flattened. */
   form1120: Uint8Array;
   /**
    * Combined filing package (pages flattened and merged):
