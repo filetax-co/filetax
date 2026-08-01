@@ -212,10 +212,17 @@ export function Nav() {
               textDecoration: "none",
               padding: "0.5rem 1.125rem",
               borderRadius: "0.5rem",
-              display: "inline-block",
+              // inline-flex + centring, matching Log in and Sign up beside it.
+              // This was inline-block with a lineHeight nudge. The box was the
+              // right 44px, but inline-block cannot centre its content, so the
+              // 4px of slack min-height added all fell BELOW the text and the
+              // label sat 2px high next to its neighbours. Measured rather than
+              // eyeballed: 10.4px above and 14.4px below, against 12.4/12.4.
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               whiteSpace: "nowrap",
               minHeight: "44px",
-              lineHeight: "1.6",
             }}
           >
             Check Eligibility
@@ -354,11 +361,13 @@ export function Nav() {
                 textDecoration: "none",
                 padding: "0.75rem 1rem",
                 borderRadius: "0.5rem",
-                display: "block",
-                textAlign: "center",
+                // Same fix as the desktop button. Full width here, so flex with
+                // centred content rather than block plus textAlign.
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 marginTop: "0.75rem",
                 minHeight: "44px",
-                lineHeight: "1.6",
               }}
             >
               Check Eligibility

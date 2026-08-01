@@ -400,23 +400,41 @@ export function Dashboard() {
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Start a new filing</h2>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.5rem' }}>
-            File this year, or catch up on years you missed.
+            One year, or several at once.
           </p>
+          {/*
+            The split is ONE YEAR vs MORE THAN ONE YEAR, not current year vs past
+            years, which is how these two cards used to read.
+            That framing was wrong in both directions. The left card said "the
+            current tax year", but `startFiling` only seeds the most recent
+            filable year and intake step 1 lets the filer change it, so a single
+            PAST year always worked here and the copy hid it. The right card said
+            "one or more missed years", claiming the single-year case as well, so
+            a filer with exactly one late year saw two cards that both fit and no
+            way to tell which was meant for them.
+            Count is also the question the eligibility checker already asks, and
+            it is the only one that actually changes what gets built: more than
+            one year is a job with a single reasonable cause letter across it.
+          */}
           <div className="dash-services" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
             <div style={cardStyle}>
               <p style={tagStyle}>Most popular</p>
-              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>File this year</h3>
+              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>One year</h3>
               <p style={priceStyle}>${PRICE_PER_YEAR}</p>
-              <p style={mutedStyle}>Form 5472 + pro forma 1120 for the current tax year. One-time, no subscription.</p>
+              <p style={mutedStyle}>
+                Form 5472 + pro forma 1120 for a single tax year, this year or an earlier one.
+                One-time, no subscription. If the year you pick is already late, you can add the
+                reasonable-cause letter as you go.
+              </p>
               <button onClick={() => startFiling('current_year')} disabled={busy !== null} style={primaryBtn(busy === 'current_year')}>
                 {busy === 'current_year' ? 'Creating…' : 'Start filing'}
               </button>
             </div>
             <div style={cardStyle}>
               <p style={tagStyle}>For late filers</p>
-              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>Catch up on past years</h3>
+              <h3 style={{ fontSize: '1.0625rem', marginBottom: '0.25rem' }}>More than one year</h3>
               <p style={priceStyle}>${PRICE_PER_YEAR}<span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--tf-muted)' }}> / year + one ${PRICE_RCL} letter</span></p>
-              <p style={mutedStyle}>File one or more missed years. A single reasonable-cause letter covers them all.</p>
+              <p style={mutedStyle}>Two or more missed years. A single reasonable-cause letter covers all of them, however many you file.</p>
               <button onClick={() => navigate('/catch-up')} disabled={busy !== null} style={primaryBtn(false)}>
                 Choose years
               </button>
