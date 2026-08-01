@@ -122,5 +122,27 @@ console.log('\n— package assembly —');
     `combined=${combined.getPageCount()} parts=${parts}`);
 }
 
+// Form 1120 item E is one of only TWO things the Form 5472 instructions require
+// on the pro forma 1120 (item B is the other), so a silently missing checkbox
+// here is a defect in required content, not a cosmetic one.
+//
+// checkBox() swallows an unknown field name in a catch block. That is what let
+// name_change and address_change sit wired-but-unreachable until 1 Aug 2026: a
+// wrong name in the map produces no error and no checked box. Assert the map
+// against the real AcroForm for every revision we ship.
+console.log('\n— Form 1120 item E field names resolve on every revision —');
+{
+  const { getF1120Map } = await import('../src/lib/form1120Fields.ts');
+  const KEYS = ['INITIAL_RETURN', 'FINAL_RETURN', 'NAME_CHANGE', 'ADDRESS_CHANGE'];
+  for (const year of [2019, 2020, 2021, 2022, 2023, 2024, 2025]) {
+    const map = getF1120Map(year);
+    const doc = await PDFDocument.load(await readFile(path.join(root, 'public', 'pdf', `Form-1120-${year}.pdf`)));
+    const real = new Set(doc.getForm().getFields().map((f) => f.getName()));
+    const missing = KEYS.filter((k) => map[k] && !real.has(map[k]));
+    check(`${year}: item E checkboxes all resolve`, missing.length === 0,
+      missing.map((k) => `${k} -> "${map[k]}" not in form`).join('; '));
+  }
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -613,6 +613,16 @@ export function Intake() {
   const [earlierReturnsFiled, setEarlierReturnsFiled] = useState<boolean | null>(null);
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
+  // Form 1120 item E, boxes 3 and 4. Both columns and both checkBox() calls in
+  // fill1120 already existed; nothing in the UI ever set them, so neither box
+  // has ever been checked on a generated packet.
+  //
+  // "Changed" means changed from what the IRS holds, which comes from the SS-4
+  // EIN application as well as from any previous return. So these apply on a
+  // first-ever return too: forming an LLC, getting the EIN, then renaming or
+  // moving before the first filing is a common sequence for this audience.
+  const [nameChange, setNameChange] = useState(false);
+  const [addressChange, setAddressChange] = useState(false);
   const [isFiscalYear, setIsFiscalYear] = useState(false);
   // For a fiscal-year filer we only collect the fiscal YEAR-END MONTH (1–12).
   // The period is then derived deterministically from the tax year, so the user
@@ -888,6 +898,8 @@ export function Intake() {
         setJobYears([]);
       }
       setFinalReturn((f as any).final_return ?? false);
+      setNameChange((f as any).name_change ?? false);
+      setAddressChange((f as any).address_change ?? false);
       setEligibilityConfirmed((f as any).eligibility_confirmed ?? false);
       setHasUsActivity((f as any).has_us_activity ?? null);
       setIsFiscalYear((f as any).is_fiscal_year ?? false);
@@ -1003,6 +1015,9 @@ export function Intake() {
   // is company/owner identity that is shared across every year.
   const YEAR_SPECIFIC_FIELDS = new Set<string>([
     'tax_year', 'total_assets', 'initial_return', 'final_return',
+    // Item E boxes 3 and 4. Year-specific because in a multi-year job the flag
+    // belongs on ONE year, the earliest, not carried across all of them.
+    'name_change', 'address_change',
     'is_fiscal_year', 'tax_period_begin', 'tax_period_end',
     'extension_filed', 'include_rcl', 'include_reasonable_cause',
     'reasonable_cause_reasons',
@@ -1045,6 +1060,8 @@ export function Intake() {
       initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
       // Final return + fiscal-year (non-calendar) period.
       final_return: finalReturn,
+      name_change: nameChange,
+      address_change: addressChange,
       is_fiscal_year: isFiscalYear,
       tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
       tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
@@ -1114,6 +1131,8 @@ export function Intake() {
       naics_description: entityBizActivity.trim() || null,
       initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
       final_return: finalReturn,
+      name_change: nameChange,
+      address_change: addressChange,
       is_fiscal_year: isFiscalYear,
       tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
       tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
@@ -1396,6 +1415,16 @@ export function Intake() {
       requestAnimationFrame(() => sectionRefs.current[nextKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
   };
+
+  /**
+   * True when this filing is the earliest year in its job, or is a single-year
+   * filing. Form 1120 item E boxes 3 and 4 are only offered here: a catch-up is
+   * filed with the CURRENT name and address on every year, and the change is
+   * flagged once, on the return the IRS processes first.
+   *
+   * `jobYears` is sorted ascending, and is empty for a filing with no job.
+   */
+  const isEarliestJobYear = jobYears.length === 0 || jobYears[0]?.id === filingId;
 
   /**
    * The catch-up year the Review button will open next. Mirrors the selection
@@ -1789,6 +1818,10 @@ export function Intake() {
     setEntityBizActivity(str(f.naics_description ?? f.entity_business_activity));
     setEntityBizCode(str(f.naics_code ?? f.entity_business_code));
     setFinalReturn(Boolean(f.final_return ?? yearOne?.final_return ?? false));
+    setNameChange(Boolean(f.name_change ?? yearOne?.name_change ?? false));
+    setAddressChange(Boolean(f.address_change ?? yearOne?.address_change ?? false));
+    setNameChange(Boolean(f.name_change ?? yearOne?.name_change ?? false));
+    setAddressChange(Boolean(f.address_change ?? yearOne?.address_change ?? false));
     setIsFiscalYear(Boolean(f.is_fiscal_year));
     setFiscalEndMonth(f.fiscal_end_month ? Number(f.fiscal_end_month) : '');
 
@@ -2536,6 +2569,53 @@ export function Intake() {
                   </div>
                 </div>
               </label>
+
+              {/* Form 1120 item E, boxes 3 and 4.
+                  Shown only on the EARLIEST year of a job. Every year in a
+                  multi-year catch-up carries the CURRENT address, because that
+                  is where the filer can be reached on the date of filing. The
+                  change is flagged on the earliest return because the IRS
+                  processes the package in order and updates its record from the
+                  first one it handles; flagging the last year would leave the
+                  earlier returns processed against a stale address, which is
+                  how a CP15 penalty notice reaches a dead mailbox. */}
+              {isEarliestJobYear && (
+                <>
+                  <label className={`confirm-check-row confirm-check-row--neutral${nameChange ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: '0.875rem' }}>
+                    <input type="checkbox" checked={nameChange} onChange={(e) => setNameChange(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                        The LLC's name has changed since the IRS last heard from us
+                        <InfoTooltip text="Tick this if the LLC's legal name is different from the name the IRS has on file, whether that came from your EIN application (Form SS-4) or an earlier filing. Renaming an LLC after the EIN was issued is common, and it counts even if this is your first Form 5472." label="About name change" />
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                        Different from the name on your EIN application or your last filing.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className={`confirm-check-row confirm-check-row--neutral${addressChange ? ' is-selected' : ''}`} style={{ cursor: 'pointer', marginTop: '0.875rem' }}>
+                    <input type="checkbox" checked={addressChange} onChange={(e) => setAddressChange(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
+                        The LLC's address has changed since the IRS last heard from us
+                        <InfoTooltip text="Tick this if the address above is different from the one the IRS has on file, whether that came from your EIN application (Form SS-4) or an earlier filing. This matters: the IRS sends penalty notices to the address it holds, so an unflagged change can send a notice somewhere you will never see it." label="About address change" />
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                        Different from the address on your EIN application or your last filing. Registered-agent and virtual-office changes count.
+                      </div>
+                    </div>
+                  </label>
+
+                  {jobYears.length > 1 && (nameChange || addressChange) && (
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--tf-muted)' }}>
+                      Every year in this catch-up is filed with your current details, so the IRS can
+                      reach you today. The change is flagged on {jobYears[0]?.tax_year}, the earliest
+                      year, because that is the return the IRS processes first.
+                    </div>
+                  )}
+                </>
+              )}
             </section>
 
             <section style={sectionStyle}>
@@ -3348,6 +3428,8 @@ export function Intake() {
                 <SummaryRow label="Mailing address" value={formatAddress(mailing)} />
                 <SummaryRow label="Initial return" value={isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : '') ? 'Yes' : 'No'} />
                 <SummaryRow label="Final return" value={finalReturn ? 'Yes' : 'No'} />
+                {nameChange && <SummaryRow label="Name change" value="Yes" />}
+                {addressChange && <SummaryRow label="Address change" value="Yes" />}
                 <SummaryRow label="Accounting period" value={isFiscalYear ? 'Fiscal year' : 'Calendar year'} />
                 {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : 'Not provided'} />}
                 {earlierReturnsFiled !== null && (
