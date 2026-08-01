@@ -33,6 +33,11 @@ import {
   drawSignatureInBox,
   faxSignatureBlocker,
 } from './drawnSignature';
+import {
+  embedSignatureFont,
+  drawTypedSignatureInBox,
+  drawTypedSignatureOverField,
+} from './typedSignature';
 
 // Re-export for consumers that import these types from pdfGenerator
 export type Form5472Fields = F5472Map;
@@ -1146,8 +1151,25 @@ export const buildReasonableCauseLetter = async (
     });
     cursor.y -= 12;
   } else {
-    // Unchanged behaviour: whitespace for a pen on the printed copy.
-    cursor.y -= 24;
+    // No mark was drawn, so the typed name signs. Render it in the script face
+    // above its own printed form, which is the layout a reviewer expects and
+    // the one the drawn path above already produces. See typedSignature.ts for
+    // why this is the fallback and not the default.
+    //
+    // If the script face is unavailable or cannot render this name, this draws
+    // nothing and the whitespace-for-a-pen behaviour that predates it stands.
+    if (cursor.y - SIG_BOX_H < MARGIN) ({ page, cursor } = newPage(doc));
+    cursor.y -= SIG_BOX_H + 2;
+    const scriptFont = await embedSignatureFont(doc, filing.owner.full_name);
+    if (scriptFont) {
+      drawTypedSignatureInBox(page, scriptFont, filing.owner.full_name ?? '', {
+        x: MARGIN,
+        y: cursor.y,
+        maxWidth: 200,
+        maxHeight: SIG_BOX_H,
+      });
+    }
+    cursor.y -= 12;
   }
 
   cursor.y = drawWrapped(page, `${filing.owner.full_name || '________________________'}`,
@@ -1752,7 +1774,18 @@ const fill1120 = async (
   // owner, a practising CPA, extended the drawn signature from the reasonable
   // cause letter to the 1120. Revisit before the 2027 season rather than
   // inheriting it.
-  await drawSignatureOverField(doc, F.SIGNATURE, drawnSignature);
+  const markDrawn = await drawSignatureOverField(doc, F.SIGNATURE, drawnSignature);
+
+  // No mark, so the typed name signs. Render it over the same field in the
+  // script face, so the signature line reads as signed rather than as a filled
+  // box. Falls back to the Helvetica value setText() already wrote whenever the
+  // face is unavailable or lacks a glyph for this name.
+  if (!markDrawn) {
+    // Raw, not toFormText(): the embedded face is not WinAnsi-bound, and
+    // setText() above already reported any unencodable characters, so routing
+    // it through again would double-report them to the filer.
+    await drawTypedSignatureOverField(doc, F.SIGNATURE, filing.owner.full_name);
+  }
 
   return doc;
 };
