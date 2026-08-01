@@ -118,7 +118,7 @@ export default function FilingWizard() {
       // generating: the foreign owner's managerial services are always
       // disclosed in Part VI, and filing on time avoids the $25,000 penalty
       // even when no Part IV/V transaction occurred.
-      const { generateFilingPackage } = await import('../../lib/pdfGenerator');
+      const { generateFilingPackage, refuseUnsupportedText } = await import('../../lib/pdfGenerator');
       const pkg = await generateFilingPackage(fi, txns ?? [], undefined, { drawnSignature });
 
       // The IRS forms are rendered with WinAnsi-encoded fonts. Anything outside
@@ -127,16 +127,8 @@ export default function FilingWizard() {
       // characters. Refuse to deliver such a package and say exactly which
       // characters are the problem, so the filer can enter the romanized legal
       // name the IRS expects on these forms.
-      if (pkg.unsupportedText?.length) {
-        const detail = pkg.unsupportedText
-          .map((u) => `"${u.value}" (${u.characters.join(' ')})`)
-          .join('; ');
-        throw new Error(
-          'These forms can only print Latin characters, so this filing cannot be '
-          + `generated as entered: ${detail}. Please edit the filing and enter the `
-          + 'romanized spelling of the name(s) as they should appear on the IRS forms.',
-        );
-      }
+      const refusal = refuseUnsupportedText(pkg.unsupportedText);
+      if (refusal) throw new Error(refusal);
 
       // The button says "Generate & preview", so open the overlay straight away;
       // the package card stays on the page once it is dismissed.
@@ -207,7 +199,8 @@ export default function FilingWizard() {
         }),
       );
 
-      const { generateMultiYearPackage, narrativeFromReasonCodes } = await import('../../lib/pdfGenerator');
+      const { generateMultiYearPackage, narrativeFromReasonCodes, refuseUnsupportedText } =
+        await import('../../lib/pdfGenerator');
       // One letter covers all years: free-text narrative wins, else build it
       // from the reasons collected once at job setup.
       const jobNarrative =
@@ -220,6 +213,14 @@ export default function FilingWizard() {
         // letter and every year's pro forma 1120.
         drawnSignature,
       });
+
+      // Same refusal as the single-year path above, which this had no equivalent
+      // of: a catch-up for an owner whose legal name is not Latin downloaded
+      // happily with the name stripped out of every year's return. Both paths
+      // now go through the one function, so the check cannot be present in one
+      // and missing from the other again.
+      const refusal = refuseUnsupportedText(pkg.unsupportedText);
+      if (refusal) throw new Error(refusal);
 
       const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
 

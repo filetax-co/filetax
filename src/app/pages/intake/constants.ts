@@ -15,18 +15,64 @@ export const STEP_LABELS: Record<string, string> = {
   5: 'Review',
 };
 
-export const FILING_DUE_DATES: Record<
-  number,
-  { original: string; extended: string }
-> = {
-  2025: { original: '2026-04-15', extended: '2026-10-15' },
-  2024: { original: '2025-04-15', extended: '2025-10-15' },
-  2023: { original: '2024-04-15', extended: '2024-10-15' },
-  2022: { original: '2023-04-15', extended: '2023-10-15' },
-  2021: { original: '2022-04-15', extended: '2022-10-15' },
-  2020: { original: '2021-04-15', extended: '2021-10-15' },
-  2019: { original: '2020-04-15', extended: '2020-10-15' },
-};
+/**
+ * When a return covering a period ending on `periodEndISO` is due.
+ *
+ * DERIVED, NOT TABULATED
+ *
+ * This used to be a hardcoded table keyed on the tax year alone. Two things
+ * were wrong with that. It ran out at 2025, and the lookup that used it treated
+ * a year it did not contain as ON TIME, so the first filing of a newly added
+ * year would have been silently declared timely for ever. And because the key
+ * was the year, a FISCAL-year filer was measured against the calendar-year
+ * deadline: a March year-end 2025 return covers April 2025 to March 2026 and is
+ * due 15 July 2026, but the table said 15 April 2026, so the filer was told they
+ * were still inside the extension window when they were already three months
+ * late — and step 1b, which is the only route to a reasonable cause letter,
+ * never appeared.
+ *
+ * The rule itself is simple and has no exceptions worth tabulating: Form 1120,
+ * and with it the Form 5472 that must be attached to it, is due on the 15th day
+ * of the 4th month after the tax period ends. That is 3.5 months for a
+ * calendar-year filer, giving the familiar 15 April. A timely Form 7004 adds a
+ * further 6 months, giving 15 October.
+ *
+ * WEEKENDS AND HOLIDAYS ARE DELIBERATELY NOT MODELLED
+ *
+ * A statutory due date falling on a Saturday, Sunday or DC holiday moves to the
+ * next business day, which would push some of these out by one to three days.
+ * That is not modelled, because the federal holiday calendar (Emancipation Day
+ * in particular, which is what makes April 18 a real 1120 deadline in some
+ * years) cannot be derived without a holiday table that would need the same
+ * annual maintenance this change exists to remove.
+ *
+ * Erring early is the safe direction. Being a day or two eager to call a return
+ * late means offering a reasonable cause letter to someone who may not need one,
+ * which costs them a page. Being late to call it late means withholding the
+ * letter from someone who does, which costs them the penalty defence. This is
+ * a prompt about lateness, not the filer's authoritative deadline, and the
+ * instructions page prints the real date.
+ */
+export function filingDueDates(periodEndISO: string): { original: string; extended: string } {
+  const [y, m, d] = periodEndISO.split('-').map(Number);
+  if (!y || !m || !d) throw new Error(`filingDueDates: bad period end "${periodEndISO}"`);
+
+  // 15th day of the 4th month after the month the period ends in. Month is
+  // 1-based here and 0-based in Date, so `m` alone already means "the month
+  // after", and +3 more gets to the fourth.
+  const original = new Date(Date.UTC(y, m + 3, 15));
+  const extended = new Date(Date.UTC(y, m + 9, 15));
+  const iso = (dt: Date) => dt.toISOString().slice(0, 10);
+  return { original: iso(original), extended: iso(extended) };
+}
+
+/**
+ * Calendar-year due dates by tax year, kept for the dashboard, which shows a
+ * deadline per year and has no period to hand. Fiscal filers must go through
+ * filingDueDates() with their real period end.
+ */
+export const FILING_DUE_DATES: Record<number, { original: string; extended: string }> =
+  Object.fromEntries(TAX_YEARS.map((y) => [y, filingDueDates(`${y}-12-31`)]));
 
 export type FilingTimingStatus = 'on_time' | 'within_extension' | 'delayed';
 
@@ -691,7 +737,8 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'China', label: 'China' },
   { value: 'Colombia', label: 'Colombia' },
   { value: 'Comoros', label: 'Comoros' },
-  { value: 'Congo', label: 'Congo' },
+  { value: 'Congo (Democratic Republic)', label: 'Congo (Democratic Republic)' },
+  { value: 'Congo (Republic)', label: 'Congo (Republic)' },
   { value: 'Costa Rica', label: 'Costa Rica' },
   { value: 'Croatia', label: 'Croatia' },
   { value: 'Cuba', label: 'Cuba' },
@@ -725,6 +772,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Guyana', label: 'Guyana' },
   { value: 'Haiti', label: 'Haiti' },
   { value: 'Honduras', label: 'Honduras' },
+  { value: 'Hong Kong', label: 'Hong Kong' },
   { value: 'Hungary', label: 'Hungary' },
   { value: 'Iceland', label: 'Iceland' },
   { value: 'India', label: 'India' },
@@ -740,6 +788,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Kazakhstan', label: 'Kazakhstan' },
   { value: 'Kenya', label: 'Kenya' },
   { value: 'Kiribati', label: 'Kiribati' },
+  { value: 'Kosovo', label: 'Kosovo' },
   { value: 'Kuwait', label: 'Kuwait' },
   { value: 'Kyrgyzstan', label: 'Kyrgyzstan' },
   { value: 'Laos', label: 'Laos' },
@@ -752,6 +801,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Lithuania', label: 'Lithuania' },
   { value: 'Luxembourg', label: 'Luxembourg' },
   { value: 'Madagascar', label: 'Madagascar' },
+  { value: 'Macau', label: 'Macau' },
   { value: 'Malawi', label: 'Malawi' },
   { value: 'Malaysia', label: 'Malaysia' },
   { value: 'Maldives', label: 'Maldives' },
@@ -777,10 +827,13 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Nicaragua', label: 'Nicaragua' },
   { value: 'Niger', label: 'Niger' },
   { value: 'Nigeria', label: 'Nigeria' },
+  { value: 'North Korea', label: 'North Korea' },
+  { value: 'North Macedonia', label: 'North Macedonia' },
   { value: 'Norway', label: 'Norway' },
   { value: 'Oman', label: 'Oman' },
   { value: 'Pakistan', label: 'Pakistan' },
   { value: 'Palau', label: 'Palau' },
+  { value: 'Palestine', label: 'Palestine' },
   { value: 'Panama', label: 'Panama' },
   { value: 'Papua New Guinea', label: 'Papua New Guinea' },
   { value: 'Paraguay', label: 'Paraguay' },
@@ -809,6 +862,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Solomon Islands', label: 'Solomon Islands' },
   { value: 'Somalia', label: 'Somalia' },
   { value: 'South Africa', label: 'South Africa' },
+  { value: 'South Korea', label: 'South Korea' },
   { value: 'South Sudan', label: 'South Sudan' },
   { value: 'Spain', label: 'Spain' },
   { value: 'Sri Lanka', label: 'Sri Lanka' },
@@ -836,6 +890,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: 'Uruguay', label: 'Uruguay' },
   { value: 'Uzbekistan', label: 'Uzbekistan' },
   { value: 'Vanuatu', label: 'Vanuatu' },
+  { value: 'Vatican City', label: 'Vatican City' },
   { value: 'Venezuela', label: 'Venezuela' },
   { value: 'Vietnam', label: 'Vietnam' },
   { value: 'Yemen', label: 'Yemen' },

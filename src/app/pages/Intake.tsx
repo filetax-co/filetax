@@ -9,7 +9,7 @@ import {
   BIZ_ACTIVITIES,
   COUNTRIES,
   DIRECTION_TYPES,
-  FILING_DUE_DATES,
+  filingDueDates,
   LOAN_TYPES,
   PART_V_TYPES,
   PART_VI_TYPES,
@@ -26,7 +26,13 @@ import {
   type IntakeStep,
   US_STATES,
 } from './intake/constants';
-import { PRICE_RCL } from '../../lib/pricing';
+import {
+  taxIdInfoFor,
+  taxIdPlaceholder,
+  taxIdTooltip,
+  taxIdWarning,
+} from './intake/countryTaxIds';
+import { PRICE_PER_YEAR, PRICE_RCL } from '../../lib/pricing';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -255,17 +261,29 @@ function formatMoney(value: string): string {
   return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas;
 }
 
+/**
+ * Where this filing stands against its own deadlines.
+ *
+ * Takes the PERIOD END rather than the tax year, because the deadline follows
+ * the period, not the label on it: the return is due the 15th day of the 4th
+ * month after the period ends, plus 6 months with a timely Form 7004. A fiscal
+ * filer measured against the calendar-year date was told they were inside the
+ * extension window months after it had closed, which suppressed step 1b and
+ * with it the reasonable cause letter. See filingDueDates() in constants.ts.
+ *
+ * Compared as ISO strings. `new Date('2026-04-15') > today` parses the ISO date
+ * as UTC midnight while `today` is local, so on the due date itself the two
+ * disagree by up to a day depending on the filer's timezone; comparing
+ * YYYY-MM-DD lexically is exact and timezone-free.
+ */
 function getFilingTimingStatus(
-  taxYear: string,
+  periodEndISO: string,
   today: Date,
 ): { status: 'on_time' | 'within_extension' | 'delayed'; originalPassed: boolean; extendedPassed: boolean } {
-  const year = Number(taxYear);
-  const dates = FILING_DUE_DATES[year];
-  if (!dates) return { status: 'on_time', originalPassed: false, extendedPassed: false };
-  const original = new Date(dates.original);
-  const extended = new Date(dates.extended);
-  const originalPassed = today > original;
-  const extendedPassed = today > extended;
+  const dates = filingDueDates(periodEndISO);
+  const todayISOLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const originalPassed = todayISOLocal > dates.original;
+  const extendedPassed = todayISOLocal > dates.extended;
   if (!originalPassed) return { status: 'on_time', originalPassed, extendedPassed };
   if (!extendedPassed) return { status: 'within_extension', originalPassed, extendedPassed };
   return { status: 'delayed', originalPassed, extendedPassed };
@@ -292,32 +310,68 @@ function describeError(e: unknown): string {
 }
 
 /**
+ * Fold a country name to the form the exemption set is keyed on: lowercased,
+ * trimmed, and stripped of diacritics.
+ *
+ * The diacritic stripping is what keeps this in step with CountrySelect. That
+ * list spells the entries the IRS does — "Cote d'Ivoire" carries a circumflex,
+ * "Curacao" a cedilla — and a plain lowercase comparison against an unaccented
+ * key silently fails to match, which is precisely the bug this set exists to
+ * prevent. Folding both sides means the set can be written in plain ASCII and
+ * still match whichever spelling reaches it, including values typed into the
+ * "Other, not listed" box.
+ */
+const foldCountry = (value?: string): string => {
+  // NFD splits an accented letter into base + combining mark; dropping the
+  // marks (U+0300-U+036F) leaves the ASCII base letter. Written as a code-point
+  // test rather than a regex range so the source stays pure ASCII and cannot be
+  // corrupted by a tool that mangles the file encoding.
+  let out = '';
+  for (const ch of (value ?? '').trim().toLowerCase().normalize('NFD')) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp < 0x0300 || cp > 0x036f) out += ch;
+  }
+  return out;
+};
+
+/**
  * Countries and territories that operate no postal code system at all, so an
  * address there is complete without one.
  *
- * Matched loosely (lowercased, trimmed) against whatever the country field
- * holds, because it carries display names rather than ISO codes. A country
- * missing from this list only means its filers are still asked for a postal
- * code, which is the safe direction to be wrong in: adding one is a one-line
- * change, while wrongly exempting a country loses a real piece of the address.
+ * Keyed on foldCountry() of the CountrySelect display name, because the country
+ * field carries display names rather than ISO codes. A country missing from this
+ * list only means its filers are still asked for a postal code, which is the
+ * safe direction to be wrong in: adding one is a one-line change, while wrongly
+ * exempting a country loses a real piece of the address.
+ *
+ * Entries must match a name in COUNTRIES, or they are dead. Two were: the set
+ * said "congo" and "democratic republic of the congo" while the dropdown offers
+ * "Congo (Republic)" and "Congo (Democratic Republic)", so neither Congo was
+ * ever exempted. The legacy spellings below are kept only because filings saved
+ * before the list was corrected still hold them.
  */
 const NO_POSTAL_CODE_COUNTRIES = new Set([
-  'hong kong', 'macau', 'macao', 'united arab emirates', 'uae', 'panama',
+  'hong kong', 'macau', 'united arab emirates', 'panama',
   'ireland', 'qatar', 'kuwait', 'bahrain', 'oman', 'yemen', 'syria', 'libya',
-  'angola', 'belize', 'bolivia', 'botswana', 'burkina faso', 'burundi',
-  'cameroon', 'central african republic', 'chad', 'comoros', 'congo',
-  'democratic republic of the congo', 'ivory coast', "cote d'ivoire", 'djibouti',
+  'angola', 'aruba', 'belize', 'bolivia', 'botswana', 'burkina faso', 'burundi',
+  'cameroon', 'central african republic', 'chad', 'comoros',
+  'congo (republic)', 'congo (democratic republic)', "cote d'ivoire",
+  'cook islands', 'curacao', 'djibouti',
   'dominica', 'equatorial guinea', 'eritrea', 'fiji', 'gambia', 'ghana',
   'grenada', 'guyana', 'north korea', 'malawi', 'mali', 'mauritania',
-  'namibia', 'nauru', 'niue', 'qatar', 'rwanda', 'saint kitts and nevis',
+  'namibia', 'nauru', 'niue', 'rwanda', 'saint kitts and nevis',
   'saint lucia', 'samoa', 'sao tome and principe', 'seychelles',
-  'sierra leone', 'solomon islands', 'somalia', 'suriname', 'east timor',
+  'sierra leone', 'sint maarten', 'solomon islands', 'somalia', 'suriname',
   'timor-leste', 'togo', 'tokelau', 'tonga', 'trinidad and tobago', 'tuvalu',
   'uganda', 'vanuatu', 'zimbabwe',
+  // Legacy spellings, still present on filings saved before the names above
+  // were aligned with the dropdown. Harmless to keep, wrong to remove.
+  'macao', 'uae', 'congo', 'democratic republic of the congo', 'ivory coast',
+  'east timor',
 ]);
 
 const countryUsesPostalCode = (country?: string): boolean =>
-  !NO_POSTAL_CODE_COUNTRIES.has((country ?? '').trim().toLowerCase());
+  !NO_POSTAL_CODE_COUNTRIES.has(foldCountry(country));
 
 function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   if (!address.line1?.trim()) return false;
@@ -746,9 +800,6 @@ export function Intake() {
 
   const [taxYear, setTaxYear] = useState('2024');
   const today = new Date();
-  const filingTiming = getFilingTimingStatus(taxYear, today);
-  const show1b = filingTiming.originalPassed;
-  const stepOrder = getStepOrder(show1b);
 
   const [step, setStep] = useState<IntakeStep>(() => {
     const raw = params.get('step');
@@ -819,6 +870,17 @@ export function Intake() {
   // The period is then derived deterministically from the tax year, so the user
   // can no longer pick a year that conflicts with the filing year.
   const [fiscalEndMonth, setFiscalEndMonth] = useState<number | ''>('');
+
+  // Lateness is measured against THIS filing's period end, so it has to be
+  // derived after the fiscal-year answers above rather than beside taxYear.
+  // show1b gates the whole reasonable-cause step, so a wrong period end here
+  // silently removes the filer's only route to a penalty defence.
+  const filingTiming = getFilingTimingStatus(
+    taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).end,
+    today,
+  );
+  const show1b = filingTiming.originalPassed;
+  const stepOrder = getStepOrder(show1b);
 
   // Eligibility re-confirmation (Step 1). The checker is a first-visit screen:
   // a returning filer goes Dashboard -> startFiling -> here and never sees it
@@ -912,6 +974,12 @@ export function Intake() {
   const [postPaymentEdits, setPostPaymentEdits] = useState(0);
   const POST_PAYMENT_EDIT_CAP = 2;
   const editsRemaining = Math.max(0, POST_PAYMENT_EDIT_CAP - postPaymentEdits);
+
+  // Foreign tax ID guidance, driven by the country of TAX RESIDENCE (not
+  // citizenship). Cheap enough to recompute each render; no memo needed.
+  const ownerTaxIdInfo = taxIdInfoFor(ownerCountryRes);
+  const ownerTaxIdWarning = taxIdWarning(ownerCountryRes, ownerForeignTaxId);
+  const rpTaxIdInfo = taxIdInfoFor(rpDraft.country_residence);
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
@@ -1517,7 +1585,13 @@ export function Intake() {
     // with nothing they could truthfully type. A passport number is an
     // identifying number they always have.
     if (!ownerForeignTaxId.trim()) {
-      errs.push('Enter your foreign tax ID. If your country does not issue one, enter your passport number instead.');
+      // Name the number the way the filer's own country names it, so the error
+      // tells them what to go and find rather than restating the field label.
+      errs.push(
+        ownerTaxIdInfo.issues === false
+          ? `${ownerCountryRes} issues no personal tax ID. Enter your ${ownerTaxIdInfo.alt ?? 'passport number'} instead.`
+          : `Enter your ${ownerTaxIdInfo.label}. If your country does not issue one, enter your passport number instead.`,
+      );
     }
     if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
     if (!ownerBizActivity.trim()) errs.push('Select or describe your type of business.');
@@ -1647,6 +1721,23 @@ export function Intake() {
       if (!Number.isInteger(t.related_party_index) || t.related_party_index < 0
         || t.related_party_index >= allPartyLabels.length) {
         errs.push(`${where} is attached to a related party that no longer exists. Choose the party it belongs to.`);
+      }
+
+      // Part V and Part VI belong to the OWNER's Form 5472 and to no other.
+      // The generator builds both statements, and ticks both checkboxes, only
+      // for the owner (buildYearDocs / fill5472 in pdfGenerator.ts), so one of
+      // these attached to an additional related party reached the IRS on no
+      // line, under no checkbox and with no statement, while still counting
+      // toward that party's line 1f. Catch it here, where the filer can still
+      // say who the transaction really belonged to.
+      else if (t.related_party_index !== 0
+        && (PART_V_TYPES.has(t.transaction_type) || PART_VI_TYPES.has(t.transaction_type))) {
+        const label = allPartyLabels[t.related_party_index];
+        errs.push(
+          `${where} is a transaction between the LLC and its owner, so it belongs to ${allPartyLabels[0]}, `
+          + `not to ${label}. Reassign it to the owner, or change its type to the one that describes what `
+          + `passed between the LLC and ${label}.`,
+        );
       }
 
       // Part V and Part VI types describe non-monetary events, so they are the
@@ -2813,6 +2904,27 @@ export function Intake() {
               const incorpBefore = doiYear != null && doiYear < ty;
               const isLatest = ty === latestFilable;
 
+              // The catch-up always runs from formation (or 2019, our floor)
+              // through the latest filable year, whichever year they happen to
+              // be sitting on right now.
+              const firstYear = doiYear != null ? Math.max(doiYear, 2019) : null;
+              const spanYears = firstYear != null ? latestFilable - firstYear + 1 : null;
+
+              // The saving is entirely the reasonable-cause letter: one per JOB
+              // when filed together, one per FILING when filed year by year. Say
+              // the two totals rather than describing the rule, because "you
+              // don't pay the letter fee per year" is abstract and "$595 instead
+              // of $1,192" is not.
+              const money =
+                spanYears != null && spanYears >= 2 ? (
+                  <>
+                    {' '}All {spanYears} years together is{' '}
+                    <strong>{usd(spanYears * PRICE_PER_YEAR + PRICE_RCL)}</strong>. Filed one at a
+                    time it's <strong>{usd(spanYears * (PRICE_PER_YEAR + PRICE_RCL))}</strong>,
+                    because each separate filing needs its own letter.
+                  </>
+                ) : null;
+
               // Offer text + CTA, shared by both branches. Agreeing saves the
               // current company/owner details to the profile so the multi-year
               // form prefills them, then goes to the year picker.
@@ -2820,7 +2932,7 @@ export function Intake() {
                 <>
                   Catching up on every missed year together means one
                   reasonable-cause letter covers them all, and you don't pay the
-                  letter fee per year.{' '}
+                  letter fee per year.{money}{' '}
                   <button
                     type="button"
                     onClick={goToMultiYearWithDetails}
@@ -3285,8 +3397,33 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Your foreign tax ID" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="The tax ID number your home country issues you, such as PAN (India), UTR (UK), NIF (Spain), or SIN (Canada). Some countries, including the UAE, the Cayman Islands and the Bahamas, do not issue one at all. If yours does not, enter your passport number instead, which is an identifying number the IRS accepts here. Do not enter 'None': the box cannot be left without an identifier.">
-                  <input value={ownerForeignTaxId} onChange={(e) => setOwnerForeignTaxId(e.target.value)} placeholder="Local tax ID, or passport number" disabled={isPaidLocked} />
+                {/* The label, placeholder and guidance all follow the country of
+                    tax residence selected above: a filer in Jakarta is asked for
+                    their NPWP, not for "your foreign tax ID". `taxIdWarning` is
+                    advisory and never blocks the step, see countryTaxIds.ts. */}
+                <Field
+                  label={`Your ${ownerTaxIdInfo.label}`}
+                  status={isPaidLocked ? 'locked after payment' : undefined}
+                  required
+                  tooltip={taxIdTooltip(ownerCountryRes)}
+                >
+                  <input
+                    value={ownerForeignTaxId}
+                    onChange={(e) => setOwnerForeignTaxId(e.target.value)}
+                    placeholder={taxIdPlaceholder(ownerCountryRes)}
+                    disabled={isPaidLocked}
+                  />
+                  {ownerTaxIdInfo.issues === false && (
+                    <div style={{ ...infoBoxStyle, marginTop: '0.5rem' }}>
+                      {ownerCountryRes} does not issue personal tax ID numbers. Enter your{' '}
+                      {ownerTaxIdInfo.alt ?? 'passport number'} instead, which the IRS accepts here.
+                    </div>
+                  )}
+                  {ownerTaxIdWarning && (
+                    <div style={{ marginTop: '0.4rem', fontSize: '0.8125rem', color: 'var(--tf-warn)' }}>
+                      {ownerTaxIdWarning}
+                    </div>
+                  )}
                 </Field>
                 <Field label="U.S. tax ID" tooltip="Only if you happen to have a U.S. tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
@@ -3434,8 +3571,12 @@ export function Intake() {
                     <Field label="U.S. tax ID" hint="If they have one (EIN or ITIN)">
                       <input value={rpDraft.us_tin ?? ''} onChange={(e) => setRpDraft((p) => ({ ...p, us_tin: e.target.value }))} placeholder="XX-XXXXXXX or XXX-XX-XXXX" />
                     </Field>
-                    <Field label="Their foreign tax ID" hint="e.g. PAN, UTR, NIF, SIN" required>
-                      <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="Local tax ID" />
+                    <Field
+                      label={`Their ${rpTaxIdInfo.label}`}
+                      tooltip={taxIdTooltip(rpDraft.country_residence)}
+                      required
+                    >
+                      <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder={taxIdPlaceholder(rpDraft.country_residence)} />
                     </Field>
                     <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
@@ -3992,7 +4133,7 @@ export function Intake() {
                 <SummaryRow label="Country where you do business" value={ownerCountry} />
                 <SummaryRow label="Country where you pay taxes" value={ownerCountryRes} />
                 <SummaryRow label="Citizenship" value={ownerCountryCitizenship} />
-                <SummaryRow label="Foreign tax ID" value={ownerForeignTaxId} />
+                <SummaryRow label={ownerTaxIdInfo.short} value={ownerForeignTaxId} />
                 <SummaryRow label="U.S. tax ID" value={ownerSSN} />
                 <SummaryRow label="Reference code" value={ownerRefNumber} />
                 <SummaryRow label="Business type" value={ownerBizActivity.trim() || RP_NAICS.find((n) => n.code === ownerBizCode)?.label} />
@@ -4011,7 +4152,7 @@ export function Intake() {
                     <SummaryRow label="Name" value={rp.name} />
                     <SummaryRow label="Country where they do business" value={rp.country} />
                     <SummaryRow label="Country where they pay taxes" value={rp.country_residence} />
-                    <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
+                    <SummaryRow label={taxIdInfoFor(rp.country_residence).short} value={rp.foreign_tax_id} />
                     <SummaryRow label="U.S. tax ID" value={rp.us_tin} />
                     <SummaryRow label="Reference code" value={rp.ref_number} />
                     <SummaryRow label="Business type" value={rp.biz_activity?.trim()} />

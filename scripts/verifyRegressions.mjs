@@ -16,7 +16,9 @@ import {
   mapTransactionForPersist,
   resolveUiTxType,
 } from '../src/lib/filingMapping.ts';
-import { RP_NAICS, resolveBizPreset, TX_TYPES } from '../src/app/pages/intake/constants.ts';
+import {
+  RP_NAICS, resolveBizPreset, TX_TYPES, filingDueDates,
+} from '../src/app/pages/intake/constants.ts';
 
 let failures = 0;
 const check = (name, actual, expected) => {
@@ -138,6 +140,42 @@ check('every canonical code resolves to a code the UI can display',
 // An unknown code must not crash or leak through as a raw identifier.
 check('an unrecognized canonical code falls back to other',
   resolveUiTxType({ transaction_type: 'something_new_from_the_future' }), 'other');
+
+// ── Risk 4: due dates must follow the PERIOD, not the tax-year label ────────
+// filingDueDates replaced a hardcoded table that was keyed on the tax year, so
+// a fiscal-year filer was measured against the calendar-year deadline and told
+// they were inside the extension window months after it closed — which hid step
+// 1b and with it the only route to a reasonable cause letter.
+console.log('\n— filing due dates —');
+
+// Every calendar year must reproduce the table this replaced, exactly. If this
+// drifts, existing filings silently change their on-time/late verdict.
+const LEGACY_TABLE = {
+  2019: { original: '2020-04-15', extended: '2020-10-15' },
+  2020: { original: '2021-04-15', extended: '2021-10-15' },
+  2021: { original: '2022-04-15', extended: '2022-10-15' },
+  2022: { original: '2023-04-15', extended: '2023-10-15' },
+  2023: { original: '2024-04-15', extended: '2024-10-15' },
+  2024: { original: '2025-04-15', extended: '2025-10-15' },
+  2025: { original: '2026-04-15', extended: '2026-10-15' },
+};
+for (const [year, expected] of Object.entries(LEGACY_TABLE)) {
+  check(`calendar ${year} matches the table it replaced`, filingDueDates(`${year}-12-31`), expected);
+}
+
+// The rule is the 15th day of the 4th month after the period ends, +6 months
+// with a timely 7004. A March year-end is the case that was wrong before.
+check('fiscal March year-end is due 15 July, not 15 April',
+  filingDueDates('2026-03-31'), { original: '2026-07-15', extended: '2027-01-15' });
+check('fiscal June year-end is due 15 October',
+  filingDueDates('2026-06-30'), { original: '2026-10-15', extended: '2027-04-15' });
+check('fiscal September year-end crosses into the next calendar year',
+  filingDueDates('2025-09-30'), { original: '2026-01-15', extended: '2026-07-15' });
+
+// A year beyond the old table must produce real dates rather than being treated
+// as on time for ever, which is what the missing-key branch used to do.
+check('a year past the end of the old table still has a deadline',
+  filingDueDates('2027-12-31'), { original: '2028-04-15', extended: '2028-10-15' });
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);

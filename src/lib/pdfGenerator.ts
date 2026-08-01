@@ -143,6 +143,30 @@ const isFormSafeChar = (ch: string): boolean => {
 export interface UnsupportedText { value: string; characters: string[] }
 let unsupportedSink: UnsupportedText[] | null = null;
 
+/**
+ * The message to refuse a package with, or null when there is nothing wrong.
+ *
+ * Every caller that hands bytes to a filer MUST call this and throw on a
+ * non-null result. It lives here, next to toFormText, because it did not: the
+ * single-year download in FilingWizard refused correctly while the multi-year
+ * download had no check at all, so the one population the guard exists to
+ * protect — an owner whose legal name is not Latin — got a catch-up package
+ * with their name silently stripped on every year's return. Two call sites, one
+ * of them written months later, is exactly how that happens; one function they
+ * both call is the fix.
+ */
+export const refuseUnsupportedText = (
+  unsupported: UnsupportedText[] | undefined,
+): string | null => {
+  if (!unsupported?.length) return null;
+  const detail = unsupported.map((u) => `"${u.value}" (${u.characters.join(' ')})`).join('; ');
+  return (
+    'These forms can only print Latin characters, so this filing cannot be '
+    + `generated as entered: ${detail}. Please edit the filing and enter the `
+    + 'romanized spelling of the name(s) as they should appear on the IRS forms.'
+  );
+};
+
 /** Normalize to NFC and strip anything the PDF fonts cannot encode. */
 export const toFormText = (value: string | null | undefined): string => {
   if (value == null) return '';
@@ -566,10 +590,38 @@ const totalPaid = (t: AggregatedTransactions): number =>
  * (owner distributions, capital contributions, dividends) and any monetary
  * Part VI amounts (consideration on property transfers / other nonmonetary
  * items where an amount was recorded).
+ *
+ * `isOwner` GATES THE PART V / PART VI COMPONENT, AND HAS TO
+ *
+ * Parts V and VI belong to the owner's Form 5472 alone: buildYearDocs builds
+ * those statements for the owner only, and fill5472 ticks both checkboxes for
+ * the owner only. This aggregate was ungated, so a distribution, dividend,
+ * capital contribution, formation cost, property transfer or other nonmonetary
+ * item attached to an ADDITIONAL related party still counted toward that
+ * party's line 1f and the entity-wide line 1h — while appearing on no Part IV
+ * line, no checkbox and no statement, because a non-owner's form has none of
+ * those.
+ *
+ * The result was a Form 5472 whose line 1f exceeded line 22 + line 36 with
+ * nothing on the return accounting for the difference, which is the kind of
+ * discrepancy a reviewer opens a case about. Line 1f is the gross payments
+ * reported ON THIS FORM, so an amount this form does not report cannot belong
+ * in it.
+ *
+ * The amount is not silently lost, because intake no longer lets these six
+ * types be attached to anyone but the owner (validateTransactions in
+ * Intake.tsx), which is where they were always meant to sit and where they are
+ * actually disclosed. This gate is the backstop for rows saved before that
+ * validation existed.
  */
-const grossPaymentsForLines1f1h = (t: AggregatedTransactions): number =>
-  totalReceived(t) + totalPaid(t) + t.distributions_paid + t.contributions_received +
-  t.formation_costs_paid + t.part_vi_amount;
+export const grossPaymentsForLines1f1h = (
+  t: AggregatedTransactions,
+  isOwner: boolean,
+): number =>
+  totalReceived(t) + totalPaid(t) +
+  (isOwner
+    ? t.distributions_paid + t.contributions_received + t.formation_costs_paid + t.part_vi_amount
+    : 0);
 
 // ─── shared statement page utilities ─────────────────────────────────────────────────────────
 
@@ -1499,9 +1551,10 @@ const fill5472 = async (
   setText(doc, F.CORP_COUNTRY_BUSINESS,      principalCountry);
 
   // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
-  // 1f/1h aggregate the monetary transactions for this party, Part IV flows plus
-  // the monetary Part V (distributions/contributions/dividends) and Part VI amounts.
-  const grossThisForm = grossPaymentsForLines1f1h(txn);
+  // 1f/1h aggregate the monetary transactions for this party: Part IV flows,
+  // plus — for the OWNER's form only, which is the only one carrying them — the
+  // monetary Part V (distributions/contributions/dividends) and Part VI amounts.
+  const grossThisForm = grossPaymentsForLines1f1h(txn, party.is_owner);
   setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossThisForm));
   setText(doc, F.CORP_NUM_FORMS,      String(opts.numForms));
   setText(doc, F.CORP_GROSS_ALL,      fmt(opts.grossAllForms));
@@ -2145,10 +2198,16 @@ export const generateForm7004 = async (
   return doc.save();
 };
 
-/** Gross of all reportable transactions for a single party (drives 1f / 1h). */
-const grossForTransactions = (txns: Transaction[]): number => {
+/**
+ * Gross of all reportable transactions for a single party (drives 1f / 1h).
+ *
+ * `isOwner` must be that party's own flag, not a constant: line 1h is the sum
+ * of every form's line 1f, so passing the wrong one here makes the entity-wide
+ * total disagree with the forms it is meant to total.
+ */
+const grossForTransactions = (txns: Transaction[], isOwner: boolean): number => {
   const agg = aggregateTransactions(txns);
-  return grossPaymentsForLines1f1h(agg);
+  return grossPaymentsForLines1f1h(agg, isOwner);
 };
 
 const PART_V_TX_TYPES = new Set<Transaction['transaction_type']>([
@@ -2202,7 +2261,7 @@ const buildYearDocs = async (
   // Line 1g / 1h, form count and entity-wide gross across all forms.
   const formCount = partiesToFile.length;
   const grossAllForms = partiesToFile.reduce(
-    (sum, p) => sum + grossForTransactions(txByParty.get(p.index) ?? []),
+    (sum, p) => sum + grossForTransactions(txByParty.get(p.index) ?? [], p.is_owner),
     0,
   );
   const fillOpts: Fill5472Opts = { numForms: formCount, grossAllForms };
@@ -2442,6 +2501,13 @@ export interface MultiYearPackage {
   bundled: Uint8Array;
   /** Years included, ascending. */
   taxYears: number[];
+  /**
+   * Characters no form in this package could print. Same contract as
+   * FilingPackage.unsupportedText, and it exists for the same reason: the
+   * caller must refuse to deliver a package that has any. See
+   * refuseUnsupportedText().
+   */
+  unsupportedText?: UnsupportedText[];
 }
 
 /**
@@ -2467,6 +2533,13 @@ export const generateMultiYearPackage = async (
   },
 ): Promise<MultiYearPackage> => {
   if (years.length === 0) throw new Error('generateMultiYearPackage: no years provided');
+
+  // Collect anything unencodable across EVERY year, exactly as the single-year
+  // path does. Without this the sink stayed null here and toFormText dropped
+  // characters silently, so the caller had nothing to refuse on.
+  const unsupported: UnsupportedText[] = [];
+  unsupportedSink = unsupported;
+  try {
 
   const sorted = [...years].sort((a, b) => b.taxYear - a.taxYear); // most recent first
   const taxYears = sorted.map((y) => y.taxYear).sort((a, b) => a - b);
@@ -2497,13 +2570,22 @@ export const generateMultiYearPackage = async (
     perYear.push({ taxYear: yd.period.year, pdf: await merged.save(), formCount: yd.formCount });
   }
 
-  // Bundle: RCL once → each year (instructions → forms).
+  // Bundle: RCL once → each year (instructions → forms), OLDEST YEAR FIRST.
+  //
+  // yearDocs is newest-first, because the RCL above takes its entity and owner
+  // details from yearDocs[0] and the most recent year is the right source for
+  // those. Iterating it directly put the bundle in reverse chronological order
+  // while `taxYears` (and therefore the download's own filename, which reads
+  // "2019-2023") said ascending. A catch-up submission is read oldest to
+  // newest, so the bundle follows taxYears rather than the build order.
+  const chronological = [...yearDocs].sort((a, b) => a.period.year - b.period.year);
+
   const bundle = await PDFDocument.create();
   if (rclDoc) {
     const rclCopy = await PDFDocument.load(await rclDoc.save());
     await mergeInto(bundle, rclCopy);
   }
-  for (const yd of yearDocs) {
+  for (const yd of chronological) {
     const instructions = await buildInstructionsPage(yd.filing, yd.period, {
       isLate: opts.includeRCL, hasRCL: opts.includeRCL, formCount: yd.formCount,
     });
@@ -2519,10 +2601,26 @@ export const generateMultiYearPackage = async (
     await mergeInto(bundle, yearCopy);
   }
 
+  // De-duplicate: the same name is drawn on several forms, and in a catch-up
+  // on several years' worth of them, so an unromanizable owner name would
+  // otherwise be reported once per document.
+  const seen = new Set<string>();
+  const unsupportedText = unsupported.filter((u) => {
+    const k = u.value + ' ' + u.characters.join('');
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
   return {
     perYear: perYear.sort((a, b) => a.taxYear - b.taxYear),
     reasonableCauseLetter: rclDoc ? await rclDoc.save() : undefined,
     bundled: await bundle.save(),
     taxYears,
+    ...(unsupportedText.length ? { unsupportedText } : {}),
   };
+
+  } finally {
+    unsupportedSink = null;
+  }
 };

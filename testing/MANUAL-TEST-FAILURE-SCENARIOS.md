@@ -12,6 +12,29 @@ Already known and covered elsewhere: the four defects in `E2E-100-HANDOFF.md` §
 
 ---
 
+## STATUS: five of these are now fixed — re-test them, do not re-find them
+
+Fixed after this document was written. Each still needs the manual pass described below, but now to
+CONFIRM the fix rather than to discover the bug. Everything not listed here is untouched and stands
+exactly as written.
+
+| Item | What changed |
+|---|---|
+| **B1** countries | 41 territories added (Cayman, BVI, Bermuda, Anguilla, Turks and Caicos, Jersey, Guernsey, Isle of Man, Gibraltar, Côte d'Ivoire, …), list re-sorted, and an **"Other, not listed" free-text escape** added so a gap can never block a filer again. `NO_POSTAL_CODE_COUNTRIES` re-keyed to the dropdown's own names and matched diacritic-insensitively, which fixes both Congos. **US territories were deliberately EXCLUDED** — a Puerto Rico / Guam / USVI / CNMI / American Samoa resident is a US person under §7701(a)(30), so the LLC is not foreign-owned and no 5472 is due on that basis; offering them would invite a return that should not exist |
+| **A1** 1f/1h | `grossPaymentsForLines1f1h` now takes `isOwner` and excludes Part V / Part VI amounts from a non-owner's line 1f and from 1h. Intake additionally **refuses** to attach an owner-only transaction type to an additional related party, so the amount is reassigned rather than dropped |
+| **A2** multi-year encoding | Both download paths now call one shared `refuseUnsupportedText()`. The multi-year builder sets the sink it never set, so it can actually report. Bundle order also corrected to **oldest year first**, matching `taxYears` and the filename |
+| **A3 / A4** due dates | `FILING_DUE_DATES` replaced by `filingDueDates(periodEndISO)`: 15th day of the 4th month after the period ends, +6 months with a 7004. `getFilingTimingStatus` now takes the period end, so a fiscal filer is measured against their own deadline. No year can fall off the end and be declared on time for ever |
+| **C1** typed signature | Committed at `a0f40e7`, with `scripts/verifyTypedSignature.mjs`. The table in §C1 is still the right test list |
+
+Regression coverage added: `npm run verify:logic` asserts the due dates (all seven calendar years
+reproduce the old table exactly, plus three fiscal cases), and `npm run verify:pdf` asserts the
+owner-only 1f/1h gate. `npm test` is green.
+
+Weekends and federal holidays are deliberately NOT modelled in the due dates — see the comment on
+`filingDueDates`. It errs a day or two early in calling a return late, which is the safe direction.
+
+---
+
 ## A. Silently wrong output
 
 ### A1. Non-owner related party with a Part V or Part VI transaction — amount vanishes

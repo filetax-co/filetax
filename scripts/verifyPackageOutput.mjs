@@ -304,5 +304,43 @@ console.log('\n— a short final year reaches Form 7004 —');
     nval('LLC_Calendar_Year') === '25', `LLC_Calendar_Year="${nval('LLC_Calendar_Year')}"`);
 }
 
+// ── Lines 1f / 1h: Part V and Part VI count for the OWNER only ──────────────
+// Parts V and VI are built, and their checkboxes ticked, for the owner's Form
+// 5472 alone. The 1f/1h aggregate did not know that, so an owner-type amount
+// attached to an ADDITIONAL related party inflated that party's line 1f while
+// appearing on no line, no checkbox and no statement of theirs — a form whose
+// 1f exceeded line 22 + line 36 with nothing to explain the gap.
+console.log('\n— lines 1f / 1h, Part V/VI is owner-only —');
+{
+  const { grossPaymentsForLines1f1h, aggregateTransactions } =
+    await import('../src/lib/pdfGenerator.ts');
+
+  // One Part IV amount (any party reports it) + one Part V amount (owner only).
+  const agg = aggregateTransactions([
+    { transaction_type: 'service_payment', direction: 'paid', amount_usd: 10000 },
+    { transaction_type: 'distribution', amount_usd: 50000 },
+  ]);
+  check('owner 1f includes the Part V distribution',
+    grossPaymentsForLines1f1h(agg, true) === 60000,
+    `got ${grossPaymentsForLines1f1h(agg, true)}, expected 60000`);
+  check('a non-owner 1f excludes it, leaving only the Part IV flow',
+    grossPaymentsForLines1f1h(agg, false) === 10000,
+    `got ${grossPaymentsForLines1f1h(agg, false)}, expected 10000`);
+
+  // Part VI consideration behaves the same way.
+  const vi = aggregateTransactions([
+    { transaction_type: 'property_transfer', amount_usd: 7500 },
+  ]);
+  check('owner 1f includes the Part VI amount', grossPaymentsForLines1f1h(vi, true) === 7500);
+  check('a non-owner 1f excludes the Part VI amount', grossPaymentsForLines1f1h(vi, false) === 0);
+
+  // The gate must not touch Part IV, which every party reports on its own form.
+  const partIVOnly = aggregateTransactions([
+    { transaction_type: 'sales', direction: 'received', amount_usd: 1234 },
+  ]);
+  check('Part IV is unaffected by the gate',
+    grossPaymentsForLines1f1h(partIVOnly, true) === grossPaymentsForLines1f1h(partIVOnly, false));
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);
