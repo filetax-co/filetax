@@ -1921,7 +1921,7 @@ export function Intake() {
   const handleNext = async () => {
     const errs = validateCurrentStep();
     setStepErrors(errs);
-    if (step === 1 && ein && !isValidEIN(ein)) setEinErr('EIN must be in the format XX-XXXXXXX (e.g. 12-3456789)');
+    if (step === 1 && ein) setEinErr(einProblem(ein));
     if (errs.length > 0) return;
     const nextIdx = currentStepIdx + 1;
     if (nextIdx >= stepOrder.length) return;
