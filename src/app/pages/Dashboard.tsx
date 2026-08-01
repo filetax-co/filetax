@@ -211,6 +211,55 @@ export function Dashboard() {
     setBusy(null);
   }
 
+  // Delete a whole multi-year catch-up job.
+  //
+  // A catch-up is created as one decision ("I have four missed years"), so
+  // abandoning it should be one decision too. Before this there was no way to
+  // remove one at all: "Add or remove years" can take years out one at a time
+  // but always leaves at least one behind, so a job started by mistake stayed
+  // on the dashboard permanently.
+  //
+  // Refuses outright if ANY year has been paid, rather than deleting the unpaid
+  // years and leaving a partial job. A payment must remain auditable, and a
+  // half-deleted catch-up is worse than none: the remaining years would still
+  // reference a reasonable cause letter that was scoped to all of them.
+  async function deleteJob(jobFilings: Filing[]) {
+    const jobId = jobFilings[0]?.job_id;
+    if (!jobId) return;
+
+    const paid = jobFilings.filter(
+      (f) => f.status === 'paid' || f.status === 'completed' || f.status === 'submitted',
+    );
+    if (paid.length > 0) {
+      setError(
+        `This catch-up cannot be deleted because ${paid.length === 1 ? 'one year has' : `${paid.length} years have`} already been paid for. ` +
+        'Contact support@filetax.co if you need it removed.',
+      );
+      return;
+    }
+
+    const years = jobFilings.map((f) => f.tax_year).filter(Boolean).sort();
+    const llc = jobFilings.find((f) => f.llc_name)?.llc_name?.trim() || 'this LLC';
+    if (!window.confirm(
+      `Delete the whole catch-up for ${llc}? This removes all ${jobFilings.length} years ` +
+      `(${years.join(', ')}) and everything entered against them. This can't be undone.`,
+    )) return;
+
+    setBusy(`del-job-${jobId}`);
+    setError('');
+    // Delete by job_id rather than looping the ids: one statement, so it cannot
+    // half-succeed and leave the job in the partial state described above.
+    const { error } = await supabase.from('filings').delete().eq('job_id', jobId);
+    if (error) {
+      setBusy(null);
+      setError(error.message);
+      return;
+    }
+    await supabase.from('filing_jobs').delete().eq('id', jobId);
+    setFilings((prev) => prev.filter((x) => x.job_id !== jobId));
+    setBusy(null);
+  }
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -313,7 +362,13 @@ export function Dashboard() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
                   {/* Multi-year job cards first (most actionable) */}
                   {[...jobs.entries()].map(([jobId, yearFilings]) => (
-                    <JobCard key={jobId} filings={yearFilings} />
+                    <JobCard
+                      key={jobId}
+                      filings={yearFilings}
+                      onDeleteJob={deleteJob}
+                      onDeleteYear={deleteFiling}
+                      busy={busy}
+                    />
                   ))}
 
                   {BUCKET_ORDER.filter((b) => (byBucket.get(b)?.length ?? 0) > 0).map((b) => (
@@ -395,6 +450,71 @@ export function Dashboard() {
 }
 
 // ── Filing card ──────────────────────────────────────────────────────────────
+/**
+ * Delete control for a card, placed in the card's top-right corner.
+ *
+ * It used to sit beside Continue at the bottom right, where a destructive
+ * action shared a row and a visual weight with the primary one. Separating them
+ * costs nothing and makes a mis-tap much less likely, which matters more here
+ * than usual: a large share of this audience is on a phone, and the two buttons
+ * were about a thumb's width apart.
+ *
+ * Muted until hover so it does not compete with Continue for attention.
+ */
+function DeleteCardButton({
+  onClick,
+  busy,
+  title,
+}: {
+  onClick: () => void;
+  busy?: boolean;
+  title: string;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={title}
+      aria-label={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={() => setHover(false)}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        background: 'transparent',
+        border: `1px solid ${hover && !busy ? 'var(--tf-error)' : 'var(--tf-border)'}`,
+        color: hover && !busy ? 'var(--tf-error-text)' : 'var(--tf-muted)',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        padding: '0.3rem 0.6rem',
+        borderRadius: '0.5rem',
+        cursor: busy ? 'not-allowed' : 'pointer',
+        opacity: busy ? 0.5 : 1,
+        // Comfortably tappable without being as tall as the primary action.
+        minHeight: '32px',
+        whiteSpace: 'nowrap',
+        transition: 'color 0.15s ease, border-color 0.15s ease',
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path
+          d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M12.5 4l-.5 9a1 1 0 0 1-1 .95h-6a1 1 0 0 1-1-.95L3.5 4M6.5 7v4M9.5 7v4"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {busy ? 'Deleting…' : 'Delete'}
+    </button>
+  );
+}
+
 function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted') ? dueState(f.tax_year) : null;
@@ -402,8 +522,21 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
   const deletable = f.status === 'draft' || f.status === 'in_progress';
   return (
-    <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-      <div style={{ minWidth: 0, flex: 1 }}>
+    // position: relative so the delete control can sit in the corner. The row
+    // itself is unchanged; only the delete moved out of the action group.
+    <div style={{ position: 'relative', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+      {deletable && onDelete && (
+        <div style={{ position: 'absolute', top: '0.6rem', right: '0.75rem', zIndex: 1 }}>
+          <DeleteCardButton
+            onClick={() => onDelete(f)}
+            busy={deleting}
+            title={`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}`}
+          />
+        </div>
+      )}
+      {/* Room for the corner control, so a long LLC name never runs under it.
+          Only reserved when the control is actually there. */}
+      <div style={{ minWidth: 0, flex: 1, paddingTop: deletable && onDelete ? '1.6rem' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
@@ -429,25 +562,23 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
         >
           {actionLabel(f.status)}
         </Link>
-        {deletable && onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(f)}
-            disabled={deleting}
-            title="Delete this unpaid filing"
-            aria-label="Delete this unpaid filing"
-            style={{ background: 'transparent', border: '1px solid var(--tf-border)', color: 'var(--tf-muted)', fontWeight: 600, fontSize: '0.8125rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', cursor: deleting ? 'not-allowed' : 'pointer', minHeight: '40px', opacity: deleting ? 0.5 : 1 }}
-          >
-            {deleting ? '…' : 'Delete'}
-          </button>
-        )}
       </div>
     </div>
   );
 }
 
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
-function JobCard({ filings }: { filings: Filing[] }) {
+function JobCard({
+  filings,
+  onDeleteJob,
+  onDeleteYear,
+  busy,
+}: {
+  filings: Filing[];
+  onDeleteJob?: (filings: Filing[]) => void;
+  onDeleteYear?: (f: Filing) => void;
+  busy?: string | null;
+}) {
   const sorted = [...filings].sort((a, b) => Number(b.tax_year) - Number(a.tax_year));
   // Chronological (ascending) order to find the EARLIEST unfilled year.
   const chronological = [...filings].sort((a, b) => Number(a.tax_year) - Number(b.tax_year));
@@ -460,10 +591,25 @@ function JobCard({ filings }: { filings: Filing[] }) {
   // review/download page (most-recent filing).
   const target = chronological.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
 
+  // A job with any paid year cannot be deleted; the button is hidden rather than
+  // shown-and-refused, so the only delete a filer can see is one that will work.
+  const jobDeletable = sorted.every(
+    (f) => f.status !== 'paid' && f.status !== 'completed' && f.status !== 'submitted',
+  );
+
   return (
-    <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+      {jobDeletable && onDeleteJob && (
+        <div style={{ position: 'absolute', top: '0.6rem', right: '0.75rem', zIndex: 1 }}>
+          <DeleteCardButton
+            onClick={() => onDeleteJob(filings)}
+            busy={busy === `del-job-${sorted[0]?.job_id}`}
+            title={`Delete the whole catch-up for ${llc}, all ${sorted.length} years`}
+          />
+        </div>
+      )}
       <div style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: 0, flex: 1, paddingTop: jobDeletable && onDeleteJob ? '1.6rem' : 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
             <span style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               Multi-year catch-up
@@ -495,14 +641,62 @@ function JobCard({ filings }: { filings: Filing[] }) {
       <div style={{ borderTop: '1px solid var(--tf-border)' }}>
         {sorted.map((f) => {
           const c = STATUS_COLOR[f.status];
+          const yearDeletable = f.status === 'draft' || f.status === 'in_progress';
+          // The row used to be a single <Link> wrapping everything. A delete
+          // button cannot live inside that: nesting a button in an anchor is
+          // invalid HTML, and every click would race the navigation. So the row
+          // is now a flex container with the Link as one child and the delete as
+          // its sibling. The Link keeps flex:1 so the whole row area is still
+          // the click target for continuing that year.
           return (
-            <Link key={f.id} to={filingPath(f)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 1.5rem', borderTop: '1px solid var(--tf-border)', textDecoration: 'none' }}>
-              <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.1rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}>{STATUS_LABEL[f.status]}</span>
-                <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
-              </span>
-            </Link>
+            <div
+              key={f.id}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 1.5rem 0 0', borderTop: '1px solid var(--tf-border)' }}
+            >
+              <Link to={filingPath(f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 0.75rem 0.75rem 1.5rem', textDecoration: 'none' }}>
+                <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ background: c.bg, color: c.fg, borderRadius: '9999px', padding: '0.1rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}>{STATUS_LABEL[f.status]}</span>
+                  <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
+                </span>
+              </Link>
+              {/* Only when more than one year remains. Deleting the last year of
+                  a catch-up would leave an empty job, and the job-level delete
+                  in the header is the right way to remove the whole thing. */}
+              {yearDeletable && onDeleteYear && sorted.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteYear(f)}
+                  disabled={busy === `del-${f.id}`}
+                  title={`Delete tax year ${f.tax_year} from this catch-up`}
+                  aria-label={`Delete tax year ${f.tax_year} from this catch-up`}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--tf-muted)',
+                    cursor: busy === `del-${f.id}` ? 'not-allowed' : 'pointer',
+                    opacity: busy === `del-${f.id}` ? 0.4 : 1,
+                    padding: '0.4rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    borderRadius: '0.375rem',
+                    minHeight: '32px',
+                    minWidth: '32px',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M12.5 4l-.5 9a1 1 0 0 1-1 .95h-6a1 1 0 0 1-1-.95L3.5 4M6.5 7v4M9.5 7v4"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
