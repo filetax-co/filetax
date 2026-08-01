@@ -1140,6 +1140,172 @@ export const buildInstructionsPage = async (
   return doc;
 };
 
+// ─── IRS fax cover page ─────────────────────────────────────────────────────────────────────────
+//
+// Page 1 of the FAX transmission only. It is not part of the customer download,
+// and it is the opposite document to buildInstructionsPage: instructions are
+// addressed to the FILER ("do not staple", "mail to", "keep proof of mailing")
+// and would be nonsense to transmit to Ogden.
+//
+// Standard transmittal-letter layout, with the content corrected for what this
+// package actually is. Three things are deliberately NOT said, because they are
+// true of a real Form 1120 and false here:
+//
+//   - It is not described as a "U.S. Corporation Income Tax Return". A domestic
+//     DE wholly owned by one foreign person is a corporation for section 6038A
+//     purposes only (26 CFR 301.7701-2(c)(2)(vi)); (c)(2)(i) otherwise
+//     disregards it. Calling the package an income tax return misstates the
+//     entity's status in writing, in an IRS file.
+//   - No balance-due / payment line. No tax is computed on a pro forma 1120.
+//   - No schedule list (1125-A, 8990, and so on). The pro forma 1120 carries
+//     only the name, address and items B and E, so listing schedules would
+//     invite attachments that do not belong in the package.
+//
+// Form 5472 leads the subject line because it is the return; the pro forma 1120
+// is the transmittal that carries it.
+
+/** Where a foreign-owned DE sends Form 5472. Verify on irs.gov before a season. */
+export const IRS_5472_FAX = '855-887-7737';
+
+export interface FaxCoverOpts {
+  /** Forms 5472 enclosed — one per related party. */
+  formCount: number;
+  /** A Reasonable Cause Statement is enclosed. */
+  hasRCL: boolean;
+  /** A Form 7004 is enclosed. */
+  has7004: boolean;
+  /** Total pages in the transmission, INCLUDING this cover page. */
+  pageCount: number;
+  /** Marks the subject line "Amended" rather than "Original". */
+  isAmended?: boolean;
+  /** Sending fax number, printed in the From block. */
+  senderFax?: string;
+  /** Transmission date. Defaults to today. */
+  sentOn?: Date;
+}
+
+export const buildFaxCoverPage = async (
+  filing: NormalizedFiling,
+  period: ResolvedPeriod,
+  opts: FaxCoverOpts,
+): Promise<PDFDocument> => {
+  const doc  = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg  = await doc.embedFont(StandardFonts.Helvetica);
+  const fonts: FontPair = { bold, reg };
+
+  let { page, cursor } = newPage(doc);
+
+  const entity = filing.llc_name ?? '';
+  const ein    = filing.ein ?? '';
+  const sentOn = opts.sentOn ?? new Date();
+  const dateText = fmtDate(
+    `${sentOn.getFullYear()}-${String(sentOn.getMonth() + 1).padStart(2, '0')}-${String(sentOn.getDate()).padStart(2, '0')}`,
+  );
+
+  // ── Sender letterhead ──────────────────────────────────────────────────────
+  cursor.y = drawWrapped(page, entity, MARGIN, cursor.y, { size: FS_HEADING, font: bold }, fonts);
+  for (const line of [
+    buildStreet(filing.llc_us_address),
+    buildCityStateZip(filing.llc_us_address, filing.state_of_formation),
+  ]) {
+    if (line) cursor.y = drawWrapped(page, line, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  }
+  cursor.y -= 10;
+  drawRule(page, cursor);
+
+  // ── Fax transmission block ─────────────────────────────────────────────────
+  // A fax cover's first job is making the transmission reconstructable: who
+  // sent what, to where, on what date, and how many pages should have arrived.
+  const faxRows: [string, string][] = [
+    ['To', `Internal Revenue Service — Ogden\nFax ${IRS_5472_FAX}`],
+    ['From', opts.senderFax ? `${entity}\nFax ${opts.senderFax}` : entity],
+    ['Date', dateText],
+    ['Pages', `${opts.pageCount} (including this cover page)`],
+  ];
+  const labelW = 78;
+  for (const [label, value] of faxRows) {
+    const startY = cursor.y;
+    page.drawText(toFormText(label), { x: MARGIN, y: startY, size: FS_BODY, font: bold, color: rgb(0, 0, 0) });
+    let vy = startY;
+    for (const seg of value.split('\n')) {
+      vy = drawWrapped(page, seg, MARGIN + labelW, vy, { size: FS_BODY, maxWidth: COL_W - labelW }, fonts);
+    }
+    cursor.y = Math.min(vy, startY - 12) - 4;
+  }
+  cursor.y -= 6;
+  drawRule(page, cursor);
+
+  // ── Subject / identifiers ──────────────────────────────────────────────────
+  const kind = opts.isAmended ? 'Amended' : 'Original';
+  cursor.y = drawWrapped(page,
+    `Subject: ${kind} Form 5472 filing — foreign-owned U.S. disregarded entity`,
+    MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
+  cursor.y -= 2;
+  cursor.y = drawWrapped(page, `EIN: ${ein}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y = drawWrapped(page,
+    `Tax year: ${period.beginText} through ${period.endText}`,
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 12;
+
+  // ── Body ───────────────────────────────────────────────────────────────────
+  cursor.y = drawWrapped(page, 'To Whom It May Concern,', MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 10;
+
+  const forms = opts.formCount === 1 ? 'one Form 5472' : `${opts.formCount} Forms 5472`;
+  const intro =
+    `Transmitted by fax are ${forms} for ${entity} for the tax year shown above, filed under ` +
+    `Internal Revenue Code section 6038A. ${entity} is a U.S. limited liability company wholly ` +
+    'owned by one foreign person, treated as a corporation for section 6038A reporting purposes ' +
+    'under 26 CFR 301.7701-2(c)(2)(vi). A pro forma Form 1120 accompanies the filing as the ' +
+    'transmittal required by the Instructions for Form 5472, and reports no income tax. These ' +
+    'forms cannot be filed electronically.';
+  cursor.y = drawWrapped(page, intro, MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 12;
+
+  // ── Enclosures, built from what is actually in the package ─────────────────
+  cursor.y = drawWrapped(page, 'Enclosed:', MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
+  cursor.y -= 4;
+  const enclosures: string[] = [];
+  if (opts.hasRCL) {
+    enclosures.push('Reasonable Cause Statement, signed under penalties of perjury');
+  }
+  enclosures.push('Pro forma Form 1120 (transmittal), signed and dated');
+  if (opts.has7004) {
+    enclosures.push('Form 7004, Application for Automatic Extension of Time to File');
+  }
+  enclosures.push(
+    opts.formCount === 1
+      ? 'Form 5472, with its Part V / Part VI statements'
+      : `${opts.formCount} Forms 5472 — one per related party — each with its Part V / Part VI statements`,
+  );
+  for (const e of enclosures) {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+    cursor.y = drawWrapped(page, `• ${e}`, MARGIN + 10, cursor.y, { size: FS_BODY, maxWidth: COL_W - 10 }, fonts);
+    cursor.y -= 3;
+  }
+  cursor.y -= 12;
+
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  cursor.y = drawWrapped(page,
+    'Please direct any questions regarding this filing to the signatory below.',
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 16;
+
+  // ── Signature block ────────────────────────────────────────────────────────
+  // Matches the pro forma 1120 and the Reasonable Cause Statement: the typed
+  // name of the owner, with their title. No blank signature rule is drawn,
+  // because on the fax path there is no opportunity to pen one in.
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  cursor.y = drawWrapped(page, 'Sincerely,', MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 24;
+  cursor.y = drawWrapped(page, filing.owner.full_name || '', MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
+  drawWrapped(page, `${filing.signer_title ?? 'Managing Member'}, ${entity}`,
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+
+  return doc;
+};
+
 // ─── Form 5472 filler ───────────────────────────────────────────────────────────────────────────
 
 interface Fill5472Opts {
@@ -1573,6 +1739,18 @@ export interface FilingPackage {
    * to the combined package (before the forms) AND returned standalone.
    */
   reasonableCauseLetter?: Uint8Array;
+  /**
+   * The package as it should be TRANSMITTED BY FAX, present only when
+   * `generateFilingPackage` is called with `{ fax: true }`.
+   *
+   * This is NOT `combined`. Two differences, both of which matter:
+   *   - the filer-facing instructions page is removed (it tells the reader to
+   *     mail the package and keep proof of mailing, which is meaningless to
+   *     send to Ogden), and
+   *   - an IRS-facing fax cover page is added in front, carrying the page
+   *     count needed to reconstruct the transmission.
+   */
+  faxPayload?: Uint8Array;
   /** Number of Form 5472s generated (Line 1g). */
   formCount: number;
   /**
@@ -1843,6 +2021,12 @@ export const generateFilingPackage = async (
   rawFiling: Filing,
   transactions: Transaction[],
   taxYear?: number,
+  opts?: {
+    /** Also build `faxPayload` — the transmission-ready package. See FilingPackage. */
+    fax?: boolean;
+    /** Sending fax number, printed in the cover page's From block. */
+    senderFax?: string;
+  },
 ): Promise<FilingPackage> => {
   const year =
     taxYear ?? (rawFiling.tax_year != null ? Number(rawFiling.tax_year) : new Date().getFullYear() - 1);
@@ -1914,9 +2098,46 @@ export const generateFilingPackage = async (
     return true;
   });
 
+  // ── Fax payload ────────────────────────────────────────────────────────────
+  // Built from `combined` rather than by re-running assembleYear, because
+  // mergeInto flattens its sources and yd has already been consumed.
+  let faxPayload: Uint8Array | undefined;
+  if (opts?.fax) {
+    const body = await PDFDocument.load(combined);
+    // Drop the filer-facing instructions, which lead `combined`. It can run to
+    // more than one page, so remove exactly as many as were generated rather
+    // than assuming one.
+    for (let i = instructions.getPageCount() - 1; i >= 0; i--) body.removePage(i);
+
+    // The cover states the total page count, which includes the cover itself —
+    // so build it once to learn its own length, then again with the true total.
+    const coverOpts: FaxCoverOpts = {
+      formCount: yd.formCount,
+      hasRCL,
+      has7004: include7004,
+      pageCount: 0,
+      // Always "Original": the product has no amended-return concept — no
+      // column, no intake question, no UI. FaxCoverOpts.isAmended exists so the
+      // cover is ready if that changes, but nothing can set it today.
+      senderFax: opts.senderFax,
+    };
+    const probe = await buildFaxCoverPage(filing, period, coverOpts);
+    const cover = await buildFaxCoverPage(filing, period, {
+      ...coverOpts,
+      pageCount: probe.getPageCount() + body.getPageCount(),
+    });
+
+    const out = await PDFDocument.create();
+    await mergeInto(out, cover);
+    const pages = await out.copyPages(body, body.getPageIndices());
+    for (const p of pages) out.addPage(p);
+    faxPayload = await out.save();
+  }
+
   return {
     form5472, form1120, combined, statement_partVI, statement_partV,
     form7004, reasonableCauseLetter, formCount: yd.formCount,
+    ...(faxPayload ? { faxPayload } : {}),
     ...(unsupportedText.length ? { unsupportedText } : {}),
   };
 
