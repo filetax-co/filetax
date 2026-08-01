@@ -5,11 +5,16 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Sun, Moon, LifeBuoy, ExternalLink } from 'lucide-react';
 
-const headerLogo = `${import.meta.env.BASE_URL}header.png`;
-const headerLogoSrcSet =
-  `${import.meta.env.BASE_URL}header.png 1x, ` +
-  `${import.meta.env.BASE_URL}header@2x.png 2x, ` +
-  `${import.meta.env.BASE_URL}header@3x.png 3x`;
+// Two wordmarks, not one. "file" is white in the original, which is invisible
+// against the light-theme header (--tf-surface is #FFFFFF), leaving only "tax"
+// legible. The -light variants are the same artwork with the white ink recut to
+// --tf-text (#0F172A); "tax" stays #0584C7 in both.
+const logoBase = (theme: string) =>
+  `${import.meta.env.BASE_URL}header${theme === 'dark' ? '' : '-light'}`;
+const headerLogoSrcSet = (theme: string) => {
+  const b = logoBase(theme);
+  return `${b}.png 1x, ${b}@2x.png 2x, ${b}@3x.png 3x`;
+};
 
 const SUPPORT_EMAIL = 'support@filetax.co';
 
@@ -108,8 +113,8 @@ export function AppNav() {
           style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
         >
           <img
-            src={headerLogo}
-            srcSet={headerLogoSrcSet}
+            src={`${logoBase(theme)}.png`}
+            srcSet={headerLogoSrcSet(theme)}
             alt="FileTax.co"
             width={79}
             height={36}

@@ -23,6 +23,16 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+// Dev only. The end-to-end run drives the real wizard in a browser and then has
+// to check that what was saved matches what was typed; without a handle it can
+// only inspect the rendered page, which is the thing under test. Reading goes
+// through the same anon key and the same row-level security as the app, so this
+// exposes nothing the signed-in tab could not already reach. Stripped from any
+// build: import.meta.env.DEV is false there.
+if (import.meta.env.DEV) {
+  (window as unknown as { __supabase?: typeof supabase }).__supabase = supabase;
+}
+
 export type Address = {
   street?: string;
   city?: string;

@@ -11,6 +11,7 @@ import {
   PDFTextField,
   PDFCheckBox,
   PDFPage,
+  PDFName,
   rgb,
   StandardFonts,
 } from 'pdf-lib';
@@ -162,6 +163,18 @@ const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
       // Force a fixed size instead of the template's auto-size (0) so text is
       // the same size across every field and every page.
       field.setFontSize(FORM_FIELD_FONT_SIZE);
+      // setFontSize writes the size onto the FIELD's /DA only, and pdf-lib's
+      // appearance provider resolves `widgetFontSize ?? fieldFontSize` — a
+      // widget's own /DA wins. Most template fields keep the widget merged into
+      // the field dict, so writing one writes both, but a field with a separate
+      // kid widget (Form 7004's LLC_State and LLC_Country) kept the template's
+      // auto-size 0 on the widget. Auto-size then measured those two short
+      // values into their boxes and painted them at 10 while every neighbouring
+      // field on the same address line rendered at 8. Dropping the widget /DA
+      // makes widgetFontSize undefined so the field's size governs.
+      for (const widget of field.acroField.getWidgets()) {
+        if (widget.dict !== field.acroField.dict) widget.dict.delete(PDFName.of('DA'));
+      }
     }
   } catch {
     // Field not present in this revision, silently skip

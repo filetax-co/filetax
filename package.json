@@ -6,6 +6,9 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "dev:e2e": "vite",
+    "gen:scenarios100b": "node scripts/genScenarios100.mjs",
+    "report:e2e": "node scripts/e2eReport.mjs",
     "audit:pdfs": "node scripts/audit-pdf-fields.mjs",
     "typecheck": "tsc --noEmit",
     "verify:logic": "node --experimental-strip-types --import ./scripts/tsResolve.mjs scripts/verifyRegressions.mjs",

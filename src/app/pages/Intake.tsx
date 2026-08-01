@@ -148,6 +148,27 @@ function deriveFiscalPeriod(taxYear: string, endMonth: number): { begin: string;
   return { begin, end };
 }
 
+/**
+ * The filing period for a tax year, whichever basis the filer is on.
+ *
+ * Calendar filers get Jan 1 – Dec 31 of the tax year. Fiscal filers get the
+ * derived window, which for a non-December year-end runs into the FOLLOWING
+ * calendar year: FY ending March, tax year 2025 → 2025-04-01 through
+ * 2026-03-31. A fiscal filer who has not yet picked a year-end falls back to
+ * the calendar year, which is what the rest of the form assumes until the
+ * month is chosen.
+ */
+function taxPeriodWindow(
+  taxYear: string,
+  isFiscalYear: boolean,
+  fiscalEndMonth: number | '',
+): { begin: string; end: string } {
+  if (isFiscalYear && fiscalEndMonth !== '') {
+    return deriveFiscalPeriod(taxYear, fiscalEndMonth);
+  }
+  return { begin: `${taxYear}-01-01`, end: `${taxYear}-12-31` };
+}
+
 /** Display an ISO date (YYYY-MM-DD) as MM/DD/YYYY. */
 function formatDateMMDDYYYY(iso: string): string {
   if (!iso) return '';
@@ -1000,6 +1021,16 @@ export function Intake() {
           bf(profile.owner_full_name)(setOwnerName);
           bf(profile.llc_name)(setLlcName);
           bf(profile.state_of_formation)(setStateOfFormation);
+          // The entity's own identity carries across years exactly like the
+          // owner's does. These were missing, so a returning filer re-typed
+          // their EIN, incorporation date and business type on every filing:
+          // the profile prefill above (for filings with no id yet) covered
+          // them, but intake creates the row first and then loads it, so in
+          // practice this backfill is the path every filing takes.
+          bf(profile.ein)(setEin);
+          bf(profile.date_of_incorporation)(setEntityDOI);
+          bf(profile.entity_business_activity ?? profile.naics_description)(setEntityBizActivity);
+          bf(profile.entity_business_code ?? profile.naics_code)(setEntityBizCode);
         }
       } catch { /* profile backfill is best-effort */ }
 
@@ -1273,6 +1304,29 @@ export function Intake() {
           errs.push(`The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the ${ty} tax year. An LLC cannot be formed after the year it is filing for. Check the date or the tax year.`);
         } else if (doiYear < 1900) {
           errs.push('Check the date of incorporation. The year does not look right.');
+        }
+      }
+    }
+    // Dissolution date. It ENDS the tax period, so it has to fall inside the
+    // period being filed: on or after the first day, on or before the last.
+    // Only the input's `max` used to guard this, which nothing read on submit
+    // and which was wrong for a fiscal filer anyway — for a March year-end the
+    // 2025 period runs to 31 Mar 2026, so a real February 2026 dissolution was
+    // refused while a January 2025 one, months before the period opened, was
+    // accepted. A date outside the period means the wrong tax year is being
+    // filed, and it would print a period the IRS cannot reconcile.
+    if (finalReturn) {
+      if (!dateOfClosure) {
+        errs.push('Enter the date the LLC was dissolved, or untick "This is my LLC\'s final return".');
+      } else {
+        const { begin, end } = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
+        const periodLabel = `${formatDateMMDDYYYY(begin)} to ${formatDateMMDDYYYY(end)}`;
+        if (dateOfClosure < begin) {
+          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the ${taxYear} tax period begins (${periodLabel}). An LLC cannot be dissolved before the period it is filing for. Check the date, or file the final return for the year the LLC actually closed.`);
+        } else if (dateOfClosure > end) {
+          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return — file the final return for the later year instead.`);
+        } else if (entityDOI && dateOfClosure < entityDOI) {
+          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the LLC was formed (${formatDateMMDDYYYY(entityDOI)}). Check both dates.`);
         }
       }
     }
@@ -2335,22 +2389,6 @@ export function Intake() {
               }}
             >
               <h3 style={{ ...sectionLabelStyle, marginTop: 0 }}>Before you start this year</h3>
-              <p style={{ fontSize: '0.875rem', color: 'var(--tf-muted)', lineHeight: 1.65, marginBottom: '0.75rem' }}>
-                This flow prepares Form 5472 with a pro forma 1120 for a U.S. LLC that, for this
-                tax year:
-              </p>
-              <ul
-                style={{
-                  margin: '0 0 0.875rem 0',
-                  fontSize: '0.875rem',
-                  color: 'var(--tf-text)',
-                  lineHeight: 1.7,
-                }}
-              >
-                <li>has one owner only</li>
-                <li>is owned by a non-U.S. individual, meaning no U.S. citizenship, no Green Card, and the Substantial Presence Test not met</li>
-                <li>has no Form 8832 or Form 2553 election on file</li>
-              </ul>
               {/* Uses the shared .confirm-check-row rather than a hand-rolled
                   flex row. The hand-rolled version is what surfaced the
                   checkbox-width bug: it had no !important override to protect
@@ -2370,26 +2408,35 @@ export function Intake() {
                   style={{ accentColor: 'var(--tf-accent)' }}
                 />
                 <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
-                  All three still describe my LLC for this tax year.
+                  For this tax year my LLC still has one owner, a non-U.S. individual, and no
+                  8832 or 2553 election.
+                  <InfoTooltip
+                    label="What this flow covers"
+                    text={
+                      'This flow prepares Form 5472 with a pro forma 1120 for a U.S. LLC that, for this tax year: '
+                      + '(1) has one owner only; '
+                      + '(2) is owned by a non-U.S. individual, meaning no U.S. citizenship, no Green Card, and the Substantial Presence Test not met; '
+                      + '(3) has no Form 8832 or Form 2553 election on file.'
+                    }
+                  />
                 </div>
               </label>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.625rem', lineHeight: 1.6 }}>
-                Not sure about any of them?{' '}
+              <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.5rem', lineHeight: 1.6 }}>
+                Not sure?{' '}
                 <Link to="/check" style={{ color: 'var(--tf-accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
                   Run the eligibility check
                 </Link>
-                . It takes about a minute and nothing you enter there is saved.
+                {' '}— about a minute, nothing is saved.
               </p>
 
               <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1rem', paddingTop: '1rem' }}>
-                <p style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.65, marginBottom: '0.25rem' }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.65, marginBottom: '0.625rem' }}>
                   During this tax year, did the LLC own or rent out U.S. real estate, or was any
                   work performed by anyone physically inside the U.S.?
-                </p>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', lineHeight: 1.6, marginBottom: '0.625rem' }}>
-                  Services count as U.S.-source based on where the work was done, not where the
-                  customer is. Having U.S. customers, or a U.S. bank account, does not by itself
-                  make income U.S.-source.
+                  <InfoTooltip
+                    label="About U.S.-source income"
+                    text="Services count as U.S.-source based on where the work was done, not where the customer is. Having U.S. customers, or a U.S. bank account, does not by itself make income U.S.-source."
+                  />
                 </p>
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
                   {[
@@ -2672,17 +2719,25 @@ export function Intake() {
                       required
                       tooltip="The date the dissolution took effect with your state of formation, shown on the Certificate of Dissolution or Cancellation the state issued. Not the date you stopped trading, and not the date you closed the bank account."
                     >
+                      {/* Bounded by the period being filed, not by the tax-year
+                          number: a March-year-end 2025 filer dissolves anywhere
+                          from 1 Apr 2025 to 31 Mar 2026. Validation repeats this
+                          on submit, because `max` alone is advisory. */}
                       <input
                         type="date"
                         value={dateOfClosure}
                         onChange={(e) => setDateOfClosure(e.target.value)}
-                        max={`${taxYear}-12-31`}
+                        min={taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).begin}
+                        max={taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).end}
                       />
                     </Field>
                   </div>
                   <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--tf-muted)' }}>
-                    Your tax period ends on this date rather than December 31, because the
-                    LLC no longer existed after it. Both forms will show the shorter period.
+                    Must fall inside the period you're filing for{' '}
+                    ({(() => { const p = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })()}).
+                    Your tax period ends on this date rather than on the normal year-end,
+                    because the LLC no longer existed after it. Both forms will show the
+                    shorter period.
                   </div>
                 </>
               )}

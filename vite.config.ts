@@ -25,7 +25,11 @@ function figmaAssetResolver() {
 //
 //   E2E_DRIVER=1 npm run dev      then run scripts/pdfReceiver.mjs alongside
 function e2eDriver() {
-  const enabled = process.env.E2E_DRIVER === '1'
+  // npm sets npm_lifecycle_event to the script name, which gives us a way to
+  // turn this on from `npm run dev:e2e` on Windows too, where the inline
+  // `E2E_DRIVER=1 npm run dev` form is not valid shell.
+  const enabled = process.env.E2E_DRIVER === '1' || process.env.E2E_DRIVER === '2'
+    || process.env.npm_lifecycle_event === 'dev:e2e'
   return {
     name: 'e2e-driver',
     apply: 'serve' as const,
@@ -35,17 +39,28 @@ function e2eDriver() {
         const url = (req.url || '').split('?')[0]
         const file =
           url === '/__driver.js' ? 'testing/__driver.js'
+          : url === '/__driver100.js' ? 'testing/__driver100.js'
           : url === '/__scenarios.json' ? 'testing/__scenarios.json'
+          : url === '/__scenarios100.json' ? 'testing/__scenarios100.json'
           : null
         if (!file) return next()
         res.setHeader('Content-Type', url.endsWith('.json') ? 'application/json' : 'text/javascript')
+        // The driver is edited between runs and the page reloads on every
+        // scenario. Without this the browser re-runs a cached copy and the
+        // change looks like it had no effect, which is a very expensive thing
+        // to debug.
+        res.setHeader('Cache-Control', 'no-store, must-revalidate')
         res.end(fs.readFileSync(path.resolve(__dirname, file)))
       })
     },
     // Inject the driver tag only in this mode, so index.html stays clean.
     transformIndexHtml(html: string) {
       if (!enabled) return html
-      return html.replace('</body>', '  <script src="/__driver.js"></script>\n  </body>')
+      // `npm run dev:e2e` (or E2E_DRIVER=2) loads the 100-scenario driver;
+      // E2E_DRIVER=1 keeps the original one.
+      const hundred = process.env.E2E_DRIVER === '2' || process.env.npm_lifecycle_event === 'dev:e2e'
+      const src = hundred ? '/__driver100.js' : '/__driver.js'
+      return html.replace('</body>', `  <script src="${src}"></script>\n  </body>`)
     },
   }
 }
