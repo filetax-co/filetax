@@ -1,6 +1,11 @@
 import { Link } from "react-router";
 
+// Rendered at 32px tall. See the note on headerLogo in Nav.tsx.
 const footerLogo = `${import.meta.env.BASE_URL}footer.png`;
+const footerLogoSrcSet =
+  `${import.meta.env.BASE_URL}footer.png 1x, ` +
+  `${import.meta.env.BASE_URL}footer@2x.png 2x, ` +
+  `${import.meta.env.BASE_URL}footer@3x.png 3x`;
 
 const footerLinks = [
   { to: "/pricing", label: "Pricing" },
@@ -34,8 +39,12 @@ export function Footer() {
             >
               <img
                 src={footerLogo}
-                alt="Logo"
+                srcSet={footerLogoSrcSet}
+                alt="FileTax.co"
+                width={70}
                 height={32}
+                loading="lazy"
+                decoding="async"
                 style={{ height: 32, width: "auto", display: "block" }}
               />
             </Link>

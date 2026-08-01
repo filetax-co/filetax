@@ -35,7 +35,7 @@ function SiteJsonLd() {
     "@id": "https://filetax.co/#organization",
     name: "FileTax.co",
     url: "https://filetax.co",
-    logo: "https://filetax.co/favicon.png",
+    logo: "https://filetax.co/favicon-192.png",
     email: "hello@filetax.co",
     description:
       "Print-ready IRS Form 5472 and Pro Forma 1120 filings for non-U.S. founders with U.S. single-member LLCs, including past-year catch-up filings with reasonable cause letters.",

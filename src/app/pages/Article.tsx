@@ -16,6 +16,10 @@ interface ImageAsset {
   asset?: {
     _ref?: string;
     url?: string;
+    metadata?: {
+      dimensions?: { width?: number; height?: number };
+      lqip?: string;
+    };
   };
   alt?: string;
   caption?: string;
@@ -163,6 +167,76 @@ function getImageUrl(image: ImageAsset | undefined): string | null {
     }
   }
   return null;
+}
+
+// The article column is 740px wide. Every mainImage in the dataset is stored at
+// full upload resolution and, until 1 Aug 2026, was served that way: the raw
+// asset, no transform, at whatever size it happened to be uploaded. On this
+// audience (see the handoff: often phone-only, often on a slow connection) that
+// is the single most expensive thing on the page.
+//
+// `auto=format` is the important parameter. It serves WebP or AVIF to browsers
+// that send the matching Accept header and the original format to those that do
+// not, so it is safe unconditionally. `fit=max` never upscales, so a small
+// upload is not blown up to 1480px.
+const ARTICLE_COLUMN_PX = 740;
+
+function sanityImageUrl(
+  image: ImageAsset | undefined,
+  opts: { width: number; quality?: number },
+): string | null {
+  const base = getImageUrl(image);
+  if (!base) return null;
+  // Only Sanity CDN URLs accept these parameters. Anything else is returned
+  // untouched rather than given query params it will ignore or choke on.
+  if (!base.startsWith("https://cdn.sanity.io/")) return base;
+  const params = new URLSearchParams({
+    w: String(opts.width),
+    q: String(opts.quality ?? 75),
+    auto: "format",
+    fit: "max",
+  });
+  return `${base}?${params.toString()}`;
+}
+
+// 1x and 2x. Retina phones are the common case for this audience, and without a
+// 2x candidate the browser upscales the 740px file and the image looks soft.
+function sanityImageSrcSet(image: ImageAsset | undefined, width: number): string | undefined {
+  const one = sanityImageUrl(image, { width });
+  const two = sanityImageUrl(image, { width: width * 2, quality: 60 });
+  if (!one || !two || !one.includes("?")) return undefined;
+  return `${one} 1x, ${two} 2x`;
+}
+
+// Explicit width/height so the browser reserves the right box before the bytes
+// arrive. Without this the title reflows when the hero loads, which is a
+// cumulative layout shift on the largest element on the page. The intrinsic
+// dimensions come from the asset metadata; the rendered box is the article
+// column, so the height is scaled to match and never upscaled past the original.
+// Portable Text image blocks are not dereferenced (the body is fetched raw), so
+// they carry no asset.metadata. The _ref itself encodes the dimensions though,
+// as image-{hash}-{width}x{height}-{format}, so in-body images can still get an
+// explicit box without a second query.
+function dimsFromRef(ref: string | undefined): { width: number; height: number } | null {
+  if (!ref) return null;
+  const match = /-(\d+)x(\d+)-[a-z]+$/i.exec(ref);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+function imageBoxAttrs(image: ImageAsset | undefined, width: number) {
+  const dims = image?.asset?.metadata?.dimensions?.width
+    ? image.asset.metadata.dimensions
+    : dimsFromRef(image?.asset?._ref);
+  if (!dims?.width || !dims?.height) return {};
+  const renderedWidth = Math.min(width, dims.width);
+  return {
+    width: renderedWidth,
+    height: Math.round((renderedWidth * dims.height) / dims.width),
+  };
 }
 
 // Custom Portable Text serializers.
@@ -374,14 +448,27 @@ const portableTextComponents: PortableTextComponents = {
       );
     },
     image: ({ value }) => {
-      const url = getImageUrl(value);
+      const url = sanityImageUrl(value, { width: ARTICLE_COLUMN_PX });
       if (!url) return null;
       return (
         <figure style={{ margin: "1.75rem 0" }}>
+          {/* In-body images are always below the fold, so these are the ones
+              that genuinely should be lazy, unlike the hero. */}
           <img
             src={url}
+            srcSet={sanityImageSrcSet(value, ARTICLE_COLUMN_PX)}
+            sizes={`(max-width: ${ARTICLE_COLUMN_PX + 40}px) 100vw, ${ARTICLE_COLUMN_PX}px`}
             alt={value?.alt ?? ""}
-            style={{ width: "100%", height: "auto", borderRadius: "0.5rem", display: "block" }}
+            loading="lazy"
+            decoding="async"
+            {...imageBoxAttrs(value, ARTICLE_COLUMN_PX)}
+            style={{
+              width: "100%",
+              height: "auto",
+              borderRadius: "0.5rem",
+              display: "block",
+              background: "#e5e7eb",
+            }}
           />
           {value?.caption && (
             <figcaption
@@ -427,7 +514,11 @@ export function Article() {
           author,
           body,
           mainImage{
-            asset->{ _ref, url },
+            asset->{
+              _ref,
+              url,
+              metadata{ dimensions{ width, height }, lqip }
+            },
             alt,
             caption
           },
@@ -463,7 +554,11 @@ export function Article() {
   const articleUrl = slug
     ? `https://filetax.co/resources/${slug}`
     : "https://filetax.co/resources";
-  const socialImage = getImageUrl(post?.mainImage) ?? undefined;
+  // Capped at 1200px, the width every major social scraper renders at. This was
+  // serving the untransformed original, which on a large upload is several MB
+  // fetched by a crawler on every share. `auto=format` is intentionally still on:
+  // scrapers that do not send an Accept header for WebP get the original format.
+  const socialImage = sanityImageUrl(post?.mainImage, { width: 1200, quality: 80 }) ?? undefined;
 
   // Computed before the loading/not-found early return so the hook order below
   // stays stable across renders.
@@ -573,7 +668,8 @@ export function Article() {
   const displayDate = formatDate(post.publishedAt);
   const tocEntries = buildTOC(post.body ?? []);
   const showTOC = tocEntries.length >= TOC_THRESHOLD;
-  const heroImageUrl = getImageUrl(post.mainImage);
+  const heroImageUrl = sanityImageUrl(post.mainImage, { width: ARTICLE_COLUMN_PX });
+  const heroSrcSet = sanityImageSrcSet(post.mainImage, ARTICLE_COLUMN_PX);
 
   return (
     <>
@@ -629,10 +725,35 @@ export function Article() {
           {/* Hero image (optional) */}
           {heroImageUrl && (
             <figure style={{ margin: "0 0 2rem" }}>
+              {/*
+                Deliberately NOT loading="lazy". The hero is above the fold and
+                is almost always the LCP element, so deferring it makes the
+                metric worse, not better. It is marked eager and high priority
+                instead, and the saving comes from the transform and the
+                explicit box rather than from delaying the request. Images
+                further down the page are the ones that should be lazy.
+              */}
               <img
                 src={heroImageUrl}
+                srcSet={heroSrcSet}
+                sizes={`(max-width: ${ARTICLE_COLUMN_PX + 40}px) 100vw, ${ARTICLE_COLUMN_PX}px`}
                 alt={post.mainImage?.alt ?? ""}
-                style={{ width: "100%", height: "auto", borderRadius: "0.75rem", display: "block" }}
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                {...imageBoxAttrs(post.mainImage, ARTICLE_COLUMN_PX)}
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  borderRadius: "0.75rem",
+                  display: "block",
+                  // Holds the box while the bytes are in flight, and doubles as
+                  // the placeholder colour. lqip is a tiny base64 data URI that
+                  // ships inside the GROQ response, so it costs no extra request.
+                  background: post.mainImage?.asset?.metadata?.lqip
+                    ? `#e5e7eb url(${post.mainImage.asset.metadata.lqip}) center/cover no-repeat`
+                    : "#e5e7eb",
+                }}
               />
               {post.mainImage?.caption && (
                 <figcaption

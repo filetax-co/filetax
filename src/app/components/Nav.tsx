@@ -5,7 +5,14 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { Sun, Moon, Menu, X } from "lucide-react";
 
+// Rendered at 36px tall. The source was a 1953x894 PNG served at full size
+// until 1 Aug 2026, 61 KB for a 79x36 box on every page load. Retina candidates
+// are separate files rather than one large image scaled down by the browser.
 const headerLogo = `${import.meta.env.BASE_URL}header.png`;
+const headerLogoSrcSet =
+  `${import.meta.env.BASE_URL}header.png 1x, ` +
+  `${import.meta.env.BASE_URL}header@2x.png 2x, ` +
+  `${import.meta.env.BASE_URL}header@3x.png 3x`;
 
 const navLinks = [
   { to: "/", label: "Home", exact: true },
@@ -111,8 +118,11 @@ export function Nav() {
         >
           <img
             src={headerLogo}
-            alt="Logo"
+            srcSet={headerLogoSrcSet}
+            alt="FileTax.co"
+            width={79}
             height={36}
+            decoding="async"
             style={{ height: 36, width: "auto", display: "block" }}
           />
         </Link>
