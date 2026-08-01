@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
-import { mapTransactionForPersist, summarizeTransactions } from '../../lib/filingMapping';
+import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
 import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
 import {
   BIZ_ACTIVITIES,
@@ -225,6 +225,22 @@ function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null
  * for keyboard users (not hover-only). Uses --tf-* tokens so it adapts to dark
  * mode. The popover is a sibling positioned relative to the trigger.
  */
+/**
+ * Last-resort label for a transaction type with no TX_TYPES entry.
+ *
+ * Every code should resolve through TX_TYPES now that saved rows are mapped
+ * back to the intake vocabulary on load. This exists so that if one ever does
+ * not, the filer sees "Rent royalty" rather than `rent_royalty`. A raw
+ * identifier on screen reads as a bug to the filer and tells them nothing about
+ * what they entered.
+ */
+function humanizeTxType(code: string): string {
+  if (!code) return 'Transaction';
+  return code
+    .replace(/_/g, ' ')
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
 function InfoTooltip({ text, label }: { text: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -511,22 +527,50 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
   );
   return (
     <div style={{ ...groupedCardStyle, padding: '1.1rem 1.25rem', marginBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)' }}>Total you’ve entered</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--tf-text)', lineHeight: 1.1 }}>{usd(summary.totalEntered)}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)' }}>On Form 5472 (gross payments)</div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--tf-text)' }}>{usd(summary.formGross)}</div>
-        </div>
-      </div>
-      <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
-        {summary.formGross === summary.totalEntered
-          ? 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form, your Part IV dealings, money you put in or took out, closing loan balances, formation costs you paid for the LLC, and any amount recorded against a property transfer. Every amount you entered is counted.'
-          : 'The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything reported on the form. It can sit below the amount you entered because a loan’s opening balance is not counted, only the closing balance is, so the same loan is not reported twice. That is expected.'}
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+      {/* The two figures are EQUAL in every case except one: a loan with an
+          opening balance, where only the closing balance reaches line 1f/1h.
+          Showing both unconditionally meant the same number was printed twice,
+          under two different labels, on almost every filing, which reads as an
+          error and invites the filer to hunt for a difference that is not
+          there. So the second figure appears only when it actually differs,
+          and the long explanation comes with it rather than standing whether
+          or not there is anything to explain. */}
+      {(() => {
+        const differs = summary.formGross !== summary.totalEntered;
+        return (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  {differs ? 'Total you’ve entered' : 'Total reported on Form 5472'}
+                  {!differs && (
+                    <InfoTooltip
+                      text="This is the gross payments figure on Form 5472 line 1f/1h: your Part IV dealings, money you put in or took out, closing loan balances, formation costs you paid for the LLC, and any amount recorded against a property transfer. Every amount you entered is counted."
+                      label="How this total is worked out"
+                    />
+                  )}
+                </div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--tf-text)', lineHeight: 1.1 }}>{usd(summary.totalEntered)}</div>
+              </div>
+              {differs && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)' }}>On Form 5472 (gross payments)</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--tf-text)' }}>{usd(summary.formGross)}</div>
+                </div>
+              )}
+            </div>
+            {differs && (
+              <p style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', margin: '0.5rem 0 0.85rem', lineHeight: 1.5 }}>
+                The “gross payments” figure (Form 5472 line 1f/1h) is the total of everything
+                reported on the form. It sits below the amount you entered because a loan’s
+                opening balance is not counted, only the closing balance is, so the same loan is
+                not reported twice. That is expected.
+              </p>
+            )}
+          </>
+        );
+      })()}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginTop: '0.85rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
         {bucket('Money out', summary.bucketOut, 'var(--tf-accent)')}
         {bucket('Other dealings', summary.bucketOther, 'var(--tf-text)')}
@@ -923,7 +967,13 @@ export function Intake() {
         setTransactions(txns.map((t: any) => ({
           id: t.id,
           related_party_index: t.related_party_index ?? 0,
-          transaction_type: t.transaction_type,
+          // The row stores the CANONICAL code, which intake has no card for.
+          // Loading it raw is what printed "rent_royalty" in the list and left
+          // the type cards showing nothing selected on an Edit. Resolve back to
+          // the intake vocabulary: the exact saved code when the row has one,
+          // otherwise derived from the canonical code plus is_royalty and
+          // direction.
+          transaction_type: resolveUiTxType(t),
           direction: t.direction,
           amount_usd: String(t.amount_usd ?? ''),
           loan_begin_usd: String(t.loan_begin_usd ?? ''),
@@ -1512,6 +1562,7 @@ export function Intake() {
           filing_id: activeFilingId,
           related_party_index: t.related_party_index,
           transaction_type: m.transaction_type,
+          ui_transaction_type: m.ui_transaction_type,
           direction: m.direction,
           amount_usd: m.amount_usd,
           loan_begin_usd: m.loan_begin_usd,
@@ -1960,6 +2011,16 @@ export function Intake() {
           border-color: var(--tf-error);
           box-shadow: 0 0 0 3px rgba(var(--tf-error-rgb), 0.15);
         }
+        /* The Tailwind preflight sets \`list-style: none\` on every ul, so the
+           five lists in this page were indented but had no markers and read as
+           loose lines rather than as a list. Restored here rather than inline
+           on each one, because the next list added would have had the same
+           problem. */
+        .intake-form ul {
+          list-style-type: disc;
+          padding-left: 1.25rem;
+        }
+        .intake-form li { margin: 0; }
         .intake-form .field-error { font-size: 0.78rem; color: var(--tf-error-text); margin-top: 0.25rem; }
         .intake-form select option {
           background: var(--tf-surface);
@@ -2281,7 +2342,6 @@ export function Intake() {
               <ul
                 style={{
                   margin: '0 0 0.875rem 0',
-                  paddingLeft: '1.125rem',
                   fontSize: '0.875rem',
                   color: 'var(--tf-text)',
                   lineHeight: 1.7,
@@ -3314,21 +3374,27 @@ export function Intake() {
                 {/* Negative definition. Choosing the wrong type produces a wrong
                     return rather than an error, and the confusable pairs land in
                     different Parts of the form, so say what does NOT count. */}
+                {/* Behind an info icon rather than a standing block. The text is
+                    only useful to someone who is unsure they picked the right
+                    type, and as a permanent panel it pushed the actual fields
+                    down the page for everyone else, which on a phone is the
+                    difference between seeing the amount field and not. */}
                 {txType && txMeta?.notThis && (
                   <div
                     style={{
-                      background: 'var(--tf-bg)',
-                      border: '1px solid var(--tf-border)',
-                      borderRadius: '0.5rem',
-                      padding: '0.75rem 0.875rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
                       marginBottom: '1rem',
                       fontSize: '0.8125rem',
                       color: 'var(--tf-muted)',
-                      lineHeight: 1.6,
                     }}
                   >
-                    <strong style={{ color: 'var(--tf-text)' }}>Not this: </strong>
-                    {txMeta.notThis}
+                    <span>Not sure this is the right type?</span>
+                    <InfoTooltip
+                      text={`Not this: ${txMeta.notThis}`}
+                      label={`What ${txMeta.label} does not cover`}
+                    />
                   </div>
                 )}
 
@@ -3407,7 +3473,7 @@ export function Intake() {
                     return (
                       <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{meta?.label ?? t.transaction_type}</div>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{meta?.label ?? humanizeTxType(t.transaction_type)}</div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
                             {partyLabel}
                             {t.amount_usd && Number(t.amount_usd) > 0 ? ` · USD ${Number(t.amount_usd).toLocaleString()}` : ''}
@@ -3588,7 +3654,7 @@ export function Intake() {
                   const isLoan = LOAN_TYPES.has(t.transaction_type);
                   return (
                     <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.5rem' }}>
-                      <SummaryRow label="Type" value={meta?.label ?? t.transaction_type} />
+                      <SummaryRow label="Type" value={meta?.label ?? humanizeTxType(t.transaction_type)} />
                       <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? 'Not provided'} />
                       <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : 'Not provided'} />
                       {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? `USD ${Number(t.loan_begin_usd).toLocaleString()}` : 'USD 0'} />}

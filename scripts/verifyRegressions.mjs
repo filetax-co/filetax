@@ -11,8 +11,12 @@
  * they ASSERT — a failure exits non-zero.
  */
 
-import { summarizeTransactions } from '../src/lib/filingMapping.ts';
-import { RP_NAICS, resolveBizPreset } from '../src/app/pages/intake/constants.ts';
+import {
+  summarizeTransactions,
+  mapTransactionForPersist,
+  resolveUiTxType,
+} from '../src/lib/filingMapping.ts';
+import { RP_NAICS, resolveBizPreset, TX_TYPES } from '../src/app/pages/intake/constants.ts';
 
 let failures = 0;
 const check = (name, actual, expected) => {
@@ -74,6 +78,66 @@ check('resilient: genuinely custom activity stays custom',
   resolveBizPreset('Camel husbandry', '112990'), undefined);
 check('resilient: the "Other" sentinel (a single space) stays custom',
   resolveBizPreset(' ', ''), undefined);
+
+// ── Risk 3: a saved transaction must come back as the type the filer picked ──
+// UI_TO_CANONICAL is many-to-one, so saving loses information unless the UI
+// code is persisted too. Before 1 Aug 2026 nothing was: reopening a filing
+// showed the raw canonical code ("rent_royalty"), the type cards showed nothing
+// selected, and a crypto row came back indistinguishable from any other
+// "other". These assert the round trip, which is the thing that was broken, and
+// they do it for EVERY type in the UI rather than the handful that are easy.
+console.log('\n— transaction type round trip —');
+
+let lossy = [];
+for (const t of TX_TYPES) {
+  const persisted = mapTransactionForPersist({
+    transaction_type: t.value,
+    direction: 'paid',
+    amount_usd: 100,
+  });
+  const back = resolveUiTxType({
+    transaction_type: persisted.transaction_type,
+    ui_transaction_type: persisted.ui_transaction_type,
+    is_royalty: persisted.is_royalty,
+    direction: persisted.direction,
+  });
+  if (back !== t.value) lossy.push(`${t.value} -> ${persisted.transaction_type} -> ${back}`);
+}
+check('every UI transaction type survives a save/load round trip', lossy, []);
+
+// Every code the round trip can produce must have a card to select, or the
+// filer is shown a type they cannot re-pick.
+const uiValues = new Set(TX_TYPES.map((t) => t.value));
+check('every round-tripped code has a TX_TYPES entry',
+  TX_TYPES.map((t) => t.value).filter((v) => !uiValues.has(v)), []);
+
+// The legacy path: rows written before ui_transaction_type existed carry only
+// the canonical code, so the derivation has to carry them. It cannot recover
+// everything (five codes collapse onto 'other'), but it must never return a
+// code with no card, and it must recover the two cases that have a
+// discriminator already stored.
+console.log('\n— legacy rows, no ui_transaction_type —');
+check('rent is recovered from is_royalty = false',
+  resolveUiTxType({ transaction_type: 'rent_royalty', is_royalty: false }), 'rent');
+check('royalty is recovered from is_royalty = true',
+  resolveUiTxType({ transaction_type: 'rent_royalty', is_royalty: true }), 'royalty');
+check('a tangible purchase is recovered from direction',
+  resolveUiTxType({ transaction_type: 'tangible_property', direction: 'paid' }), 'tangible_purchase');
+check('a tangible sale is recovered from direction',
+  resolveUiTxType({ transaction_type: 'tangible_property', direction: 'received' }), 'tangible_sale');
+
+const legacyResolved = [
+  'sales', 'service_payment', 'rent_royalty', 'loan_to_llc', 'loan_from_llc',
+  'interest', 'insurance', 'dividend', 'commission', 'intangible', 'other',
+  'capital_contribution', 'distribution', 'formation_costs', 'property_transfer',
+  'tangible_property', 'loan_guarantee', 'nonmonetary_other',
+].map((c) => resolveUiTxType({ transaction_type: c, direction: 'paid' }));
+check('every canonical code resolves to a code the UI can display',
+  legacyResolved.filter((v) => !uiValues.has(v)), []);
+
+// An unknown code must not crash or leak through as a raw identifier.
+check('an unrecognized canonical code falls back to other',
+  resolveUiTxType({ transaction_type: 'something_new_from_the_future' }), 'other');
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);

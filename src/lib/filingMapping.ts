@@ -221,6 +221,7 @@ export function mapTransactionForPersist(row: {
   transaction_date?: string | null;
 }): {
   transaction_type: CanonicalTxType;
+  ui_transaction_type: string;
   direction: 'paid' | 'received';
   amount_usd: number | null;
   loan_begin_usd: number | null;
@@ -234,6 +235,10 @@ export function mapTransactionForPersist(row: {
 
   return {
     transaction_type: canonical,
+    // The exact code the filer picked, kept alongside the canonical one so a
+    // reopened filing shows what they chose rather than a best guess. The
+    // canonical value above is still the only thing the generator reads.
+    ui_transaction_type: row.transaction_type,
     direction: row.direction,
     amount_usd: row.amount_usd ?? null,
     loan_begin_usd: row.loan_begin_usd ?? null,
@@ -241,6 +246,86 @@ export function mapTransactionForPersist(row: {
     description: row.description?.trim() || null,
     transaction_date: row.transaction_date || null,
   };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Canonical  →  UI  (reading a saved filing back into Intake)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// UI_TO_CANONICAL is deliberately MANY-TO-ONE: five UI codes collapse onto
+// `other`, two onto `tangible_property`, two onto `service_payment`. So a saved
+// row cannot always be turned back into the exact code the filer picked.
+//
+// Until 1 Aug 2026 nothing tried. Intake loaded `transaction_type` straight from
+// the row into UI state, where TX_TYPES has no entry for a canonical code, with
+// three consequences on every reopened filing:
+//   - the list printed the raw code, which is what "rent_royalty" on screen was
+//   - the type card rendered as nothing selected, so an Edit silently offered to
+//     re-pick a type that had in fact been chosen
+//   - rent vs royalty was lost even though `is_royalty` was sitting in the row
+//
+// This resolves what CAN be resolved, from the canonical code plus the two
+// discriminators already persisted (`is_royalty`, `direction`). It is a
+// best-effort read path for rows written before `ui_transaction_type` existed;
+// new rows carry the exact code and should prefer that. See
+// `resolveUiTxType` for the precedence.
+
+const CANONICAL_TO_UI: Record<string, string> = {
+  sales:                'sales',
+  service_payment:      'service_payment',
+  commission:           'commission',
+  interest:             'interest',
+  loan_to_llc:          'loan_to_llc',
+  loan_from_llc:        'loan_from_llc',
+  intangible:           'intangible',
+  insurance:            'insurance',
+  loan_guarantee:       'loan_guarantee_fee',
+  capital_contribution: 'capital_contribution',
+  distribution:         'distribution',
+  dividend:             'dividend',
+  formation_costs:      'formation_costs',
+  property_transfer:    'nonmonetary_transfer',
+  nonmonetary_other:    'other_part_vi',
+  other:                'other',
+};
+
+/**
+ * Best-effort canonical code to UI code.
+ *
+ * `is_royalty` splits rent_royalty, and `direction` splits tangible_property
+ * into the purchase and sale cards. Everything else is a straight lookup, and
+ * anything unrecognized falls back to 'other' so the UI always has a valid
+ * selection rather than an empty one.
+ */
+export function canonicalToUiTxType(
+  canonical: string,
+  hints: { is_royalty?: boolean | null; direction?: 'paid' | 'received' | null } = {},
+): string {
+  if (canonical === 'rent_royalty') return hints.is_royalty ? 'royalty' : 'rent';
+  if (canonical === 'tangible_property') {
+    return hints.direction === 'paid' ? 'tangible_purchase' : 'tangible_sale';
+  }
+  return CANONICAL_TO_UI[canonical] ?? 'other';
+}
+
+/**
+ * The UI code to show for a saved row.
+ *
+ * Prefers the exact code the filer picked when the row carries one, and falls
+ * back to deriving it. New rows always carry it; rows written before the column
+ * existed never do, and those are the ones that need the derivation.
+ */
+export function resolveUiTxType(row: {
+  transaction_type: string;
+  ui_transaction_type?: string | null;
+  is_royalty?: boolean | null;
+  direction?: 'paid' | 'received' | null;
+}): string {
+  if (row.ui_transaction_type) return row.ui_transaction_type;
+  return canonicalToUiTxType(row.transaction_type, {
+    is_royalty: row.is_royalty,
+    direction: row.direction,
+  });
 }
 
 // ───────────────────────────────────────────────────────────────────────────

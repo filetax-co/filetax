@@ -272,4 +272,17 @@ export type Transaction = {
   transaction_date?: string | null;
   description?: string | null;
   is_royalty?: boolean | null;
+  /**
+   * The intake UI code the filer actually selected, e.g. 'royalty',
+   * 'digital_asset', 'tangible_purchase'.
+   *
+   * `transaction_type` above is many-to-one: five UI codes collapse onto
+   * 'other' alone, so it cannot say whether an 'other' row was crypto, a
+   * cost-sharing payment or something else. This preserves that.
+   *
+   * DISPLAY AND ROUND-TRIP ONLY. Nothing that decides what goes on a form may
+   * read this; the generator switches on `transaction_type` and must continue
+   * to. Absent on rows written before 20260801_ui_transaction_type.
+   */
+  ui_transaction_type?: string | null;
 };
