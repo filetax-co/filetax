@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { Link } from 'react-router';
 import { Layout } from './components/Layout';
+import { AppLayout } from './components/AppLayout';
 import { RequireAuth } from './components/RequireAuth';
 import { Home } from './pages/Home';
 import { Pricing } from './pages/Pricing';
@@ -34,6 +35,33 @@ function NotFound() {
 
 export const router = createBrowserRouter(
   [
+    // ── Signed-in portal ──────────────────────────────────────────────────
+    // Listed FIRST, and lifted out of the marketing `Layout` it used to sit
+    // inside, so these four routes get the app chrome instead: a small header
+    // (logo to dashboard, guides, help, theme, account) and a legal-strip
+    // footer, with no marketing nav and no penalty marquee. See AppLayout for
+    // why the marquee in particular must not follow a paying customer into the
+    // wizard.
+    //
+    // A pathless layout route with ABSOLUTE-path children, rather than a second
+    // `path: '/'` entry, so there is no ambiguity about which of two identical
+    // parent paths a URL belongs to.
+    {
+      Component: AppLayout,
+      children: [
+        {
+          Component: RequireAuth,
+          children: [
+            { path: '/dashboard', Component: Dashboard },
+            // intake uses ?filing_id= query-string, not a path param
+            { path: '/intake', Component: Intake },
+            { path: '/catch-up', Component: MultiYearStart },
+            { path: '/filing/:id', Component: FilingWizard },
+          ],
+        },
+      ],
+    },
+    // ── Marketing site ────────────────────────────────────────────────────
     {
       path: '/',
       Component: Layout,
@@ -54,16 +82,6 @@ export const router = createBrowserRouter(
         { path: 'privacy', Component: Privacy },
         { path: 'refunds', Component: Refunds },
         { path: 'reset-password', Component: ResetPassword },
-        {
-          Component: RequireAuth,
-          children: [
-            { path: 'dashboard', Component: Dashboard },
-            // intake uses ?filing_id= query-string, not a path param
-            { path: 'intake', Component: Intake },
-            { path: 'catch-up', Component: MultiYearStart },
-            { path: 'filing/:id', Component: FilingWizard },
-          ],
-        },
         { path: '*', Component: NotFound },
       ],
     },

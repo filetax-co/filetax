@@ -450,16 +450,38 @@ export function Dashboard() {
 }
 
 // ── Filing card ──────────────────────────────────────────────────────────────
+/** Trash glyph, shared by the card corner control and the per-year row. */
+function TrashIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M12.5 4l-.5 9a1 1 0 0 1-1 .95h-6a1 1 0 0 1-1-.95L3.5 4M6.5 7v4M9.5 7v4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
- * Delete control for a card, placed in the card's top-right corner.
+ * Small red delete, pinned to the card's true top-right corner.
  *
- * It used to sit beside Continue at the bottom right, where a destructive
- * action shared a row and a visual weight with the primary one. Separating them
- * costs nothing and makes a mis-tap much less likely, which matters more here
- * than usual: a large share of this audience is on a phone, and the two buttons
- * were about a thumb's width apart.
+ * Two earlier versions were wrong and are worth not repeating. It first sat
+ * beside Continue, sharing a row and a visual weight with the primary action
+ * about a thumb's width away. It was then stacked above Continue, which stopped
+ * the overlap but left a wide labelled button floating over the primary one,
+ * pushing it down and reading as a second call to action.
  *
- * Muted until hover so it does not compete with Continue for attention.
+ * Icon only, so it takes almost no room and cannot compete with Continue.
+ * Red, because a destructive control should look destructive rather than be
+ * discovered by hovering. It is `absolute`, and the CARD adds top padding when
+ * this is present, so the action column starts below it. That padding is what
+ * makes the corner safe; without it an absolute control lands on Continue.
+ *
+ * 32px rather than the 44px tap target used elsewhere: deliberately below
+ * thumb-size for a destructive action, and every path is confirmed anyway.
  */
 function DeleteCardButton({
   onClick,
@@ -485,32 +507,20 @@ function DeleteCardButton({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '0.35rem',
-        background: 'transparent',
-        border: `1px solid ${hover && !busy ? 'var(--tf-error)' : 'var(--tf-border)'}`,
-        color: hover && !busy ? 'var(--tf-error-text)' : 'var(--tf-muted)',
-        fontWeight: 600,
-        fontSize: '0.78rem',
-        padding: '0.3rem 0.6rem',
+        justifyContent: 'center',
+        width: '32px',
+        height: '32px',
+        background: hover && !busy ? 'rgba(var(--tf-error-rgb), 0.12)' : 'transparent',
+        border: 'none',
         borderRadius: '0.5rem',
+        color: 'var(--tf-error-text)',
         cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.5 : 1,
-        // Comfortably tappable without being as tall as the primary action.
-        minHeight: '32px',
-        whiteSpace: 'nowrap',
-        transition: 'color 0.15s ease, border-color 0.15s ease',
+        opacity: busy ? 0.4 : 1,
+        padding: 0,
+        transition: 'background 0.15s ease',
       }}
     >
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path
-          d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M12.5 4l-.5 9a1 1 0 0 1-1 .95h-6a1 1 0 0 1-1-.95L3.5 4M6.5 7v4M9.5 7v4"
-          stroke="currentColor"
-          strokeWidth="1.3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      {busy ? 'Deleting…' : 'Delete'}
+      <TrashIcon size={15} />
     </button>
   );
 }
@@ -521,22 +531,34 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
   const deletable = f.status === 'draft' || f.status === 'in_progress';
+  const showDelete = deletable && !!onDelete;
   return (
-    // position: relative so the delete control can sit in the corner. The row
-    // itself is unchanged; only the delete moved out of the action group.
-    <div style={{ position: 'relative', background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-      {deletable && onDelete && (
-        <div style={{ position: 'absolute', top: '0.6rem', right: '0.75rem', zIndex: 1 }}>
+    <div
+      style={{
+        position: 'relative',
+        background: 'var(--tf-surface)',
+        border: '1px solid var(--tf-border)',
+        borderRadius: '0.75rem',
+        // The extra top padding is what keeps the corner control clear of the
+        // action column. Both columns start below it, so nothing can overlap.
+        padding: showDelete ? '3rem 1.5rem 1.25rem' : '1.25rem 1.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '1rem',
+        flexWrap: 'wrap',
+      }}
+    >
+      {showDelete && (
+        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem' }}>
           <DeleteCardButton
-            onClick={() => onDelete(f)}
+            onClick={() => onDelete!(f)}
             busy={deleting}
             title={`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}`}
           />
         </div>
       )}
-      {/* Room for the corner control, so a long LLC name never runs under it.
-          Only reserved when the control is actually there. */}
-      <div style={{ minWidth: 0, flex: 1, paddingTop: deletable && onDelete ? '1.6rem' : 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
@@ -596,20 +618,21 @@ function JobCard({
   const jobDeletable = sorted.every(
     (f) => f.status !== 'paid' && f.status !== 'completed' && f.status !== 'submitted',
   );
+  const showJobDelete = jobDeletable && !!onDeleteJob;
 
   return (
     <div style={{ position: 'relative', background: 'var(--tf-surface)', border: '1px solid var(--tf-accent)', borderRadius: '0.75rem', overflow: 'hidden' }}>
-      {jobDeletable && onDeleteJob && (
-        <div style={{ position: 'absolute', top: '0.6rem', right: '0.75rem', zIndex: 1 }}>
+      {showJobDelete && (
+        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 1 }}>
           <DeleteCardButton
-            onClick={() => onDeleteJob(filings)}
+            onClick={() => onDeleteJob!(filings)}
             busy={busy === `del-job-${sorted[0]?.job_id}`}
             title={`Delete the whole catch-up for ${llc}, all ${sorted.length} years`}
           />
         </div>
       )}
-      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
-        <div style={{ minWidth: 0, flex: 1, paddingTop: jobDeletable && onDeleteJob ? '1.6rem' : 0 }}>
+      <div style={{ padding: showJobDelete ? '3rem 1.5rem 1.25rem' : '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', background: 'rgba(var(--tf-accent-rgb), 0.06)' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
             <span style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', borderRadius: '9999px', padding: '0.125rem 0.625rem', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               Multi-year catch-up
@@ -673,7 +696,9 @@ function JobCard({
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: 'var(--tf-muted)',
+                    // Same red as the card corner control. A destructive action
+                    // should look destructive in both places, not muted in one.
+                    color: 'var(--tf-error-text)',
                     cursor: busy === `del-${f.id}` ? 'not-allowed' : 'pointer',
                     opacity: busy === `del-${f.id}` ? 0.4 : 1,
                     padding: '0.4rem',
@@ -685,15 +710,7 @@ function JobCard({
                     justifyContent: 'center',
                   }}
                 >
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path
-                      d="M2.5 4h11M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4M12.5 4l-.5 9a1 1 0 0 1-1 .95h-6a1 1 0 0 1-1-.95L3.5 4M6.5 7v4M9.5 7v4"
-                      stroke="currentColor"
-                      strokeWidth="1.3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <TrashIcon size={14} />
                 </button>
               )}
             </div>
