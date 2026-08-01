@@ -6,16 +6,20 @@
  *   • Additional related party: USD 25 per additional Form 5472, per year
  *   • IRS fax delivery:        USD 9 per JOB (opt-in; covers every transmission)
  *
- * These rates apply everywhere — the marketing pricing page, the eligibility
+ * These rates apply everywhere, the marketing pricing page, the eligibility
  * estimator, the dashboard, and the filing/checkout flow. Nothing should
  * hardcode a dollar figure; import from here so prices cannot drift again.
  *
  * Returning customers: the next two filings after the first are guaranteed at
  * the same USD 99 base. Counted in filings, not calendar years.
+ *
+ * NOTE: this file is duplicated in the product app repo (CNL 5472/5472) because
+ * the two repos share no package. The copies must stay identical, if you change
+ * a price here, change it there in the same commit.
  */
 
 export const PRICE_PER_YEAR = 99;
-/** One reasonable-cause letter covers every year in a job — charged once. */
+/** One reasonable-cause letter covers every year in a job, charged once. */
 export const PRICE_RCL = 199;
 /** Each ADDITIONAL related party (each extra Form 5472), charged per year. */
 export const PRICE_ADDITIONAL_PARTY = 25;

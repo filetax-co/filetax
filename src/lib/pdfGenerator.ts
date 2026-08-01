@@ -1,9 +1,9 @@
 /**
- * PDF Generation Layer — Form 5472 + Pro Forma 1120
+ * PDF Generation Layer, Form 5472 + Pro Forma 1120
  *
  * Uses pdf-lib to fill the official IRS AcroForm PDFs.
  * Entry point: generateFilingPackage(filing, transactions, taxYear)
- *              assembleFilingPackage (alias — same function, kept for callers)
+ *              assembleFilingPackage (alias, same function, kept for callers)
  */
 
 import {
@@ -50,7 +50,7 @@ const MONTH_NAMES = [
  * Format an ISO date (YYYY-MM-DD) as "December 1, 2025".
  *
  * Per the platform spec (§0 global conventions), every displayed and printed
- * date must use this single human format — never a numeric/slash/dash form —
+ * date must use this single human format, never a numeric/slash/dash form ,
  * so a global audience never has to guess DD-MM vs MM-DD.
  */
 const fmtDate = (iso: string | null | undefined): string => {
@@ -83,7 +83,7 @@ const loadPdf = async (url: string): Promise<PDFDocument> => {
 
 // Uniform font size for every value typed into an IRS AcroForm field. The blank
 // IRS templates ship every field with an auto-size default appearance (size 0),
-// which makes pdf-lib shrink each field's text independently to fit its box — so
+// which makes pdf-lib shrink each field's text independently to fit its box, so
 // a long value renders much smaller than a short one and the printed forms look
 // uneven from page to page. Pinning one size makes all entered text uniform.
 // 8pt sits one point below the statement/letter body size (FS_BODY) so entered
@@ -95,7 +95,7 @@ const FORM_FIELD_FONT_SIZE = 8;
 //
 // The IRS templates and every page we draw use the standard PDF fonts, which
 // are WinAnsi-encoded. Handing pdf-lib a character outside that set throws
-// (`WinAnsi cannot encode "В" (0x0412)`) — from drawText immediately, and from
+// (`WinAnsi cannot encode "В" (0x0412)`), from drawText immediately, and from
 // save() for form fields, whose appearance is generated lazily. Unguarded,
 // that surfaced as an unhandled exception and NO package at all: a filer whose
 // legal name is in Cyrillic, Greek, Arabic, Devanagari or any CJK script could
@@ -158,7 +158,7 @@ const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
       field.setFontSize(FORM_FIELD_FONT_SIZE);
     }
   } catch {
-    // Field not present in this revision — silently skip
+    // Field not present in this revision, silently skip
   }
 };
 
@@ -177,7 +177,7 @@ const checkBox = (doc: PDFDocument, fieldName: string, checked: boolean): void =
 // ─── tax-year → PDF URL resolver ────────────────────────────────────────────────────────
 //
 // Files available in public/pdf/:
-//   Form-5472.pdf            (2024 — latest/generic)
+//   Form-5472.pdf            (2024, latest/generic)
 //   Form-5472-2023.pdf
 //   Form-5472-2022.pdf
 //   Form-5472-2019-2021.pdf  (covers 2019, 2020, 2021)
@@ -241,7 +241,7 @@ const buildFullAddress = (a: Address | null): string => {
 
 /**
  * Form 5472 combines the party name and address into a single field
- * (ShareholderNameAddress / RPNameAddress). Build "Name — Street, City, ST ZIP,
+ * (ShareholderNameAddress / RPNameAddress). Build "Name, Street, City, ST ZIP,
  * Country", falling back to name-only when no address is on file.
  */
 const buildNameAndAddress = (name: string, a: Address | null): string => {
@@ -254,7 +254,7 @@ const buildNameAndAddress = (name: string, a: Address | null): string => {
 // For an initial (first-ever) return whose formation date falls mid-year, the
 // tax period BEGINS on the formation date (a short year), not January 1. For
 // every other return the period is the full calendar year. The period end is
-// always December 31 of the tax year (calendar-year filers — the only case the
+// always December 31 of the tax year (calendar-year filers, the only case the
 // platform supports).
 
 export interface ResolvedPeriod {
@@ -262,9 +262,9 @@ export interface ResolvedPeriod {
   beginISO: string;
   /** ISO end date (YYYY-MM-DD). */
   endISO: string;
-  /** "January 1, 2025" — human format for statements / 1120. */
+  /** "January 1, 2025", human format for statements / 1120. */
   beginText: string;
-  /** "December 31, 2025" — human format. */
+  /** "December 31, 2025", human format. */
   endText: string;
   /** Whether this filing is an initial return. */
   isInitial: boolean;
@@ -282,7 +282,7 @@ const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPerio
   const endISO = filing.tax_period_end ?? `${year}-12-31`;
 
   // An initial return is one whose formation date falls WITHIN the nominal
-  // period (inclusive). This works for both calendar and fiscal years — a
+  // period (inclusive). This works for both calendar and fiscal years, a
   // fiscal period can span two calendar years, so we compare against the period
   // bounds, not just the tax-year number.
   const incorpInPeriod =
@@ -308,7 +308,7 @@ const resolvePeriod = (filing: NormalizedFiling, taxYear: number): ResolvedPerio
 // ─── transaction aggregation ────────────────────────────────────────────────────────────
 
 export interface AggregatedTransactions {
-  // Part IV — Received (LLC received from owner / foreign party)
+  // Part IV, Received (LLC received from owner / foreign party)
   sales_received: number;
   tangible_prop_received: number;
   rents_received: number;
@@ -320,7 +320,7 @@ export interface AggregatedTransactions {
   insurance_received: number;
   loan_guarantee_received: number;
   other_received: number;
-  // Part IV — Paid (LLC paid to owner / foreign party)
+  // Part IV, Paid (LLC paid to owner / foreign party)
   sales_paid: number;
   tangible_prop_paid: number;
   rents_paid: number;
@@ -332,19 +332,19 @@ export interface AggregatedTransactions {
   insurance_paid: number;
   loan_guarantee_paid: number;
   other_paid: number;
-  // Part IV — Loan balances (amount_usd on each loan row IS the closing balance)
+  // Part IV, Loan balances (amount_usd on each loan row IS the closing balance)
   borrowed_begin: number;
   borrowed_end: number;
   loaned_begin: number;
   loaned_end: number;
-  // Part V — Distributions / contributions / nonmonetary owner transactions
+  // Part V, Distributions / contributions / nonmonetary owner transactions
   distributions_paid: number;
   contributions_received: number;
-  // Part V — Formation / start-up costs the owner paid on behalf of the LLC.
+  // Part V, Formation / start-up costs the owner paid on behalf of the LLC.
   // Tracked in its own bucket so it feeds both the Part V summary and the
   // 1f/1h gross, without being relabeled as a capital contribution.
   formation_costs_paid: number;
-  // Part VI — monetary consideration recorded on nonmonetary / below-FMV items
+  // Part VI, monetary consideration recorded on nonmonetary / below-FMV items
   part_vi_amount: number;
   // flags
   hasPartIV: boolean;
@@ -393,7 +393,7 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
     hasPartIV: false,
     // Part V: only monetary owner transactions (distributions, contributions, dividends)
     hasPartV: false,
-    // Part VI is ALWAYS true — managerial services by foreign owner are
+    // Part VI is ALWAYS true, managerial services by foreign owner are
     // present in every filing and have no determinable FMV.
     hasPartVI: true,
     hasPropertyTransfer: false,
@@ -456,14 +456,14 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       case 'other':
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
         t.hasPartIV = true; break;
-      // ── Part VI only — nonmonetary / less-than-FMV transactions ─────────────
+      // ── Part VI only, nonmonetary / less-than-FMV transactions ─────────────
       // These are NOT reported on Part V (no monetary amount to disclose there).
       // They are always disclosed in the Part VI statement instead.
       case 'property_transfer':
         t.hasPropertyTransfer = true; t.part_vi_amount += amt; break;
       case 'nonmonetary_other':
         t.hasNonmonetaryOther = true; t.part_vi_amount += amt; break;
-      // formation_costs: owner paid something on behalf of LLC — Part V disclosure.
+      // formation_costs: owner paid something on behalf of LLC, Part V disclosure.
       // Accumulate the amount so it feeds the Part V summary and the 1f/1h gross;
       // previously only the flag was set and the dollar amount was dropped.
       case 'formation_costs':
@@ -482,10 +482,10 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
 // Line 22 = "Total" of the Part IV amounts-received lines (9–21), and line 36 =
 // "Total" of the amounts-paid lines (23–35). The loan lines (17a/17b borrowed,
 // 31a/31b loaned) fall inside those ranges on the form, so the ENDING loan
-// balance (17b into line 22, 31b into line 36) is included in the totals — the
+// balance (17b into line 22, 31b into line 36) is included in the totals, the
 // beginning balance is not (it would double-count the same loan).
 //   • Capital contributions and distributions are Part V transactions (owner /
-//     DE transactions), NOT Part IV — they are disclosed on the Part V
+//     DE transactions), NOT Part IV, they are disclosed on the Part V
 //     statement. They are added to the 1f/1h gross-payments figure but not to
 //     the Part IV line 22/36 subtotals.
 //   • Line 1f gross payments = line 22 + line 36 (+ Part V monetary + Part VI
@@ -496,7 +496,7 @@ const totalReceived = (t: AggregatedTransactions): number =>
   t.royalties_received + t.intangible_received + t.services_received +
   t.commissions_received + t.interest_received + t.insurance_received +
   t.loan_guarantee_received + t.other_received +
-  // Line 17b — amounts borrowed, ending balance (rolls into the line 22 total).
+  // Line 17b, amounts borrowed, ending balance (rolls into the line 22 total).
   t.borrowed_end;
 
 const totalPaid = (t: AggregatedTransactions): number =>
@@ -504,7 +504,7 @@ const totalPaid = (t: AggregatedTransactions): number =>
   t.royalties_paid + t.intangible_paid + t.services_paid +
   t.commissions_paid + t.interest_paid + t.insurance_paid +
   t.loan_guarantee_paid + t.other_paid +
-  // Line 31b — amounts loaned, ending balance (rolls into the line 36 total).
+  // Line 31b, amounts loaned, ending balance (rolls into the line 36 total).
   t.loaned_end;
 
 /**
@@ -671,7 +671,7 @@ export const buildPartVStatement = async (
     filing, periodBegin, periodEnd, period.year, fonts,
   );
 
-  // Intro paragraph — cite the governing law, reference Part V and the txns.
+  // Intro paragraph, cite the governing law, reference Part V and the txns.
   const intro =
     'This statement is furnished under Internal Revenue Code section 6038A and '
     + 'Treasury Regulation section 1.6038A-2, and supports Part V of Form 5472. '
@@ -728,7 +728,7 @@ export const buildPartVStatement = async (
 
     // The transaction label already states who paid whom (e.g. "Capital
     // Contribution by Owner"), so a separate Direction line would be redundant
-    // and can read incorrectly — it is omitted. Description is omitted when blank.
+    // and can read incorrectly, it is omitted. Description is omitted when blank.
     const fields: [string, string][] = [
       ['Date:',   txDate],
       ['Amount:', amtText],
@@ -810,12 +810,12 @@ export const buildPartVIStatement = async (
   // blocks are present for this particular party.
   let itemNo = 0;
 
-  // ── Item: Managerial services — OWNER ONLY, when enabled ──────────────────────────
+  // ── Item: Managerial services, OWNER ONLY, when enabled ──────────────────────────
   // The owner of a foreign-owned DE necessarily provides managerial services
   // whose FMV cannot be determined; this is disclosed on the owner's Form 5472
   // Part VI by default. The user may opt out (part_vi_managerial = false), in
   // which case this item is omitted. Additional related parties never get this
-  // item — they only appear in Part VI for an actual non-monetary transaction.
+  // item, they only appear in Part VI for an actual non-monetary transaction.
   const managerialOn = party.is_owner && (filing.part_vi_managerial ?? true);
   if (managerialOn) {
     itemNo += 1;
@@ -1094,7 +1094,7 @@ export const buildInstructionsPage = async (
   // collected during intake and already printed on the pro forma Form 1120
   // (see the signature block below), so the filer does not need to sign again.
   const rows: [string, string][] = [
-    ['Taxpayer', `${filing.llc_name ?? ''} (EIN ${filing.ein ?? '—'})`],
+    ['Taxpayer', `${filing.llc_name ?? ''} (EIN ${filing.ein ?? 'Not provided'})`],
     ['Return', `${formsLine}, for the tax period ${period.beginText} through ${period.endText}.`],
   ];
   if (opts.hasRCL) {
@@ -1127,7 +1127,17 @@ export const buildInstructionsPage = async (
   cursor.y -= 4;
   const notices = [
     'Penalty: failing to file a correct, complete Form 5472 carries a $25,000 penalty per form, per related party, per year under IRC §6038A.',
-    'Record retention: keep invoices, contracts, bank statements, related-party agreements, and a copy of this package for the statutory period.',
+    // "The statutory period" told the filer nothing, and there is no fixed
+    // number of years to give instead. 26 CFR 1.6038A-3(g) requires records to
+    // be kept as long as they may be relevant, and in no case less than the
+    // limitations period on assessment. For a section 6038A filer that period
+    // is unusual: under IRC 6501(c)(8) it does not expire until 3 years AFTER
+    // the IRS is furnished the information, so the clock starts on the date the
+    // Form 5472 is actually filed, not on the year it reports. A filer catching
+    // up on 2019 in 2026 must keep the 2019 records until at least 2029. Saying
+    // "keep for six years" would be wrong for exactly the multi-year catch-up
+    // customer this product is built for.
+    'Record retention: keep invoices, contracts, bank statements, related-party agreements, and a copy of this package for at least 3 years from the date you FILE this Form 5472, and longer while the records remain relevant. Under IRC §6501(c)(8) the IRS assessment window does not close until 3 years after it receives the information, so for a late or catch-up filing the clock starts when you file, not when the tax year ended.',
     'State obligations: this federal filing does not cover state requirements (e.g. Delaware franchise tax, California LLC fee). Check your state of formation.',
   ];
   for (const n of notices) {
@@ -1168,7 +1178,7 @@ export const buildInstructionsPage = async (
 export const IRS_5472_FAX = '855-887-7737';
 
 export interface FaxCoverOpts {
-  /** Forms 5472 enclosed — one per related party. */
+  /** Forms 5472 enclosed, one per related party. */
   formCount: number;
   /** A Reasonable Cause Statement is enclosed. */
   hasRCL: boolean;
@@ -1218,7 +1228,7 @@ export const buildFaxCoverPage = async (
   // A fax cover's first job is making the transmission reconstructable: who
   // sent what, to where, on what date, and how many pages should have arrived.
   const faxRows: [string, string][] = [
-    ['To', `Internal Revenue Service — Ogden\nFax ${IRS_5472_FAX}`],
+    ['To', `Internal Revenue Service, Ogden\nFax ${IRS_5472_FAX}`],
     ['From', opts.senderFax ? `${entity}\nFax ${opts.senderFax}` : entity],
     ['Date', dateText],
     ['Pages', `${opts.pageCount} (including this cover page)`],
@@ -1239,7 +1249,7 @@ export const buildFaxCoverPage = async (
   // ── Subject / identifiers ──────────────────────────────────────────────────
   const kind = opts.isAmended ? 'Amended' : 'Original';
   cursor.y = drawWrapped(page,
-    `Subject: ${kind} Form 5472 filing — foreign-owned U.S. disregarded entity`,
+    `Subject: ${kind} Form 5472 filing for a foreign-owned U.S. disregarded entity`,
     MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 2;
   cursor.y = drawWrapped(page, `EIN: ${ein}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
@@ -1277,7 +1287,7 @@ export const buildFaxCoverPage = async (
   enclosures.push(
     opts.formCount === 1
       ? 'Form 5472, with its Part V / Part VI statements'
-      : `${opts.formCount} Forms 5472 — one per related party — each with its Part V / Part VI statements`,
+      : `${opts.formCount} Forms 5472, one per related party, each with its Part V / Part VI statements`,
   );
   for (const e of enclosures) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
@@ -1309,9 +1319,9 @@ export const buildFaxCoverPage = async (
 // ─── Form 5472 filler ───────────────────────────────────────────────────────────────────────────
 
 interface Fill5472Opts {
-  /** Form 5472 Line 1g — total number of 5472s filed for this entity/year. */
+  /** Form 5472 Line 1g, total number of 5472s filed for this entity/year. */
   numForms: number;
-  /** Form 5472 Line 1h — aggregate gross of all transactions across ALL 5472s. */
+  /** Form 5472 Line 1h, aggregate gross of all transactions across ALL 5472s. */
   grossAllForms: number;
 }
 
@@ -1327,7 +1337,7 @@ const fill5472 = async (
   const F   = getF5472Map(period.year);
   const txn = aggregateTransactions(txns);
 
-  // ── Header — tax period ────────────────────────────────────────────────────────────
+  // ── Header, tax period ────────────────────────────────────────────────────────────
   // The 5472 header has separate month-day and year boxes; fill them with the
   // human month name ("November 1") and the four-digit year. The combined
   // human string ("November 1, 2025") is what the statements use.
@@ -1342,7 +1352,7 @@ const fill5472 = async (
   setText(doc, F.TAX_YEAR_END,        (endMonthName && peD) ? `${endMonthName} ${Number(peD)}` : period.endText);
   setText(doc, F.TAX_YEAR_END_YEAR,   peY ?? '');
 
-  // ── Part I — Reporting Corporation (the US LLC) ──────────────────────────────────
+  // ── Part I, Reporting Corporation (the US LLC) ──────────────────────────────────
   setText(doc, F.CORP_NAME,                  filing.llc_name ?? '');
   setText(doc, F.CORP_ADDRESS,               buildStreet(filing.llc_us_address));
   setText(doc, F.CORP_CITY_STATE_ZIP,        buildCityStateZip(filing.llc_us_address, filing.state_of_formation));
@@ -1353,7 +1363,7 @@ const fill5472 = async (
   setText(doc, F.CORP_DATE_OF_INCORPORATION, fmtDateNumeric(filing.date_of_incorporation));
   // The reporting corporation is a US entity: incorporated in and conducting
   // business in the United States. However, Part I line 1n "country of
-  // residence" reflects where the entity's income is taxed — for a foreign-owned
+  // residence" reflects where the entity's income is taxed, for a foreign-owned
   // disregarded entity the income flows to and is taxed in the owner's home
   // country (the U.S. only requires reporting), so 1n mirrors the owner's
   // country of tax residence.
@@ -1362,7 +1372,7 @@ const fill5472 = async (
   setText(doc, F.CORP_COUNTRY_OF_INC,        filing.country_of_incorporation ?? 'United States');
   setText(doc, F.CORP_RESIDENT_COUNTRY,      ownerTaxCountry);
   // Principal country(ies) where the business is conducted. The filer supplies
-  // this in intake (entity_principal_country); it is NOT always the US — a
+  // this in intake (entity_principal_country); it is NOT always the US, a
   // foreign-owned DE often operates from the owner's country. Honor the user's
   // answer, falling back to the US only when none was given.
   const principalCountry =
@@ -1370,7 +1380,7 @@ const fill5472 = async (
   setText(doc, F.CORP_COUNTRY_BUSINESS,      principalCountry);
 
   // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
-  // 1f/1h aggregate the monetary transactions for this party — Part IV flows plus
+  // 1f/1h aggregate the monetary transactions for this party, Part IV flows plus
   // the monetary Part V (distributions/contributions/dividends) and Part VI amounts.
   const grossThisForm = grossPaymentsForLines1f1h(txn);
   setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossThisForm));
@@ -1383,9 +1393,9 @@ const fill5472 = async (
   checkBox(doc, F.FOREIGN_OWNS_50PCT,        true);
   checkBox(doc, F.CORP_IS_FOREIGN_OWNED_DE,  true);
 
-  // ── Part II — 25 % Foreign Shareholder ───────────────────────────────────────────
+  // ── Part II, 25 % Foreign Shareholder ───────────────────────────────────────────
   // Part II is ALWAYS the 25% foreign shareholder (the owner), on every Form
-  // 5472 for this entity — including the ones filed for additional related
+  // 5472 for this entity, including the ones filed for additional related
   // parties. Only Part III changes per form. The 5472 combines name + mailing
   // address into a single field.
   const owner = filing.owner;
@@ -1397,7 +1407,7 @@ const fill5472 = async (
   setText(doc, F.SHAREHOLDER_COUNTRY_CITIZENSHIP, owner.country_citizenship);
   setText(doc, F.SHAREHOLDER_RESIDENT_COUNTRY,    owner.country_residence);
 
-  // ── Part III — Related Party (THIS form's party) ─────────────────────────────────
+  // ── Part III, Related Party (THIS form's party) ─────────────────────────────────
   // For the owner's own 5472 the related party IS the owner; for an additional
   // related party's 5472 this is that related party.
   checkBox(doc, F.RP_IS_FOREIGN_PERSON, true);
@@ -1412,7 +1422,7 @@ const fill5472 = async (
   setText(doc, F.RP_COUNTRY_BUSINESS,  party.country_business);
   setText(doc, F.RP_RESIDENT_COUNTRY,  party.country_residence);
 
-  // 8e — Relationship checkboxes.
+  // 8e, Relationship checkboxes.
   // For the owner of a single-member LLC, the related party IS the 25%
   // shareholder. Additional related parties are related to that shareholder
   // but are not themselves the 25% direct shareholder.
@@ -1426,12 +1436,12 @@ const fill5472 = async (
     checkBox(doc, F.RP_IS_25PCT_SHAREHOLDER,   false);
   }
 
-  // ── Part IV — Monetary Transactions ──────────────────────────────────────────────
+  // ── Part IV, Monetary Transactions ──────────────────────────────────────────────
   if (txn.hasPartIV) {
     // Loan-guarantee fees (lines 20 / 34) have no field in the 2019-2021 Form
     // 5472 revision. Writing to the absent field is a silent no-op, which left
     // the amount off the return entirely while it still counted toward the
-    // line 22 / 36 totals — a total with nothing behind it. When the dedicated
+    // line 22 / 36 totals, a total with nothing behind it. When the dedicated
     // line is unavailable, disclose the amount under "other amounts"
     // (line 21 / 35) instead so it is reported and the totals still foot.
     const guaranteeReceivedHasLine = !!F.LINE_20_LOAN_GUARANTEE_RECEIVED;
@@ -1471,17 +1481,17 @@ const fill5472 = async (
     setText(doc, F.LINE_36_TOTAL_PAID,              fmt(totalPaid(txn)));
   }
 
-  // ── Part V — owner transactions checkbox ───────────────────────────────────────
+  // ── Part V, owner transactions checkbox ───────────────────────────────────────
   // Part V (and its statement) applies to the OWNER's 5472 only; additional
   // related parties never carry Part V.
   if (party.is_owner && txn.hasPartV) {
     checkBox(doc, F.PART_V_CHECKBOX, true);
   }
 
-  // ── Part VI — nonmonetary transactions checkbox ───────────────────────────────
+  // ── Part VI, nonmonetary transactions checkbox ───────────────────────────────
   // OWNER: checked when the managerial-services disclosure is on (default true;
   //   the owner of a foreign-owned DE provides managerial services whose FMV
-  //   cannot be determined) — OR when an actual non-monetary transaction exists.
+  //   cannot be determined), OR when an actual non-monetary transaction exists.
   //   If the user opted out of the managerial disclosure AND there is no
   //   non-monetary transaction, Part VI is not checked.
   // OTHER RELATED PARTIES: checked only when they actually had a non-monetary /
@@ -1512,7 +1522,7 @@ const fill1120 = async (
   setText(doc, F.TOTAL_ASSETS,      fmt(filing.total_assets));
   setText(doc, F.DATE_INCORPORATED, fmtDateNumeric(filing.date_of_incorporation));
 
-  // Address — some revisions have a single combined field (2019–2024),
+  // Address, some revisions have a single combined field (2019–2024),
   // others (fallback / 2025) use split fields. We write both sets;
   // setText is a no-op for any empty-string field name.
   setText(doc, F.CORP_ADDRESS,        buildStreet(addr));                          // combined (2019–2024)
@@ -1542,7 +1552,7 @@ const fill1120 = async (
   // produced "202026". For a calendar-year filer the printed "calendar year
   // YYYY" already carries the year, so leave the box empty; only a short/fiscal
   // year needs the ending year filled here. The ending year is taken from the
-  // PERIOD END, not the tax year — a fiscal year ending March 2026 (tax year
+  // PERIOD END, not the tax year, a fiscal year ending March 2026 (tax year
   // 2025) must print "26", not "25".
   const endYearTwoDigit = (period.endISO.split('-')[0] ?? String(period.year)).slice(-2);
   setText(doc, F.ENDING_YEAR, isCalendarYear ? '' : endYearTwoDigit);
@@ -1573,8 +1583,8 @@ const fill1120 = async (
 // period instead.
 //
 // The three year boxes take TWO digits, not four. The IRS form preprints the
-// century — "calendar year 20 __" and "tax year beginning ____, 20 __, and
-// ending ____, 20 __" — so a four-digit year printed "20 2025". The boxes are
+// century, "calendar year 20 __" and "tax year beginning ____, 20 __, and
+// ending ____, 20 __", so a four-digit year printed "20 2025". The boxes are
 // 14.3pt wide, which is the giveaway: room for two characters.
 
 /** "2025" → "25". The century is preprinted on the form. */
@@ -1584,7 +1594,7 @@ const twoDigitYear = (year: string | number): string =>
 /**
  * "2025-07-01" → "July 1". The 7004 period line reads
  * "beginning ______, 20 __", so the blank takes the month and day and the year
- * belongs in the box that follows it — the same convention the 1120 filler
+ * belongs in the box that follows it, the same convention the 1120 filler
  * already uses for its period line.
  */
 const monthAndDay = (iso: string): string => {
@@ -1601,8 +1611,8 @@ const monthAndDay = (iso: string): string => {
  * its place.
  *
  * The widget has to be REMOVED, not just collapsed to a zero-size rectangle.
- * A collapsed widget keeps its appearance stream, and pdf-lib's flatten() —
- * which runs when the year package is merged — draws that stream through a
+ * A collapsed widget keeps its appearance stream, and pdf-lib's flatten() ,
+ * which runs when the year package is merged, draws that stream through a
  * degenerate transform, leaving a stray copy of the beginning date on the page.
  * That is invisible in the standalone 7004 and visible in the combined
  * download, which is the file the filer actually gets.
@@ -1615,7 +1625,7 @@ const drawEndingDateOver2ndWidget = async (
     const field = doc.getForm().getField('LLC_Beginning_Date');
     if (!(field instanceof PDFTextField)) return;
     const widgets = field.acroField.getWidgets();
-    // One widget means the template was fixed upstream — nothing to do.
+    // One widget means the template was fixed upstream, nothing to do.
     if (widgets.length < 2) return;
 
     // Rightmost widget is the "ending" slot; do not assume array order.
@@ -1648,7 +1658,7 @@ const drawEndingDateOver2ndWidget = async (
       font,
     });
   } catch {
-    // Template without this field — leave the page as it is.
+    // Template without this field, leave the page as it is.
   }
 };
 
@@ -1674,7 +1684,7 @@ const fill7004 = async (
   if (isCalendarYear) {
     setText(doc, 'LLC_Calendar_Year', twoDigitYear(period.year));
   } else {
-    // The date blank holds the MONTH AND DAY only — the year that follows it is
+    // The date blank holds the MONTH AND DAY only, the year that follows it is
     // the "20 __" box. period.beginText is the long form ("July 1, 2025") used
     // on the 1120 and the statements, and printing that here gave the year
     // twice: "beginning July 1, 2025, 20 25".
@@ -1682,7 +1692,7 @@ const fill7004 = async (
     setText(doc, 'LLC_Beginning_Year', twoDigitYear(period.beginISO.split('-')[0] ?? period.year));
     setText(doc, 'LLC_Ending_Year',    twoDigitYear(period.endISO.split('-')[0] ?? period.year));
 
-    // The template gives LLC_Beginning_Date TWO widgets — the "beginning" slot
+    // The template gives LLC_Beginning_Date TWO widgets, the "beginning" slot
     // and the "ending" slot share one field name, so setting the field printed
     // the BEGINNING date in both, and the form read "beginning July 1 and
     // ending July 1". A single AcroForm field cannot hold two different values,
@@ -1883,14 +1893,14 @@ const rclNarrativeFromReasons = (filing: Filing & Record<string, unknown>): stri
 /**
  * Whether to include Form 7004 in the package. The form is produced when the
  * filer either explicitly requests it (include_7004) OR indicates they filed an
- * extension (extension_filed) — in both cases the completed 7004 belongs in the
+ * extension (extension_filed), in both cases the completed 7004 belongs in the
  * package so the filer has a copy of what was/should be filed.
  */
 const wants7004 = (raw: Filing): boolean =>
   raw.include_7004 === true || (raw as Filing & { extension_filed?: boolean }).extension_filed === true;
 
 /**
- * Generate a standalone, filled Form 7004 — used both inside the package and
+ * Generate a standalone, filled Form 7004, used both inside the package and
  * as an independent "file an extension only" download.
  */
 export const generateForm7004 = async (
@@ -1952,7 +1962,7 @@ const buildYearDocs = async (filing: NormalizedFiling, period: ResolvedPeriod, t
     (p) => p.is_owner || (txByParty.get(p.index)?.length ?? 0) > 0,
   );
 
-  // Line 1g / 1h — form count and entity-wide gross across all forms.
+  // Line 1g / 1h, form count and entity-wide gross across all forms.
   const formCount = partiesToFile.length;
   const grossAllForms = partiesToFile.reduce(
     (sum, p) => sum + grossForTransactions(txByParty.get(p.index) ?? []),
@@ -1999,7 +2009,7 @@ const assembleYear = async (
   for (const p of prefix) await mergeInto(merged, p);
   await mergeInto(merged, yd.doc1120);
   if (form7004Doc) await mergeInto(merged, form7004Doc);
-  // Owner (index 0) first, then additional related parties — each 5472 followed
+  // Owner (index 0) first, then additional related parties, each 5472 followed
   // by its own Part V / Part VI statements.
   const ordered = [...yd.partyDocs].sort((a, b) => Number(b.party.is_owner) - Number(a.party.is_owner));
   for (const pd of ordered) {
@@ -2022,7 +2032,7 @@ export const generateFilingPackage = async (
   transactions: Transaction[],
   taxYear?: number,
   opts?: {
-    /** Also build `faxPayload` — the transmission-ready package. See FilingPackage. */
+    /** Also build `faxPayload`, the transmission-ready package. See FilingPackage. */
     fax?: boolean;
     /** Sending fax number, printed in the cover page's From block. */
     senderFax?: string;
@@ -2040,9 +2050,9 @@ export const generateFilingPackage = async (
   const period = resolvePeriod(filing, year);
   const yd = await buildYearDocs(filing, period, transactions);
 
-  // A reasonable-cause letter is included when the filing opted in — honoring
+  // A reasonable-cause letter is included when the filing opted in, honoring
   // either the canonical include_rcl flag or the older include_reasonable_cause
-  // column — but NOT when a Form 7004 extension was filed on time (then the
+  // column, but NOT when a Form 7004 extension was filed on time (then the
   // year is not late, so no RCL applies).
   const optedRCL =
     !!filing.include_rcl || (filing as unknown as Record<string, unknown>)['include_reasonable_cause'] === true;
@@ -2051,7 +2061,7 @@ export const generateFilingPackage = async (
     isLate: hasRCL, hasRCL, formCount: yd.formCount,
   });
 
-  // Reasonable Cause Letter — built when the filing opted into the RCL. It is
+  // Reasonable Cause Letter, built when the filing opted into the RCL. It is
   // the cover letter, so it leads the combined package (before instructions),
   // and is also returned standalone.
   let reasonableCauseLetter: Uint8Array | undefined;
@@ -2061,7 +2071,7 @@ export const generateFilingPackage = async (
     reasonableCauseLetter = await rclDoc.save();
   }
 
-  // Form 7004 — included when the filing opted into an extension (or marked one
+  // Form 7004, included when the filing opted into an extension (or marked one
   // as filed). Generated up front so it can be placed in the package right after
   // the 1120, and also returned standalone.
   const include7004 = wants7004(rawFiling);
@@ -2109,14 +2119,14 @@ export const generateFilingPackage = async (
     // than assuming one.
     for (let i = instructions.getPageCount() - 1; i >= 0; i--) body.removePage(i);
 
-    // The cover states the total page count, which includes the cover itself —
+    // The cover states the total page count, which includes the cover itself ,
     // so build it once to learn its own length, then again with the true total.
     const coverOpts: FaxCoverOpts = {
       formCount: yd.formCount,
       hasRCL,
       has7004: include7004,
       pageCount: 0,
-      // Always "Original": the product has no amended-return concept — no
+      // Always "Original": the product has no amended-return concept, no
       // column, no intake question, no UI. FaxCoverOpts.isAmended exists so the
       // cover is ready if that changes, but nothing can set it today.
       senderFax: opts.senderFax,
@@ -2146,7 +2156,7 @@ export const generateFilingPackage = async (
   }
 };
 
-/** @alias generateFilingPackage — kept for callers that use the old name */
+/** @alias generateFilingPackage, kept for callers that use the old name */
 export const assembleFilingPackage = generateFilingPackage;
 
 // ─── Multi-year catch-up package ─────────────────────────────────────────────────────────────
