@@ -175,15 +175,43 @@ Two CTAs. One mid-post, immediately after the section resolving the reader's mos
 
 Match to situation:
 
-- **Technical and planning**: "If your LLC is foreign-owned with a single related party and standard transactions, filetax.co generates your completed Form 5472 and pro forma 1120 packet in under 15 minutes for $150."
-- **Deadline and extension**: "If the April 15 deadline has passed, a Form 7004 extension is available as an add-on at checkout for $30, faxed directly to the IRS."
-- **Penalty, late filer, multi-year**: lead with the honest referral. "If your situation involves multiple years of unfiled returns, actual US-source income, or more than four related parties, an automated tool is not the right solution. A qualified CPA review is the appropriate next step." Then offer the $150 option for the current year where it applies.
+- **Technical and planning**: "If your LLC is foreign-owned with a single related party and standard transactions, filetax.co generates your completed Form 5472 and pro forma 1120 packet in under 15 minutes for $99."
+- **Deadline and extension**: "Form 7004 extends the deadline to October 15." Do not attach a price to Form 7004 or promise it at checkout. See the availability note below.
+- **Penalty, late filer, multi-year**: lead with the honest referral. "If your situation involves multiple years of unfiled returns, actual US-source income, or more than four related parties, an automated tool is not the right solution. A qualified CPA review is the appropriate next step." Then offer the $99 option for the current year where it applies.
 
-**State the price and the time.** "Under 15 minutes for $150" converts better than "get started today", because the fear is an unbounded bill.
+**State the price and the time.** "Under 15 minutes for $99" converts better than "get started today", because the fear is an unbounded bill.
 
-**Say who it is not for.** Naming the cases where the $150 tool is wrong raises trust and raises conversion on the cases where it is right.
+**Say who it is not for.** Naming the cases where the $99 tool is wrong raises trust and raises conversion on the cases where it is right.
 
-Prices: $150 Form 5472 plus pro forma 1120, $200 reasonable cause letter, $75 additional Form 5472, $50 classification change, $30 IRS fax.
+### Prices, hard rule
+
+**Never write a dollar figure from memory. These are the only correct ones**, and they match
+`src/lib/pricing.ts`, which is the single source of truth. Prices were cut on 31 July 2026 and an
+earlier version of this skill still carried the old ones, which put stale figures into 35 posts.
+
+| Item | Price | Basis |
+|---|---|---|
+| Form 5472 plus pro forma 1120 | $99 | per year |
+| Reasonable cause letter | $199 | per job, one letter covers every year |
+| Additional Form 5472 | $25 | per additional related party, per year |
+| Classification change (Form 8832) | $50 | one off |
+| IRS fax delivery | $9 | per job, however many years are sent |
+
+Returning customers: the next two filings after the first are guaranteed at the same $99 base,
+counted in filings rather than calendar years.
+
+**Do not sell Form 2553.** It was removed from the product. IRC §1361(b)(1)(C) bars an S
+corporation from having a nonresident alien shareholder, so every reader who qualifies for this
+product is categorically ineligible. Form 8832 stays.
+
+**Availability, check before writing any CTA that promises delivery:**
+
+- **IRS fax is NOT BUILT.** The $9 price is set but nothing transmits yet. Never write a CTA that
+  says the site faxes the filing, and never describe faxing in the present tense. Describing how a
+  reader can fax the package themselves is fine, and correct: the IRS accepts it.
+- **Form 7004 is built but waitlisted**, and the intention on record is to make it free rather
+  than an add-on. Until that ships, state that Form 7004 extends the deadline, with no price and
+  no claim that the portal files it.
 
 ### Naming restriction, hard rule
 
