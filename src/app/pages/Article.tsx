@@ -45,6 +45,20 @@ interface Post {
 
 const TOC_THRESHOLD = 4; // Show table of contents only when article has 4+ H2 sections
 
+// The legal disclaimer every article carries. It lived as the last paragraph of
+// each post's Portable Text body until 1 Aug 2026, which had three costs: it was
+// 30 copies to edit whenever the wording or the form revision changed, it was
+// indexable body prose competing with the article's own content, and because
+// buildFAQ() accumulates normal blocks until the next H2, it was being appended
+// to the last FAQ answer in the FAQPage JSON-LD on every post.
+const DISCLAIMER =
+  "This article provides general information about US tax filing requirements for " +
+  "foreign-owned single-member LLCs. It does not constitute legal or tax advice. " +
+  "FileTax.co is a software platform for generating IRS forms based on user inputs. " +
+  "It is not a law firm and does not provide legal or tax advice. Forms are generated " +
+  "according to the official IRS Instructions for Form 5472 (Rev. December 2024). " +
+  "For advice on your specific situation, consult a qualified tax professional.";
+
 function formatDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -747,6 +761,30 @@ export function Article() {
           <Link to="/resources" style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "0.875rem", textDecoration: "none" }}>
             &#8592; Back to Resources
           </Link>
+
+          {/* Legal disclaimer. Rendered from the layout rather than the body so
+              the wording lives in one place, and marked up as an aside so it
+              reads as boilerplate rather than as part of the article. */}
+          <aside
+            aria-label="Disclaimer"
+            style={{
+              marginTop: "2.5rem",
+              paddingTop: "1.25rem",
+              borderTop: "1px solid var(--tf-border)",
+            }}
+          >
+            <p
+              style={{
+                color: "var(--tf-muted)",
+                fontSize: "0.8125rem",
+                lineHeight: 1.65,
+                fontWeight: 400,
+                margin: 0,
+              }}
+            >
+              <strong style={{ fontWeight: 600 }}>Disclaimer:</strong> {DISCLAIMER}
+            </p>
+          </aside>
         </div>
       </section>
     </>
