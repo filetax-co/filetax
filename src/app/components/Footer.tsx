@@ -11,6 +11,7 @@ const footerLinks = [
   { to: "/pricing", label: "Pricing" },
   { to: "/services", label: "Services" },
   { to: "/past-filings", label: "Past Filings" },
+  { to: "/compare", label: "Compare" },
   { to: "/resources", label: "Resources" },
   { to: "/faq", label: "FAQ" },
   { to: "/check", label: "Check Eligibility" },

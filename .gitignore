@@ -1,6 +1,12 @@
 node_modules/
 dist/
 
+# Intermediate PDFs from the product repo's `npm run gen:samples`. Only the
+# .webp renders are referenced by /services and only those should ship; the
+# PDFs are kept locally for inspection. The reasonable cause letter PDF is
+# never written here at all, by design.
+public/samples/*.pdf
+
 # Build output that prebuild/postbuild regenerate every time.
 # public/sitemap.xml is intentionally NOT ignored: it is committed so the file
 # exists even if a build skips the prebuild hook.

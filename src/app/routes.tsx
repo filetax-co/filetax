@@ -4,6 +4,7 @@ import { Home } from './pages/Home';
 import { Pricing } from './pages/Pricing';
 import { Services } from './pages/Services';
 import { PastFilings } from './pages/PastFilings';
+import { Compare } from './pages/Compare';
 import { EligibilityCheck } from './pages/EligibilityCheck';
 import { Portal } from './pages/Portal';
 import { Resources } from './pages/Resources';
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
       { path: 'pricing', Component: Pricing },
       { path: 'services', Component: Services },
       { path: 'past-filings', Component: PastFilings },
+      { path: 'compare', Component: Compare },
       { path: 'check', Component: EligibilityCheck },
       { path: 'portal', Component: Portal },
       { path: 'resources', Component: Resources },

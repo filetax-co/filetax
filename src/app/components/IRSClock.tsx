@@ -6,6 +6,36 @@ interface DeadlinePair {
   extension: Date;
 }
 
+interface NextDeadline {
+  target: Date;
+  /** Calendar year the deadline falls in. The tax year it covers is this minus one. */
+  year: number;
+  phase: "primary" | "extension";
+  /**
+   * True once the previous tax year's October extension has passed, which is
+   * exactly the primary-deadline window: 16 October through 15 April. In the
+   * extension window (16 April to 15 October) the prior year is not yet late.
+   */
+  priorYearLate: boolean;
+}
+
+/**
+ * The next deadline that has not yet passed, looking into next year when the
+ * current year's October extension is behind us. Computing only the current
+ * calendar year left the clock dead from 16 October to 31 December.
+ */
+export function getNextDeadline(now: Date): NextDeadline {
+  const startYear = now.getFullYear();
+  for (let year = startYear; year <= startYear + 1; year++) {
+    const { primary, extension } = getIRSDeadlines(year);
+    if (now <= primary) return { target: primary, year, phase: "primary", priorYearLate: true };
+    if (now <= extension) return { target: extension, year, phase: "extension", priorYearLate: false };
+  }
+  // Unreachable: next year's April deadline is always ahead of any date this year.
+  const { primary } = getIRSDeadlines(startYear + 1);
+  return { target: primary, year: startYear + 1, phase: "primary", priorYearLate: true };
+}
+
 function getIRSDeadlines(year: number): DeadlinePair {
   // April 15 23:59:59 ET (EDT = UTC-4) = April 16 03:59:59 UTC
   let primary = new Date(Date.UTC(year, 3, 16, 3, 59, 59));
@@ -31,66 +61,16 @@ export function IRSClock() {
   }, []);
 
   const now = new Date();
-  const year = now.getFullYear();
-  const { primary, extension } = getIRSDeadlines(year);
+  const { target, year, phase, priorYearLate } = getNextDeadline(now);
 
-  if (now > extension) {
-    return (
-      <div className="clock-pastdue">
-        <p style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
-          The filing deadline for {year} has passed.
-        </p>
-        <p style={{ fontSize: "0.9375rem", marginBottom: "1rem" }}>
-          Late filing penalties may apply. File now to limit exposure. Adding a
-          Reasonable Cause Letter gives you the best chance at penalty
-          abatement.
-        </p>
-        <div className="clock-actions">
-          <Link
-            to="/past-filings"
-            style={{
-              background: "white",
-              color: "#B31D1D",
-              padding: "0.625rem 1.25rem",
-              borderRadius: "0.5rem",
-              fontWeight: 600,
-              fontSize: "0.9375rem",
-              textDecoration: "none",
-              display: "inline-block",
-            }}
-          >
-            Fix a Missed Year
-          </Link>
-          <Link
-            to="/check"
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              color: "white",
-              border: "1px solid rgba(255,255,255,0.3)",
-              padding: "0.625rem 1.25rem",
-              borderRadius: "0.5rem",
-              fontWeight: 600,
-              fontSize: "0.9375rem",
-              textDecoration: "none",
-              display: "inline-block",
-            }}
-          >
-            Start My Filing
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  let target = primary;
-  let label = "Next IRS Filing Deadline (Form 5472):";
-  let sublabel = "";
-
-  if (now > primary) {
-    target = extension;
-    label = "April 15 deadline has passed.";
-    sublabel = "If you filed Form 7004, your extended deadline is October 15:";
-  }
+  const label =
+    phase === "extension"
+      ? "April 15 deadline has passed."
+      : "Next IRS Filing Deadline (Form 5472):";
+  const sublabel =
+    phase === "extension"
+      ? `If you filed Form 7004, your extended deadline is October 15, ${year}:`
+      : `For the ${year - 1} tax year, due April 15, ${year}:`;
 
   const diff = target.getTime() - now.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -115,6 +95,13 @@ export function IRSClock() {
           <span className="clock-tag">min</span>
         </div>
       </div>
+      {priorYearLate && (
+        <p className="clock-late-note">
+          The {year - 2} tax year deadline has passed. If you missed it, you can
+          still file voluntarily.{" "}
+          <Link to="/past-filings">Fix a missed year</Link>
+        </p>
+      )}
     </div>
   );
 }

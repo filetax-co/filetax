@@ -60,7 +60,7 @@ export function Services() {
               {[
                 "Print-ready Form 5472 and Pro Forma 1120",
                 "Structured exactly as required by the IRS",
-                "Ready to sign and send by mail or fax",
+                "Signed in your browser, ready to send by mail or fax",
                 "Includes all required schedules and disclosures",
               ].map((item) => (
                 <li key={item} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--tf-border)", display: "flex", gap: "0.75rem", fontSize: "0.9375rem" }}>
@@ -95,16 +95,41 @@ export function Services() {
             <p style={{ fontWeight: 600, color: "var(--tf-muted)", fontSize: "0.875rem", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Sample Output Preview
             </p>
+            {/* The forms are shown complete: they are mostly the filer's own data,
+                so showing them costs nothing. The reasonable cause letter is the
+                opposite, the argument IS the product, so its body is obscured and
+                only the structure, citations, perjury declaration and signature
+                show. Do not "improve" this by revealing the argument paragraphs.
+                See handoff item 22. */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {["Form 5472 (first page)", "Pro Forma 1120 header", "CPA-Authored Reasonable Cause Letter (sample)"].map((label) => (
-                <div key={label} style={{ background: "var(--tf-border)", borderRadius: "0.5rem", aspectRatio: "8.5/11", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-                  <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.04) 4px, rgba(0,0,0,0.04) 8px)" }} />
-                  <p style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, textAlign: "center", padding: "0.5rem", position: "relative", zIndex: 1 }}>{label}</p>
-                </div>
+              {[
+                { src: "/samples/sample-5472.webp", label: "Form 5472, page 1" },
+                { src: "/samples/sample-1120.webp", label: "Pro forma 1120, page 1" },
+                { src: "/samples/sample-rcl.webp", label: "Reasonable cause letter" },
+              ].map((s) => (
+                <figure key={s.src} style={{ margin: 0 }}>
+                  <img
+                    src={s.src}
+                    alt={`${s.label}, completed with sample data and marked SAMPLE`}
+                    width={1224}
+                    height={1584}
+                    loading="lazy"
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: "0.5rem", border: "1px solid var(--tf-border)", background: "white" }}
+                  />
+                  <figcaption style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600, marginTop: "0.375rem" }}>
+                    {s.label}
+                  </figcaption>
+                </figure>
               ))}
             </div>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginTop: "0.625rem" }}>
-              Delivered as a print-ready PDF. Download, sign where required, and mail or fax to the IRS.
+              Produced by the same generator that prepares a real filing, using
+              fictional data for a Delaware LLC with a single foreign owner. The
+              body of the reasonable cause letter is withheld here; you receive it
+              in full with your filing.
+            </p>
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginTop: "0.625rem" }}>
+              You sign in the portal, by drawing your signature or typing your name, and it is applied to your forms before you download. Delivered as a print-ready PDF, ready to mail or fax to the IRS. No printing and scanning to sign.
             </p>
           </div>
 

@@ -56,7 +56,13 @@ export function Home() {
                 padding: "0.75rem 1.75rem",
                 borderRadius: "0.5rem",
                 textDecoration: "none",
-                display: "inline-block",
+                // Centred rather than top-padded, and carrying a transparent
+                // border to match the outlined button beside it. Without the
+                // border the two labels sit a border-width apart vertically.
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid transparent",
                 minHeight: "44px",
               }}
             >
@@ -72,7 +78,9 @@ export function Home() {
                 padding: "0.75rem 1.75rem",
                 borderRadius: "0.5rem",
                 textDecoration: "none",
-                display: "inline-block",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 border: "1px solid oklch(from var(--tf-text, #0F172A) l c h / 0.2)",
                 minHeight: "44px",
               }}
@@ -110,6 +118,14 @@ export function Home() {
           <h2 id="receive-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1.25rem" }}>
             Built for the filings other tools turn away
           </h2>
+          {/* The positioning line. It states the thesis; the five items below are
+              the proof of it, in the same order. Keep them in step: if a claim
+              here stops being true, the bullet under it goes too. */}
+          <p style={{ color: "var(--tf-text)", fontSize: "1.0625rem", fontWeight: 500, lineHeight: 1.6, marginBottom: "1.25rem", maxWidth: "680px" }}>
+            The only Form 5472 platform built for complicated cases: multiple related
+            parties, multiple missed years, fiscal and final-year returns, and one
+            CPA-authored reasonable cause letter covering all of it.
+          </p>
           <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem" }}>
             {[
               `Multiple missed years, one CPA-authored reasonable cause letter covering all of them, charged once, not per year`,
@@ -136,7 +152,19 @@ export function Home() {
             ))}
           </ul>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            You receive print-ready Form 5472 and pro forma 1120 with every required schedule, and you review everything before you download. You sign and send them to the IRS.
+            You receive print-ready Form 5472 and pro forma 1120 with every required schedule, and you review everything before you download. You sign in your browser, by drawing your signature or typing your name, and your signature is applied to the pro forma 1120 and to your reasonable cause letter if you order one. Then you send the package to the IRS.
+          </p>
+          {/* The anchor, and the whole commercial argument in two sentences. It is
+              deliberately a CPA, not the $30 tier: competing on price against the
+              commodity band is a race we do not want to win. Kept to one line so
+              the comparison itself lives on /compare and does not re-inflate this
+              page, which was thinned on purpose. See handoff item 32. */}
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6, marginTop: "1rem" }}>
+            A CPA typically charges $400 to $900 per year for this filing. FileTax is ${PRICE_PER_YEAR}.{" "}
+            <Link to="/compare" style={{ color: "var(--tf-accent)", fontWeight: 600 }}>
+              See how the three options compare
+            </Link>
+            .
           </p>
         </div>
       </section>
@@ -153,7 +181,10 @@ export function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { step: "1", title: "Complete a short eligibility check" },
-              { step: "2", title: "Enter your LLC details and transactions" },
+              // "LLC" was too narrow: intake also collects the owner and every
+              // foreign related party, which is the part that surprises people.
+              // Duplicated verbatim in the product repo's Home.tsx, change both.
+              { step: "2", title: "Enter your details and transactions" },
               { step: "3", title: "Review your complete filing summary" },
               { step: "4", title: "Download IRS-ready forms" },
             ].map((item) => (
@@ -300,6 +331,7 @@ export function Home() {
                   boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
                   display: "flex",
                   flexDirection: "column",
+                  flex: 1,
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
@@ -334,11 +366,12 @@ export function Home() {
                   boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
                   display: "flex",
                   flexDirection: "column",
+                  flex: 1,
                 }}
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission (at launch)</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: you sign the forms, we fax them to the IRS so you never need a printer, and you get a transmission receipt.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: you sign in your browser, we fax the package to the IRS so you never need a printer, and you get a transmission receipt.</p>
                 <Link
                   to="/waitlist?service=irs-fax"
                   style={{

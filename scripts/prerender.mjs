@@ -28,6 +28,7 @@ const STATIC_ROUTES = [
   '/pricing',
   '/services',
   '/past-filings',
+  '/compare',
   '/check',
   '/resources',
   '/faq',

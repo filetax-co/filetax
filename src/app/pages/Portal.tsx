@@ -3,24 +3,6 @@ import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
 
-const FILING_YEARS_DISPLAY: Record<string, string> = {
-  '1': '1 year (current)',
-  '2': '2 years',
-  '3': '3 years',
-  '4': '4 years',
-  '5': '5+ years',
-};
-
-const PORTAL_SECTION_NAMES: Record<string, string> = {
-  b: 'Part III - Monetary transactions',
-  c: 'Part IV - Non-monetary transactions',
-  d: 'Part V - Rents/royalties/licenses',
-  e: 'Part VI - Cost-sharing',
-  f: 'Part VII - Compensation',
-  g: 'Part VIII - Other transactions',
-  h: 'Part IX - Foreign related party info',
-};
-
 const checklistItems = [
   "Your LLC's EIN (Employer Identification Number)",
   "The tax year you are filing for",
@@ -39,21 +21,14 @@ const howItWorksSteps = [
 export function Portal() {
   usePageMeta({
     title: 'Start Your Filing | FileTax.co',
-    description: 'Create your free account and begin your Form 5472 + Pro Forma 1120 filing. Your eligibility answers carry forward automatically. No payment until you download.',
+    description: 'Create your free account and begin your Form 5472 + Pro Forma 1120 filing. No payment until you download.',
     canonical: 'https://filetax.co/portal',
   });
 
+  // Nothing is carried in from the eligibility check, by design. The check runs
+  // entirely in the browser and its answers are never stored or forwarded, which
+  // is what makes the claim on Home.tsx true end to end.
   const [searchParams] = useSearchParams();
-  const years = searchParams.get('years');
-  const sectionsParam = searchParams.get('sections');
-  const partiesParam = searchParams.get('parties');
-  const rclParam = searchParams.get('rcl');
-
-  const activeSections = sectionsParam ? sectionsParam.split(',').filter(Boolean) : [];
-  const parties = partiesParam ? Number(partiesParam) : 1;
-  const includeRCL = rclParam === 'true';
-  const hasPriorYears = !!years;
-  const hasConfig = hasPriorYears || activeSections.length > 0 || parties > 1;
 
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -71,7 +46,7 @@ export function Portal() {
     if (mode === 'signup' && !name.trim()) { setError('Please enter your full name.'); return; }
     setSubmitting(true);
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithOtp({
+    const { error: authError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
         emailRedirectTo: window.location.origin + '/dashboard',
@@ -86,13 +61,12 @@ export function Portal() {
     }
 
     await supabase.from('intake_submissions').insert({
-      user_id: authData?.user?.id ?? null,
+      // signInWithOtp resolves before the magic link is clicked, so there is no
+      // user to link to yet. This was previously written as authData.user.id,
+      // which the types show can only ever be null here.
+      user_id: null,
       full_name: name.trim() || email.trim(),
       email: email.trim(),
-      years_param: years ?? null,
-      sections_param: sectionsParam ?? null,
-      parties_param: parties > 1 ? parties : null,
-      rcl_param: includeRCL || null,
       status: 'pending',
     });
 
@@ -113,62 +87,17 @@ export function Portal() {
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, maxWidth: '520px' }}>
             Free to start. No payment until you are ready to download your completed forms. Takes about 10 minutes.
           </p>
+          {/* Says plainly that the two are not linked. The eligibility check is a
+              gate that runs entirely in the browser and stores nothing, so there
+              is nothing to carry across. Do not soften this into a promise that
+              answers are reused, and do not add query params to seed it. */}
+          <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 400, maxWidth: '520px', marginTop: '0.75rem' }}>
+            The eligibility check and your filing are separate. Nothing you answered
+            there is stored or carried over, which is why you enter your filing
+            details here.
+          </p>
         </div>
       </section>
-
-      {hasConfig && (
-        <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 0' }}>
-          <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '1rem' }}>
-            <div style={{ border: '2px solid #0284C7', borderRadius: '0.75rem', padding: '1.25rem 1.5rem', background: 'rgba(2,132,199,0.03)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
-                <span style={{ display: 'inline-block', background: '#0284C7', color: 'white', borderRadius: '9999px', padding: '0.2rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  Your Filing is Pre-Configured
-                </span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <p style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tf-muted)', marginBottom: '0.5rem' }}>What will be filed</p>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                    <li style={{ display: 'flex', gap: '0.5rem', fontSize: '0.9375rem', color: 'var(--tf-text)' }}>
-                      <span style={{ color: '#059669', fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
-                      Form 5472 + Pro Forma 1120
-                      {hasPriorYears && ` (${FILING_YEARS_DISPLAY[years!] ?? years})`}
-                    </li>
-                    {includeRCL && (
-                      <li style={{ display: 'flex', gap: '0.5rem', fontSize: '0.9375rem', color: 'var(--tf-text)' }}>
-                        <span style={{ color: '#059669', fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
-                        CPA-Authored Reasonable Cause Letter
-                      </li>
-                    )}
-                    {parties > 1 && (
-                      <li style={{ display: 'flex', gap: '0.5rem', fontSize: '0.9375rem', color: 'var(--tf-text)' }}>
-                        <span style={{ color: '#059669', fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
-                        {parties} Form 5472s ({parties - 1} additional {parties - 1 === 1 ? 'party' : 'parties'})
-                      </li>
-                    )}
-                  </ul>
-                </div>
-                {activeSections.length > 0 && (
-                  <div>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tf-muted)', marginBottom: '0.5rem' }}>Sections activated</p>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      {activeSections.map((s) => (
-                        <li key={s} style={{ display: 'flex', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--tf-text)' }}>
-                          <span style={{ color: '#0284C7', fontWeight: 700, flexShrink: 0, fontSize: '0.75rem' }}>&#10003;</span>
-                          {PORTAL_SECTION_NAMES[s] ?? s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', fontWeight: 400, marginTop: '0.875rem', paddingTop: '0.875rem', borderTop: '1px solid var(--tf-border)' }}>
-                Your answers from the eligibility check are carried into the portal automatically.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
 
       <section style={{ background: 'var(--tf-bg)', padding: '0 1rem 3rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '1.5rem' }}>

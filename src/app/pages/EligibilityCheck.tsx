@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { InfoTip } from "../components/InfoTip";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
@@ -22,10 +22,10 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pri
 // chosen later in the multi-year flow, where the incorporation date is
 // known and can rule years out.
 //
-// NOTE: this links to the portal bare, with no query string. Portal.tsx
-// reads `years`, `sections`, `parties` and `rcl` to render its
-// "Your Filing is Pre-Configured" panel, and nothing sets them, so that
-// panel never shows and the answers below are re-asked. See handoff item 36.
+// This links to the portal bare, with no query string, deliberately. Nothing
+// from this screen is carried across or stored anywhere, which is what makes
+// "your eligibility answers never leave your browser" true end to end. Do not
+// re-add query params to seed the portal. See handoff item 36.
 // ---------------------------------------------------------------------
 const PORTAL_PATH = "/portal";
 
@@ -183,36 +183,6 @@ function YesNoButtons({
         );
       })}
     </div>
-  );
-}
-
-// Amber, and deliberately not the red used by the refer screen. This says
-// "there is more to your position than this filing", not "we cannot help you".
-// Sits inline after the question text rather than as a block underneath it.
-// These explanations are the difference between a confident answer and a wrong
-// one, but printing all of them at once made each step a wall. Same `.tf-tooltip`
-// pattern as the pricing page: hover, and focus-within so a tap or the keyboard
-// opens it too.
-function InfoTip({ label, text }: { label: string; text: string }) {
-  return (
-    <span className="tf-tooltip" style={{ marginLeft: "0.375rem", verticalAlign: "middle" }}>
-      <button
-        type="button"
-        aria-label={label}
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "var(--tf-muted)",
-          padding: "2px",
-          display: "inline-flex",
-          alignItems: "center",
-        }}
-      >
-        <Info size={16} />
-      </button>
-      <span className="tf-tooltip-text">{text}</span>
-    </span>
   );
 }
 

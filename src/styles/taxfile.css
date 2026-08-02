@@ -78,6 +78,17 @@ h1, h2, h3 {
   color: #94A3B8;
   margin-bottom: 0.75rem;
 }
+.clock-late-note {
+  font-weight: 400;
+  font-size: 0.875rem;
+  color: #CBD5E1;
+  margin-top: 1rem;
+}
+.clock-late-note a {
+  color: white;
+  font-weight: 600;
+  text-decoration: underline;
+}
 .clock-units {
   display: flex;
   justify-content: center;

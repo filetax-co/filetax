@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
-import { Info } from "lucide-react";
+import { InfoTip } from "../components/InfoTip";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
@@ -67,7 +67,7 @@ const cards: PricingCard[] = [
     title: "Add-On: IRS Fax Transmission (at launch)",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
-    description: "Not yet available. At launch: you sign the completed forms, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
+    description: "Not yet available. At launch: you sign in your browser, we fax the completed package to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
     note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
     cta: "Notify Me When Fax Launches",
     ctaLink: FAX_URL,
@@ -135,11 +135,16 @@ export function Pricing() {
       <IRSClock />
 
       <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 1.5rem" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        {/* 1100px, matching the pricing card grid below, so the callout lines up
+            with the cards instead of sitting inset and narrower than them. The
+            prose keeps its own narrower measure: a 1100px line length is not
+            readable, but a full-width callout is what makes the section look
+            deliberate. */}
+        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.5rem" }}>
             Per-filing pricing. No subscriptions.
           </h1>
-          <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400, marginBottom: "1.5rem" }}>
+          <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400, marginBottom: "1.5rem", maxWidth: "760px" }}>
             The IRS penalty for a missed Form 5472 is $25,000 per form, per tax year. Catching up on a missed year costs ${PRICE_PER_YEAR + PRICE_RCL}.
           </p>
           <div style={{ background: "var(--tf-surface)", border: "2px solid #0284C7", borderRadius: "0.75rem", padding: "1.25rem 1.5rem" }}>
@@ -191,23 +196,7 @@ export function Pricing() {
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <h2 style={{ fontSize: "1rem", lineHeight: 1.4, flex: 1 }}>{card.title}</h2>
                   {card.tooltip && (
-                    <div className="tf-tooltip" style={{ flexShrink: 0 }}>
-                      <button
-                        aria-label="More info"
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--tf-muted)",
-                          padding: "2px",
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Info size={16} />
-                      </button>
-                      <div className="tf-tooltip-text">{card.tooltip}</div>
-                    </div>
+                    <InfoTip text={card.tooltip} label={`About ${card.title}`} />
                   )}
                 </div>
 
