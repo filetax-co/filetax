@@ -141,6 +141,9 @@ export function Services() {
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             For LLCs that missed one or more prior years. We prepare the past-year Form 5472 and Pro Forma 1120 and pair them with a CPA-Authored Reasonable Cause Letter requesting that the automatic $25,000 penalty be waived. Voluntary catch-up filings work best before the IRS contacts you.
           </p>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", lineHeight: 1.7, fontWeight: 400, marginBottom: "1rem" }}>
+            To be precise about what CPA-Authored means: the letter is generated from a framework written by a practising U.S. CPA, populated with your filing details and the circumstances you select. It does not include an individual CPA review of your filing, and it is not tax advice.
+          </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
             <strong>${PRICE_PER_YEAR + PRICE_RCL} for one missed year</strong> (${PRICE_PER_YEAR} filing + one ${PRICE_RCL} reasonable cause letter). The letter is charged once however many years you file, so three missed years is ${3 * PRICE_PER_YEAR + PRICE_RCL}, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
           </p>

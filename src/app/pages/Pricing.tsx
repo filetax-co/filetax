@@ -53,7 +53,7 @@ const cards: PricingCard[] = [
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
     price: `+$${PRICE_RCL}`,
     priceNote: "one letter, covers every year",
-    description: `Written by a practising CPA to argue for abatement of the automatic $25,000 penalty, auto-populated with your filing details. Charged once, however many years you are catching up on, never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
+    description: `Generated from a framework written by a practising U.S. CPA to argue for abatement of the automatic $25,000 penalty, populated with your filing details. Charged once, however many years you are catching up on, never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
   },

@@ -37,7 +37,7 @@ const faqs = [
   },
   {
     q: "What is a reasonable cause letter and does it actually work?",
-    a: "A reasonable cause letter is a written argument submitted to the IRS alongside a late filing, requesting that the automatic $25,000 penalty be waived. The IRS may grant relief if the failure was due to reasonable cause and not willful neglect. The most common successful argument for foreign founders is a genuine lack of knowledge of the requirement. Our letters are authored by a licensed CPA and structured to align with IRS reasonable cause standards. You select the situation that fits your case from a set of structured categories, and the system populates the letter with your filing details. The result is included in your download alongside the completed forms.",
+    a: "A reasonable cause letter is a written argument submitted to the IRS alongside a late filing, requesting that the automatic $25,000 penalty be waived. The IRS may grant relief if the failure was due to reasonable cause and not willful neglect. The most common successful argument for foreign founders is a genuine lack of knowledge of the requirement. The letter is generated from a framework written by a practising U.S. CPA and structured to align with IRS reasonable cause standards. You select the situation that fits your case from a set of structured categories, and the system populates the letter with your filing details. It does not include an individual CPA review of your filing, and it is not tax advice. The result is included in your download alongside the completed forms.",
   },
   {
     q: "What is Form 8832 and when do I need it?",
@@ -122,7 +122,7 @@ export function FAQ() {
                 >
                   {faq.q}
                   <span style={{ color: "#0284C7", fontSize: "1.25rem", lineHeight: 1, flexShrink: 0, marginLeft: "1rem" }}>
-                    {open === i ? "+" : "+"}
+                    {open === i ? "−" : "+"}
                   </span>
                 </summary>
                 <div

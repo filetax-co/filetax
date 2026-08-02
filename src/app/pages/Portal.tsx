@@ -40,6 +40,7 @@ export function Portal() {
   usePageMeta({
     title: 'Start Your Filing | FileTax.co',
     description: 'Create your free account and begin your Form 5472 + Pro Forma 1120 filing. Your eligibility answers carry forward automatically. No payment until you download.',
+    canonical: 'https://filetax.co/portal',
   });
 
   const [searchParams] = useSearchParams();
@@ -136,7 +137,7 @@ export function Portal() {
                     {includeRCL && (
                       <li style={{ display: 'flex', gap: '0.5rem', fontSize: '0.9375rem', color: 'var(--tf-text)' }}>
                         <span style={{ color: '#059669', fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
-                        CPA-Prepared Reasonable Cause Letter
+                        CPA-Authored Reasonable Cause Letter
                       </li>
                     )}
                     {parties > 1 && (
@@ -178,7 +179,7 @@ export function Portal() {
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: '52px' }}
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
-              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '+' : '+'}</span>
+              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '−' : '+'}</span>
             </button>
             {howItWorksOpen && (
               <div style={{ borderTop: '1px solid var(--tf-border)', padding: '1.25rem 1.25rem 1.5rem' }}>

@@ -65,7 +65,7 @@ export function PastFilings() {
             The most common argument for foreign founders is that they were not aware of the filing requirement. This is a credible position, given that the requirement is rarely disclosed by LLC formation services. However, the argument must be presented correctly and supported with facts.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7 }}>
-            Our letters are authored by a licensed CPA. You select the situation that best describes your case from a structured set of categories aligned with IRS reasonable cause standards, and the system populates the letter with your filing details. The output covers the facts of your filing, the applicable IRS standards, and the request for abatement, in the format the IRS expects.
+            The letter is generated from a framework written by a practising U.S. CPA. You select the situation that best describes your case from a structured set of categories aligned with IRS reasonable cause standards, and the system populates the letter with your filing details. The output covers the facts of your filing, the applicable IRS standards, and the request for abatement, in the format the IRS expects. It does not include an individual CPA review of your filing.
           </p>
         </div>
       </section>
