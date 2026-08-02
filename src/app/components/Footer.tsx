@@ -12,6 +12,7 @@ const footerLinks = [
   { to: "/services", label: "Services" },
   { to: "/past-filings", label: "Past Filings" },
   { to: "/compare", label: "Compare" },
+  { to: "/guide", label: "How Filing Works" },
   { to: "/resources", label: "Resources" },
   { to: "/faq", label: "FAQ" },
   { to: "/check", label: "Check Eligibility" },

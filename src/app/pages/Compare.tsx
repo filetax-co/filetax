@@ -1,6 +1,5 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
-import { useJsonLd } from "../hooks/useJsonLd";
 import { InfoTip } from "../components/InfoTip";
 import {
   PRICE_PER_YEAR,
@@ -23,12 +22,12 @@ import {
 // wrong on /past-filings for weeks was a hardcoded literal, and two separate
 // AI reviews then built recommendations on the wrong number.
 //
-// COMPETITORS ARE NOT NAMED, deliberately. Only one competitor has ever been
-// seen from the inside, so a named factual claim would rest on a single
-// walkthrough and would need re-verifying every time they shipped. The
-// "questions to ask" section below converts each finding into a test the
-// reader can run themselves, which is both safer and more persuasive than an
-// accusation they cannot check.
+// COMPETITORS ARE NOT DISCUSSED AT ALL. An earlier version carried a
+// "questions to ask before you pay for any tool" section. It was removed on
+// purpose: every question in it was a free product brief for a competitor,
+// and one of them ("can I see the forms before I pay") described something we
+// do not currently offer either. The page compares us to a CPA and to doing
+// it yourself. That is the whole scope.
 // ---------------------------------------------------------------------
 
 // Typical CPA engagement for this filing, per year. Used as the anchor.
@@ -61,8 +60,8 @@ const ROWS: Row[] = [
     label: "Catching up several missed years",
     tip:
       "A reasonable cause statement is what asks the IRS to abate the penalty. " +
-      "One letter can cover every late year in the same request, so being charged " +
-      "per year for it is a pricing choice, not a requirement.",
+      "One letter can cover every late year in the same request, so we charge for " +
+      "it once no matter how many years you are catching up.",
     diy: "You write the reasonable cause statement yourself",
     filetax: `$${PRICE_PER_YEAR} per year, plus one $${PRICE_RCL} letter covering every year`,
     cpa: "Usually billed per year, letter included",
@@ -99,10 +98,11 @@ const ROWS: Row[] = [
   {
     label: "Where your data goes",
     tip:
-      "Your forms are assembled in your browser. We never ask for a bank login, " +
-      "and we never ask you to upload bank statements.",
+      "We hold the details you enter so we can prepare and re-open your filing. " +
+      "Your EIN and any foreign tax ID are encrypted. We never ask for a bank " +
+      "login, and we never ask you to upload bank statements.",
     diy: "Stays with you",
-    filetax: "Assembled in your browser, no bank login, no statements",
+    filetax: "Held by us, EIN and foreign tax ID encrypted, no bank login, no statements",
     cpa: "You send documents to your accountant",
   },
   {
@@ -122,44 +122,6 @@ const ROWS: Row[] = [
   },
 ];
 
-// Questions worth asking of ANY tool, including this one. Each is a real
-// failure mode observed in this market, phrased as something the reader can
-// check for themselves.
-const QUESTIONS: { q: string; why: string }[] = [
-  {
-    q: "Does it use the correct form revision for each year I am filing?",
-    why:
-      "Ask to see a back year before you pay. A tool that renders every year on " +
-      "the same revision will show you the same form twice.",
-  },
-  {
-    q: "Can it file more than one year in a single job?",
-    why:
-      "Several tools sell one tax year per package while advertising catch-up " +
-      "filing. Check whether three missed years means one purchase or three.",
-  },
-  {
-    q: "Is the reasonable cause letter charged once, or once per year?",
-    why:
-      "One letter can cover every late year. Being charged per year for it can " +
-      "quietly double the cost of a catch-up.",
-  },
-  {
-    q: "Can I see the completed forms before I pay?",
-    why: "If you cannot, you are buying an outcome you have not seen.",
-  },
-  {
-    q: "What happens if I find a typo after paying?",
-    why: "Ask before you buy, not after you notice.",
-  },
-  {
-    q: "Do I have to hand over bank statements or a bank login?",
-    why:
-      "Convenient, but it is a lot of financial history to give a website. Ask " +
-      "whether it is required or optional.",
-  },
-];
-
 const cellStyle: React.CSSProperties = {
   padding: "0.875rem 1rem",
   fontSize: "0.875rem",
@@ -172,18 +134,8 @@ export function Compare() {
   usePageMeta({
     title: "FileTax vs a CPA vs Doing It Yourself | Form 5472 | FileTax.co",
     description:
-      `Compare the three ways to file Form 5472 and the pro forma 1120: yourself, with FileTax at $${PRICE_PER_YEAR} per year, or with a CPA at $${CPA_LOW} to $${CPA_HIGH} per year. Includes the questions to ask before you pay for any of them.`,
+      `Compare the three ways to file Form 5472 and the pro forma 1120: yourself, with FileTax at $${PRICE_PER_YEAR} per year, or with a CPA at $${CPA_LOW} to $${CPA_HIGH} per year, including when a CPA is the right choice.`,
     canonical: "https://filetax.co/compare",
-  });
-
-  useJsonLd("compare-faq", {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: QUESTIONS.map((item) => ({
-      "@type": "Question",
-      name: item.q,
-      acceptedAnswer: { "@type": "Answer", text: item.why },
-    })),
   });
 
   return (
@@ -277,14 +229,27 @@ export function Compare() {
             When you should not use FileTax
           </h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            A comparison page that concludes you should always buy the product is not
-            a comparison. Go to a CPA if any of these apply:
+            We are not the right answer for every LLC. Go to a CPA if any of these
+            apply to you:
           </p>
           <ul style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, paddingLeft: "1.25rem", marginBottom: "1.25rem" }}>
-            <li>Your LLC has more than one member, or is taxed as a corporation.</li>
-            <li>You have income the IRS treats as U.S.-source, or staff or premises in the U.S. Your own return is then in question, and this flow does not prepare it.</li>
-            <li>The IRS has already contacted you about a penalty. Voluntary catch-up is a different position from responding to a notice.</li>
-            <li>You are not sure what your LLC actually did in a given year.</li>
+            <li>
+              <strong style={{ fontWeight: 600 }}>Your LLC is not a single-member LLC.</strong>{" "}
+              More than one member, or taxed as a corporation, means a different return.
+            </li>
+            <li>
+              <strong style={{ fontWeight: 600 }}>You have a U.S. footprint.</strong>{" "}
+              U.S.-source income, staff, or premises puts your own return in question, and
+              this flow does not prepare it.
+            </li>
+            <li>
+              <strong style={{ fontWeight: 600 }}>The IRS has already contacted you about a penalty.</strong>{" "}
+              Responding to a notice is a different position from a voluntary catch-up.
+            </li>
+            <li>
+              <strong style={{ fontWeight: 600 }}>You are not sure what your LLC actually did in a given year.</strong>{" "}
+              The numbers have to come from somewhere before any form can be filled in.
+            </li>
           </ul>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
             Our eligibility check screens for most of this and will tell you to see a
@@ -297,25 +262,7 @@ export function Compare() {
         </div>
       </section>
 
-      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="questions-heading">
-        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
-          <h2 id="questions-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.75rem" }}>
-            What to ask before you pay for any Form 5472 tool
-          </h2>
-          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6, marginBottom: "1.5rem" }}>
-            Including this one. Every question below describes something that
-            genuinely goes wrong in this market.
-          </p>
-          {QUESTIONS.map((item) => (
-            <div key={item.q} style={{ paddingBottom: "1.125rem", marginBottom: "1.125rem", borderBottom: "1px solid var(--tf-border)" }}>
-              <h3 style={{ fontSize: "1rem", marginBottom: "0.3rem", lineHeight: 1.4 }}>{item.q}</h3>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.6 }}>{item.why}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem 4rem" }}>
+      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem 4rem" }}>
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>
           <h2 style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.75rem" }}>
             Find out where you stand
