@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 import { Layout } from './components/Layout';
+import { RouteError } from './components/RouteError';
 import { Home } from './pages/Home';
 import { Pricing } from './pages/Pricing';
 import { Services } from './pages/Services';
@@ -31,6 +32,11 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: Layout,
+    // Without this, a render error anywhere under Layout shows React Router's
+    // developer screen: "Unexpected Application Error!", a raw stack trace and
+    // a note addressed to "Hey developer". Fine locally, not for someone who
+    // arrived here about a $25,000 penalty. See RouteError.
+    ErrorBoundary: RouteError,
     children: [
       { index: true, Component: Home },
       { path: 'pricing', Component: Pricing },

@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { PenaltyCalculator } from "../components/PenaltyCalculator";
 import { PRICE_PER_YEAR, PRICE_RCL } from "../../lib/pricing";
 
 const FIX_MISSED_YEAR_URL = "/check";
@@ -25,25 +26,22 @@ export function PastFilings() {
         </div>
       </section>
 
-      {/* Penalty Risk Scale */}
+      {/* Penalty calculator. Was a static scale showing one hardcoded example
+          (2 LLCs, 3 years, $150,000), which left every other filer doing the
+          arithmetic themselves and, because it assumed a single related party,
+          understated the common case. The gradient bar is deliberately kept:
+          it was the piece of this page people responded to, so the calculator
+          is built around it rather than replacing it with a form. */}
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="penalty-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h2 id="penalty-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1.5rem" }}>Penalty Risk Scale</h2>
-          <div style={{ marginBottom: "0.75rem" }}>
-            <div className="penalty-scale" role="img" aria-label="Penalty scale from $25,000 to $150,000+" />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.375rem" }}>
-            {["$25,000", "$50,000", "$75,000", "$100,000", "$150,000+"].map((tick) => (
-              <span key={tick} style={{ color: "var(--tf-muted)", fontSize: "0.75rem", fontWeight: 600 }}>{tick}</span>
-            ))}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-            <span style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400 }}>1 LLC, 1 year</span>
-            <span style={{ color: "#B31D1D", fontSize: "0.8125rem", fontWeight: 600 }}>2 LLCs, 3 years</span>
-          </div>
-          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-            Two LLCs, three unfiled years equals $150,000 in potential penalties. Catching up on one year costs ${PRICE_PER_YEAR + PRICE_RCL} in total.
+          <h2 id="penalty-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.5rem" }}>
+            What this is costing you
+          </h2>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6, marginBottom: "1.75rem" }}>
+            The IRS penalty is $25,000 per form, per tax year, and it is automatic.
+            Set your situation to see the exposure and what clearing it costs.
           </p>
+          <PenaltyCalculator />
         </div>
       </section>
 
