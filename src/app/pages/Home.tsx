@@ -82,7 +82,7 @@ export function Home() {
           </div>
 
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2.5rem" }}>
-            Start without an account. Eligibility check takes about 2 minutes.
+            The eligibility check is live now and takes about 2 minutes. Filing opens ahead of the April 15, 2027 deadline.
           </p>
         </div>
 
@@ -96,10 +96,10 @@ export function Home() {
             Why this keeps happening
           </h2>
           <p style={{ color: "var(--tf-text)", fontSize: "1rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            LLC formation services rarely mention Form 5472 to non-U.S. founders. Most owners only discover the requirement when a U.S. bank, a visa preparer, or an acquirer asks for prior tax filings. By that point, the $25,000 per year penalty clock has been running, often for two or three years. The good news: the IRS allows voluntary catch-up filings with a reasonable cause statement, and self-correcting before the IRS contacts you significantly improves the outcome.
+            LLC formation services rarely mention Form 5472 to non-U.S. founders. Most owners only discover the requirement when a U.S. bank, a visa preparer, or an acquirer asks for prior tax filings. By that point the penalty clock has been running, often for two or three years. The good news: the IRS allows voluntary catch-up filings with a reasonable cause statement, and self-correcting before the IRS contacts you significantly improves the outcome.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            Forms generated strictly per IRS Instructions for Form 5472 (Rev. December 2024). Designed specifically for non-U.S. founders with U.S. single-member LLCs.
+            Prepared per the IRS Instructions for Form 5472, on the form revision the IRS had in force for the tax year you are filing. Designed specifically for non-U.S. founders with U.S. single-member LLCs.
           </p>
         </div>
       </section>
@@ -108,15 +108,15 @@ export function Home() {
       <section style={{ background: "var(--tf-bg)", padding: "4rem 1rem" }} aria-labelledby="receive-heading">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="receive-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1.25rem" }}>
-            What you receive
+            Built for the filings other tools turn away
           </h2>
           <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem" }}>
             {[
-              "Print-ready Form 5472 and Pro Forma 1120",
-              "Structured exactly as required by the IRS",
-              "Ready to sign and send by mail or fax",
-              "Includes all required schedules and disclosures",
-              "Reasonable cause letter for past-year filings",
+              `Multiple missed years, one CPA-authored reasonable cause letter covering all of them, charged once, not per year`,
+              "Multiple foreign related parties, with a separate Form 5472 for each",
+              "Fiscal-year filers, and final returns for an LLC you have closed",
+              "We never ask for your bank statements, and your eligibility answers never leave your browser",
+              "Download your filing again any time, years later",
             ].map((item) => (
               <li
                 key={item}
@@ -136,7 +136,7 @@ export function Home() {
             ))}
           </ul>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            You review everything before downloading. You sign and submit, or add the optional fax transmission.
+            You receive print-ready Form 5472 and pro forma 1120 with every required schedule, and you review everything before you download. You sign and send them to the IRS.
           </p>
         </div>
       </section>
@@ -232,7 +232,7 @@ export function Home() {
               <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
               <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from ${PRICE_PER_YEAR + PRICE_RCL}</p>
               <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Catch up on a missed year. Filed correctly the first time.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>${PRICE_PER_YEAR} per year + one ${PRICE_RCL} reasonable cause letter covering every year. One-time cost.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>${PRICE_PER_YEAR} per year, plus one ${PRICE_RCL} reasonable cause letter covering every year. Three missed years is ${3 * PRICE_PER_YEAR + PRICE_RCL} in total, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}. The letter is never charged twice.</p>
               <Link
                 to="/past-filings"
                 style={{
@@ -399,10 +399,9 @@ export function Home() {
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div className="flex flex-wrap gap-3 justify-center">
             {[
-              "Forms per IRS Instructions Rev. December 2024",
-              "Pay-per-filing. No subscription.",
-              "Start without an account.",
-              "IRS penalty starts at $25,000 per missed form, per year",
+              "Each year prepared on the IRS form revision in force for that year",
+              "Reasonable cause letter written by a practising U.S. CPA",
+              "Not every LLC is a fit. The eligibility check will tell you.",
             ].map((item) => (
               <span
                 key={item}
@@ -431,7 +430,7 @@ export function Home() {
             Voluntary catch-up filings work best before the IRS contacts you.
           </p>
           <p style={{ color: "var(--tf-muted)", fontWeight: 500, fontSize: "1rem", marginBottom: "1.75rem" }}>
-            Each unfiled year carries a $25,000 IRS penalty. Filing now keeps you in voluntary territory.
+            Every unfiled year adds to your exposure. Filing now keeps you in voluntary territory.
           </p>
           <Link
             to="/past-filings"

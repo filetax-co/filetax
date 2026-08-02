@@ -25,7 +25,7 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.75rem" }}>Services</h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
-            Built specifically for foreign-owned U.S. single-member LLCs. Forms generated strictly to IRS Instructions for Form 5472 (Rev. December 2024). Reasonable cause letters authored by a licensed CPA, structured to align with IRS standards.
+            Built specifically for foreign-owned U.S. single-member LLCs. Forms generated strictly to the IRS Instructions for Form 5472, and rendered on the revision of Form 5472 and Form 1120 that the IRS had in force for the tax year you are filing, not on the current year's form for every year.
           </p>
         </div>
       </section>
@@ -47,6 +47,10 @@ export function Services() {
           <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>What counts as a reportable transaction?</h3>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
             Reportable transactions include any monetary or non-monetary exchange between the foreign-owned LLC and a foreign related party: capital contributions, distributions, loans, payments for services, and the act of forming the LLC itself.
+          </p>
+          <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>Non-monetary and below-market transfers</h3>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
+            Not every reportable transaction is a payment. Property transferred to or from the LLC, and anything exchanged at less than fair market value, is reported in Part VI rather than collapsed into a cash figure. Most tools built for this form stop at the monetary parts and have nowhere to put these.
           </p>
           <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>The penalty stakes</h3>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>

@@ -149,9 +149,17 @@ export function Pricing() {
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.5rem" }}>
             Per-filing pricing. No subscriptions.
           </h1>
-          <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400 }}>
-            Pay only for what you file. Start without an account.
+          <p style={{ color: "var(--tf-muted)", fontSize: "1.0625rem", fontWeight: 400, marginBottom: "1.5rem" }}>
+            The IRS penalty for a missed Form 5472 is $25,000 per form, per tax year. Catching up on a missed year costs ${PRICE_PER_YEAR + PRICE_RCL}.
           </p>
+          <div style={{ background: "var(--tf-surface)", border: "2px solid #0284C7", borderRadius: "0.75rem", padding: "1.25rem 1.5rem" }}>
+            <p style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1.0625rem", marginBottom: "0.375rem" }}>
+              Missed three years? ${3 * PRICE_PER_YEAR + PRICE_RCL} total, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
+            </p>
+            <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
+              The reasonable cause letter is charged once for the whole job, however many years you are catching up on. It is never charged per year.
+            </p>
+          </div>
         </div>
       </section>
 

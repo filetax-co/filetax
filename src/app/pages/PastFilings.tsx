@@ -47,7 +47,7 @@ export function PastFilings() {
             <span style={{ color: "#B31D1D", fontSize: "0.8125rem", fontWeight: 600 }}>2 LLCs, 3 years</span>
           </div>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-            Two LLCs, three unfiled years equals $150,000 in potential penalties. Our $350 total solution covers one year completely.
+            Two LLCs, three unfiled years equals $150,000 in potential penalties. Catching up on one year costs ${PRICE_PER_YEAR + PRICE_RCL} in total.
           </p>
         </div>
       </section>
@@ -88,9 +88,14 @@ export function PastFilings() {
               <span style={{ fontWeight: 700, color: "#0284C7", fontSize: "1.375rem" }}>${PRICE_PER_YEAR + PRICE_RCL}</span>
             </div>
           </div>
-          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>
-            One-time cost. No subscription. The letter is charged once no matter how many years you are catching up on, so three missed years is ${3 * PRICE_PER_YEAR} plus one ${PRICE_RCL} letter = ${3 * PRICE_PER_YEAR + PRICE_RCL}, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
-          </p>
+          <div style={{ background: "var(--tf-bg)", border: "2px solid #0284C7", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "1.5rem" }}>
+            <p style={{ fontWeight: 700, color: "var(--tf-text)", fontSize: "1.0625rem", marginBottom: "0.375rem" }}>
+              Missed three years? ${3 * PRICE_PER_YEAR + PRICE_RCL} total, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
+            </p>
+            <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
+              ${PRICE_PER_YEAR} per year covers the filings. The reasonable cause letter is ${PRICE_RCL} once, however many years you are catching up on. You never pay for it twice.
+            </p>
+          </div>
 
           <div style={{ background: "#B31D1D", color: "white", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "2rem" }}>
             <p style={{ fontWeight: 600, fontSize: "0.9375rem" }}>
