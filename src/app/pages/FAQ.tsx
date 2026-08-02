@@ -44,6 +44,15 @@ const faqs = [
     a: "Form 8832 is an entity classification election that changes how the IRS treats your LLC for tax purposes. By default, a single-member LLC is treated as a disregarded entity. If you want to be taxed as a C-Corporation instead, you file Form 8832 to elect that status. It is separate from the Form 5472 filing requirement, and electing C-Corporation treatment does not remove that requirement. People often ask about Form 2553, the S-Corporation election, at the same time. That one is not available here: an S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot elect S status at all.",
   },
   {
+    // Moved here from /services on 3 Aug 2026, where it was four sentences
+    // explaining why a product we do not sell does not apply to you, on the
+    // page where people decide whether to buy. Its own question here because
+    // "can my foreign-owned LLC elect S corp" is a real search, and because it
+    // is the single clearest statement of who this product is for.
+    q: "Can my foreign-owned LLC elect S-Corporation status with Form 2553?",
+    a: "No, and this is a hard rule rather than a limitation of our service. An S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot make the election at all. No preparer can file it for you. This is also why the S-corp advice you may have read elsewhere, which is usually written for U.S. owners, does not apply to you. If your circumstances have changed, for example you are now a U.S. resident or a U.S. person is joining the ownership, speak to a CPA about whether an S election has become available. Form 8832, electing C-Corporation treatment, is a different election and is open to you.",
+  },
+  {
     q: "Is my transaction data safe?",
     a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Form data you enter through the portal is stored encrypted on Supabase. We do not currently delete data after your session, and there is no automatic data-deletion schedule. If you would like your data removed, contact us at hello@filetax.co.",
   },

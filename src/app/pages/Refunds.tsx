@@ -105,8 +105,7 @@ export function Refunds() {
 
           <h2 style={styles.h2}>4. IRS fax transmission</h2>
           <p style={styles.p}>
-            Fax transmission is not yet available. When it launches, the ${PRICE_FAX} fee is
-            covered by its own guarantee:
+            The ${PRICE_FAX} fax fee is covered by its own guarantee:
           </p>
           <ul style={styles.ul}>
             <li style={styles.li}>if a transmission fails, we retry automatically, at least twice</li>

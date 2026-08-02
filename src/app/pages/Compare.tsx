@@ -122,6 +122,29 @@ const ROWS: Row[] = [
   },
 ];
 
+// Conditions that disqualify a filer. Rendered with the same marker-plus-rule
+// grammar as "What you receive" on /services, but in the refer red rather than
+// the confirming green: these are reasons to go elsewhere, and a green tick
+// beside "the IRS has already contacted you" would read as a feature.
+const NOT_FOR: { label: string; body: string }[] = [
+  {
+    label: "Your LLC is not a single-member LLC.",
+    body: "More than one member, or taxed as a corporation, means a different return.",
+  },
+  {
+    label: "You have a U.S. footprint.",
+    body: "U.S.-source income, staff, or premises puts your own return in question, and this flow does not prepare it.",
+  },
+  {
+    label: "The IRS has already contacted you about a penalty.",
+    body: "Responding to a notice is a different position from a voluntary catch-up.",
+  },
+  {
+    label: "You are not sure what your LLC actually did in a given year.",
+    body: "The numbers have to come from somewhere before any form can be filled in.",
+  },
+];
+
 const cellStyle: React.CSSProperties = {
   padding: "0.875rem 1rem",
   fontSize: "0.875rem",
@@ -170,7 +193,12 @@ export function Compare() {
                     &nbsp;
                   </th>
                   <th scope="col" style={{ ...cellStyle, textAlign: "left", fontWeight: 700 }}>Doing it yourself</th>
-                  <th scope="col" style={{ ...cellStyle, textAlign: "left", fontWeight: 700, color: "var(--tf-accent)" }}>FileTax</th>
+                  {/* Same weight and colour as the other two headers, on
+                      purpose. This was the accent blue until 3 Aug 2026, which
+                      put a visual thumb on our own column of a page whose whole
+                      claim is that it is an honest comparison. The rows make
+                      the argument; the header should not pre-empt it. */}
+                  <th scope="col" style={{ ...cellStyle, textAlign: "left", fontWeight: 700 }}>FileTax</th>
                   <th scope="col" style={{ ...cellStyle, textAlign: "left", fontWeight: 700 }}>A CPA</th>
                 </tr>
               </thead>
@@ -232,24 +260,28 @@ export function Compare() {
             We are not the right answer for every LLC. Go to a CPA if any of these
             apply to you:
           </p>
-          <ul style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, paddingLeft: "1.25rem", marginBottom: "1.25rem" }}>
-            <li>
-              <strong style={{ fontWeight: 600 }}>Your LLC is not a single-member LLC.</strong>{" "}
-              More than one member, or taxed as a corporation, means a different return.
-            </li>
-            <li>
-              <strong style={{ fontWeight: 600 }}>You have a U.S. footprint.</strong>{" "}
-              U.S.-source income, staff, or premises puts your own return in question, and
-              this flow does not prepare it.
-            </li>
-            <li>
-              <strong style={{ fontWeight: 600 }}>The IRS has already contacted you about a penalty.</strong>{" "}
-              Responding to a notice is a different position from a voluntary catch-up.
-            </li>
-            <li>
-              <strong style={{ fontWeight: 600 }}>You are not sure what your LLC actually did in a given year.</strong>{" "}
-              The numbers have to come from somewhere before any form can be filled in.
-            </li>
+          <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1.25rem" }}>
+            {NOT_FOR.map((item, i) => (
+              <li
+                key={item.label}
+                style={{
+                  display: "flex",
+                  gap: "0.75rem",
+                  padding: "0.75rem 0",
+                  borderTop: i === 0 ? "none" : "1px solid var(--tf-border)",
+                  color: "var(--tf-text)",
+                  fontSize: "0.9375rem",
+                  lineHeight: 1.65,
+                }}
+              >
+                <span aria-hidden="true" style={{ color: "#B31D1D", fontWeight: 700, flexShrink: 0, lineHeight: 1.65 }}>
+                  &#10005;
+                </span>
+                <span>
+                  <strong style={{ fontWeight: 600 }}>{item.label}</strong> {item.body}
+                </span>
+              </li>
+            ))}
           </ul>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
             Our eligibility check screens for most of this and will tell you to see a

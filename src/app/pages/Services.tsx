@@ -3,10 +3,15 @@ import { usePageMeta } from "../hooks/usePageMeta";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
-const PORTAL_URL = "/portal";
-// IRS fax is priced and sold but NOT BUILT, so its section still collects
-// interest. Remove with the commit that ships fax. See handoff item 1.
-const FAX_URL = "/waitlist?service=irs-fax";
+// The Form 8832 classification change is PRICED BUT NOT BUILT, so its section
+// collects interest rather than starting a filing. It carried a confident
+// "Start Filing" button into the portal until 3 Aug 2026, for a service that
+// does not exist. Swap this for the real link and drop the "not yet available"
+// copy in the commit that ships it.
+//
+// IRS FAX IS LIVE as of 3 Aug 2026, per the owner. Older notes calling it
+// unbuilt are the stale ones.
+const CLASSIFICATION_URL = "/waitlist?service=llc-classification";
 
 export function Services() {
   usePageMeta({
@@ -37,21 +42,25 @@ export function Services() {
               One Filing. Two Forms. One Price. The IRS requires Form 5472 to be attached to a Pro Forma 1120. They cannot be filed separately.
             </p>
           </div>
-          <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>Who needs to file?</h3>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            Any single-member LLC that is owned 25% or more by a non-U.S. person must file Form 5472 annually, even if the LLC had no revenue during the year. LLC formation itself is typically a reportable transaction.
-          </p>
-          <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>What counts as a reportable transaction?</h3>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            Reportable transactions include any monetary or non-monetary exchange between the foreign-owned LLC and a foreign related party: capital contributions, distributions, loans, payments for services, and the act of forming the LLC itself.
-          </p>
-          <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>Non-monetary and below-market transfers</h3>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            Not every reportable transaction is a payment. Property transferred to or from the LLC, and anything exchanged at less than fair market value, is reported in Part VI rather than collapsed into a cash figure. Most tools built for this form stop at the monetary parts and have nowhere to put these.
-          </p>
-          <h3 style={{ fontSize: "1.0625rem", marginBottom: "0.5rem" }}>The penalty stakes</h3>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
-            The IRS imposes an automatic $25,000 penalty per missed form, per tax year. There is no minimum revenue threshold. A company with two unfiled years faces $50,000 in potential exposure immediately.
+          {/* Four explainer blocks lived here until 3 Aug 2026: who needs to
+              file, what counts as a reportable transaction, non-monetary and
+              below-market transfers, and the penalty stakes. All accurate, all
+              on the wrong page. This is where a buyer decides whether to buy,
+              and they were being handed a tax lesson first. The "what is this
+              form" material belongs in /resources, and "what happens when I
+              file" belongs in /guide. Both are linked below. Do not reinstate
+              them here: the page grew to 276 lines this way. */}
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.7, marginBottom: "1.5rem" }}>
+            New to this filing? The{" "}
+            <Link to="/guide" style={{ color: "#0284C7", fontWeight: 600 }}>
+              filing guide
+            </Link>{" "}
+            walks through every screen before you start, and the{" "}
+            <Link to="/resources" style={{ color: "#0284C7", fontWeight: 600 }}>
+              guides
+            </Link>{" "}
+            cover who has to file, what counts as a reportable transaction, and
+            what the $25,000 penalty actually applies to.
           </p>
 
           <div style={{ background: "var(--tf-bg)", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -123,12 +132,6 @@ export function Services() {
               ))}
             </div>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginTop: "0.625rem" }}>
-              Produced by the same generator that prepares a real filing, using
-              fictional data for a Delaware LLC with a single foreign owner. The
-              body of the reasonable cause letter is withheld here; you receive it
-              in full with your filing.
-            </p>
-            <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginTop: "0.625rem" }}>
               You sign in the portal, by drawing your signature or typing your name, and it is applied to your forms before you download. Delivered as a print-ready PDF, ready to mail or fax to the IRS. No printing and scanning to sign.
             </p>
           </div>
@@ -139,7 +142,14 @@ export function Services() {
         </div>
       </section>
 
-      {/* Past Year Filing + CPA-Authored Reasonable Cause Letter (compact - full pitch lives at /past-filings) */}
+      {/* THE REASONABLE CAUSE LETTER, as an add-on to the filing above.
+          Until 3 Aug 2026 this was a second SERVICE headed "Past Year Filing +
+          CPA-Authored Reasonable Cause Letter", which duplicated the section
+          above: a past year and a current year are the same $99 product with
+          the same output, and saying so twice made one service look like two.
+          What is genuinely different about a late filing is the letter, so the
+          letter is what this section is now about. Do not turn it back into a
+          filing service. */}
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s2-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <span
@@ -157,10 +167,10 @@ export function Services() {
             Recommended for Late Filers
           </span>
           <h2 id="s2-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
-            Past Year Filing + CPA-Authored Reasonable Cause Letter
+            Add-on: CPA-Authored Reasonable Cause Letter
           </h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            For LLCs that missed one or more prior years. We prepare the past-year Form 5472 and Pro Forma 1120 and pair them with a CPA-Authored Reasonable Cause Letter requesting that the automatic $25,000 penalty be waived. Voluntary catch-up filings work best before the IRS contacts you.
+            Filing a year late is the same filing as above, at the same ${PRICE_PER_YEAR}. What a late filing also needs is a reason. This letter asks the IRS to abate the automatic $25,000 penalty, and it is added to the filing rather than bought on its own. Voluntary catch-up works best before the IRS contacts you.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", lineHeight: 1.7, fontWeight: 400, marginBottom: "1rem" }}>
             To be precise about what CPA-Authored means: the letter is generated from a framework written by a practising U.S. CPA, populated with your filing details and the circumstances you select. It does not include an individual CPA review of your filing, and it is not tax advice.
@@ -183,17 +193,25 @@ export function Services() {
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            If you need to change how the IRS classifies your LLC for tax purposes, this service prepares Form 8832, the entity classification election.
+            <strong>Not yet available.</strong> At launch this will prepare a standalone Form 8832, the entity classification election, for an LLC that wants to be taxed as a C-Corporation instead of the default disregarded entity. It is a standalone filing and must be mailed, and the IRS fax add-on will not cover it.
           </p>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            Form 8832 is used when you want the LLC taxed as a C-Corporation instead of the default disregarded entity status. It is a standalone filing and must be mailed. The IRS fax add-on is not available for it.
-          </p>
+          {/* The four-sentence Form 2553 explanation moved to the FAQ on
+              3 Aug 2026. It answered a question nobody browsing a services page
+              has asked, then spent a paragraph explaining why something we do
+              not sell does not apply to them. Its one genuinely valuable fact,
+              that an S corp cannot have a nonresident alien shareholder, is the
+              clearest statement of who this product is for, and it belongs
+              where someone who read "S corp election" on a forum will look. */}
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", lineHeight: 1.7, marginBottom: "1rem", fontWeight: 400 }}>
-            We do not prepare Form 2553, the S-Corporation election, because it is not available to the owners this service is built for. An S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot make the election. If your circumstances have changed, for example you are now a U.S. resident or a U.S. person is joining the ownership, speak to a CPA about whether an S election is open to you.
+            We do not prepare Form 2553, the S-Corporation election.{" "}
+            <Link to="/faq" style={{ color: "#0284C7", fontWeight: 600 }}>
+              Why it is not open to you
+            </Link>
+            .
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time filing. No ongoing fees.</p>
-          <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Start Filing
+          <Link to={CLASSIFICATION_URL} style={{ background: "transparent", color: "#0284C7", border: "1px solid #0284C7", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Notify Me When This Launches
           </Link>
         </div>
       </section>
@@ -201,20 +219,20 @@ export function Services() {
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Transmission</h2>
+          {/* Cut from four paragraphs to two on 3 Aug 2026. It was explaining
+              an add-on's fine print at more length than the $99 product that
+              pays for the site. The receipt-is-not-acceptance paragraph stays,
+              and should: it is the one point in this section the rest of the
+              market blurs, and it protects a filer who would otherwise stop
+              chasing a return the IRS never accepted. */}
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            <strong>Planned for launch, not yet available.</strong> Fax transmission is not running today, and no filing is currently sent to the IRS on your behalf. Join the waitlist and we will tell you when it opens.
+            For ${PRICE_FAX} we fax your completed package to the IRS, so you do not need a printer or a post office. You sign the forms in your browser, we transmit them, and a receipt recording the date, time and page count is stored against your filing. One fee covers the whole job however many years you are filing. It is an add-on to Form 5472 filings only, and not available for Form 8832, which must be mailed.
           </p>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            The intention is that for ${PRICE_FAX} we fax your completed package to the IRS, so you do not need a printer or a post office. You would sign the completed forms and we would transmit them on your behalf, then store a transmission receipt recording the date, time and page count against your filing. That matters most if you are filing close to a deadline or responding to a penalty notice.
+            One point worth stating plainly, because the rest of this market blurs it: a transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.
           </p>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            One point is worth stating plainly now, because the rest of this market blurs it: a transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.
-          </p>
-          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            When it launches, one ${PRICE_FAX} fee is intended to cover the whole job, however many years you are filing. It will be an add-on to Form 5472 filings only, and not available for Form 8832, which must be mailed.
-          </p>
-          <Link to={FAX_URL} style={{ background: "transparent", color: "#0284C7", border: "1px solid #0284C7", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Notify Me When Fax Launches
+          <Link to={CHECK_URL} style={{ background: "transparent", color: "#0284C7", border: "1px solid #0284C7", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Check My Eligibility
           </Link>
         </div>
       </section>

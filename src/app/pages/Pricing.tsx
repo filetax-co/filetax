@@ -6,11 +6,17 @@ import { useJsonLd } from "../hooks/useJsonLd";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
-const PORTAL_URL = "/portal";
-// IRS fax is priced and sold but NOT BUILT. Its card is the one place on this
-// page that still collects interest rather than starting a filing. Remove this
-// and the card's copy in the same commit that ships fax. See handoff item 1.
-const FAX_URL = "/waitlist?service=irs-fax";
+// The Form 8832 classification change is PRICED BUT NOT BUILT, so it collects
+// interest rather than starting a filing. A priced card with a confident CTA
+// is a promise, and "Start Filing" on something that does not exist is the
+// worst version of that. Swap this for the real link, drop the "(at launch)"
+// title marker and the "not yet available" copy, in the commit that ships it.
+//
+// IRS FAX IS LIVE as of 3 Aug 2026, per the owner. It carried "not yet
+// available" copy and a waitlist CTA across four pages long after that stopped
+// being true. If you are reading an older note saying fax is unbuilt, that note
+// is the stale one.
+const CLASSIFICATION_URL = "/waitlist?service=llc-classification";
 
 interface PricingCard {
   title: string;
@@ -26,70 +32,138 @@ interface PricingCard {
   highlight?: boolean;
 }
 
-const cards: PricingCard[] = [
+// SOLD BY SITUATION, NOT BY SKU. Read this before adding a card.
+//
+// This page used to carry SEVEN cards for what is really two decisions. Three
+// of them were the SAME $99 product under three names: "Past Year", "Current
+// Year" and "Multi-Year Past Filing Package". The first card's own copy said
+// "Same output as current year", which is the tell. A buyer does not arrive
+// thinking "I need a current-year filing"; they arrive thinking "I just found
+// out about this and I have three unfiled years". Four cards answered that one
+// thought, so the page made a simple decision look like a product catalogue.
+//
+// The reasonable cause letter STAYS ITS OWN CARD. Folding it into the catch-up
+// card was tried on 3 Aug 2026 and rejected by the owner. What did change is
+// its position and its badge: it used to sit third, beside "Current Year", the
+// one buyer it cannot apply to, since a current-year filer is not late and has
+// nothing to abate. It now leads the add-ons and carries "Recommended for Late
+// Filers", because catching up is what a late filer is already doing by the
+// time they reach that card, while the letter is the part they might skip and
+// should not. It cannot be sold alone, and §4 forbids implying it is required,
+// so it must not become a headline card either.
+//
+// The rule: PRIMARY is a situation the buyer recognises. ADD_ONS are things
+// that modify a filing and cannot be bought by themselves. A new SKU is not a
+// new card. See handoff item 46.
+const PRIMARY: PricingCard[] = [
   {
-    title: "Form 5472 + Pro Forma 1120: Past Year",
+    title: "Filing one tax year",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",
-    description: "Any prior unfiled year. Same output as current year. Pair with the CPA-Authored Reasonable Cause Letter for the strongest abatement case.",
-    microcopy: "One-time filing. No ongoing fees.",
-    badge: "Recommended for Late Filers",
+    // KEEP CARDS SHORT. The detail goes in the tooltip, not the body. These
+    // descriptions ran to four and five lines each on 3 Aug 2026, which made
+    // a two-choice page read as a wall and buried the choice itself. If a fact
+    // is needed to decide, it belongs in the body; if it is needed to feel
+    // safe, it belongs in the tooltip.
+    description: "Form 5472 and the pro forma 1120, on the IRS revision in force for that year.",
+    microcopy: `Current or past year, same price. Your next two filings are guaranteed at $${PRICE_PER_YEAR}.`,
+    tooltip:
+      "One filing. Two forms. One price. The IRS requires these to be filed together, so this is not two products bundled and you are not paying for extras. A past year costs the same as the current one and produces the same output.",
+    // Both primary cards carry `highlight`, so the two situations look like
+    // equal choices rather than a recommendation and an also-ran. The buyer
+    // already knows which one they are; the page should not push. What steers
+    // a late filer is the badge on the reasonable cause letter below.
     cta: "Start My Filing",
     ctaLink: CHECK_URL,
     highlight: true,
   },
   {
-    title: "Form 5472 + Pro Forma 1120: Current Year",
+    title: "Catching up on multiple missed years",
     price: `$${PRICE_PER_YEAR}`,
-    description: "One filing year. Print-ready PDF. Ready to mail or fax.",
-    microcopy: `One-time filing. No subscription. Your next two filings are guaranteed at $${PRICE_PER_YEAR}.`,
-    tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
-    cta: "Start My Filing",
+    priceNote: "per year",
+    description: "Every unfiled year back to 2019, filed as one job rather than one purchase at a time.",
+    microcopy: "Add the reasonable cause letter below to ask for the penalty to be waived.",
+    tooltip:
+      "You enter your LLC and owner details once and they carry across every year. Each year is rendered on the IRS form revision in force for it, not on the current year's form for all of them. Voluntary catch-up works best before the IRS contacts you.",
+    // The "Recommended for Late Filers" badge sits on the reasonable cause
+    // letter, not here. Catching up is what a late filer is already doing by
+    // the time they read this card; the letter is the part they might skip and
+    // should not.
+    cta: "Start My Catch-Up",
     ctaLink: CHECK_URL,
+    highlight: true,
   },
+];
+
+// Things that modify a filing. None can be bought on their own. They stay
+// cards in the same grid, deliberately: a demoted plain-text list was tried on
+// 3 Aug 2026 and looked worse, and the $199 letter in particular does not
+// deserve to be visually buried.
+const ADD_ONS: PricingCard[] = [
   {
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
     price: `+$${PRICE_RCL}`,
     priceNote: "one letter, covers every year",
-    description: `Generated from a framework written by a practising U.S. CPA to argue for abatement of the automatic $25,000 penalty, populated with your filing details. Charged once, however many years you are catching up on, never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
-    cta: "Check My Eligibility",
+    badge: "Recommended for Late Filers",
+    description: `An argument for abating the automatic $25,000 penalty, built from your filing details.`,
+    microcopy: `Charged once, never per year. One missed year $${PRICE_PER_YEAR + PRICE_RCL}, three years $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
+    tooltip:
+      "Generated from a framework written by a practising U.S. CPA and populated with your filing details and the circumstances you select. It does not include an individual CPA review of your filing, and it is not tax advice. One letter names every late year in the job, which is why it is charged once however many years you are catching up on.",
+    // Add-on CTAs describe HOW YOU GET the thing, they do not repeat the
+    // funnel. Every one of these used to say "Check My Eligibility", the same
+    // words as the filings above, so four modifiers read as four more products
+    // and no button told you what it would actually do.
+    //
+    // "Offered", not "added", and the distinction is the point: the letter is a
+    // choice the filer makes, not something we attach to a late filing on their
+    // behalf. §4 forbids implying it is required, and a button reading "Add a
+    // Reasonable Cause Letter" edges toward exactly that. See handoff item 46.
+    cta: "Offered when you file a late year",
     ctaLink: CHECK_URL,
   },
   {
     title: "Add-On: Additional Related Party (Form 5472)",
     price: `+$${PRICE_ADDITIONAL_PARTY}`,
-    priceNote: "per related party, per year",
-    description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each party, for each year filed, with the totals reconciled on lines 1f and 1h.",
-    cta: "Check My Eligibility",
+    priceNote: "per party, per year",
+    description: "A separate Form 5472 for each foreign related party, for each year you file.",
+    microcopy: "Most single-member LLCs have one, the owner, and pay nothing extra.",
+    tooltip:
+      "The IRS requires a separate Form 5472 per foreign related party. You would need this if the LLC transacted with a foreign parent company or another entity you own 25% or more of. Totals across the forms are reconciled on lines 1f and 1h.",
+    cta: "Added in the portal as you file",
     ctaLink: CHECK_URL,
   },
   {
-    title: "Add-On: IRS Fax Transmission (at launch)",
+    title: "Add-On: IRS Fax Transmission",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
-    description: "Not yet available. At launch: you sign in your browser, we fax the completed package to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
-    note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
-    cta: "Notify Me When Fax Launches",
-    ctaLink: FAX_URL,
-  },
-  {
-    title: "LLC Tax Classification Change",
-    price: "$50",
-    priceNote: "per filing",
-    description: "Standalone Form 8832, electing to be taxed as a C-Corporation instead of the default disregarded entity. Print-ready PDF. Must be mailed. Fax add-on not available.",
-    microcopy: "One-time filing. No ongoing fees.",
-    cta: "Start Filing",
-    ctaLink: PORTAL_URL,
-  },
-  {
-    title: "Multi-Year Past Filing Package",
-    price: `$${PRICE_PER_YEAR}`,
-    priceNote: `per year + one $${PRICE_RCL} letter`,
-    description: `Catch up on several unfiled years at once, back to 2019. $${PRICE_PER_YEAR} per year, plus a single $${PRICE_RCL} reasonable cause letter covering all of them.`,
-    cta: "Start My Filing",
+    description: "We fax the completed package to the IRS for you, so you never need a printer.",
+    microcopy: "One fee for the whole job. Not available for Form 8832.",
+    // The receipt-is-not-acceptance line matters MORE now that fax is live,
+    // not less: a filer who reads "receipt" as "the IRS accepted my return"
+    // stops chasing it. It is in the tooltip here only because this is a
+    // pricing card; /services and /refunds both still state it in full body
+    // text. Do not remove it from those two.
+    tooltip:
+      "A transmission receipt records the date, time and page count, and is stored against your filing. It is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.",
+    cta: "Offered when you file",
     ctaLink: CHECK_URL,
   },
+  {
+    title: "LLC Tax Classification Change (at launch)",
+    price: "$50",
+    priceNote: "per filing",
+    description: "Not yet available. A standalone Form 8832, to be taxed as a C-Corporation.",
+    microcopy: "Must be mailed. The fax add-on will not cover it.",
+    tooltip:
+      "Form 8832 elects C-Corporation treatment instead of the default disregarded entity status. It is separate from Form 5472, and making the election does not remove the Form 5472 obligation.",
+    cta: "Notify Me When This Launches",
+    ctaLink: CLASSIFICATION_URL,
+  },
 ];
+
+// Kept as one list for the Offer catalog below, so the structured data cannot
+// fall out of step with what the page renders.
+const cards: PricingCard[] = [...PRIMARY, ...ADD_ONS];
 
 export function Pricing() {
   usePageMeta({
@@ -113,8 +187,12 @@ export function Pricing() {
       audienceType: "Non-U.S. founders of U.S. single-member LLCs",
     },
     url: "https://filetax.co/pricing",
+    // Matches a price anywhere in the string rather than only at the start. A
+    // "From $298" card was drafted and dropped, and the anchored pattern had
+    // silently excluded it from the catalog: a card can be priced without the
+    // digits leading, and losing an offer should not be the quiet default.
     offers: cards
-      .filter((card) => /^\+?\$\d/.test(card.price))
+      .filter((card) => /\$\d/.test(card.price))
       .map((card) => ({
         "@type": "Offer",
         name: card.title,
@@ -122,9 +200,11 @@ export function Pricing() {
         price: card.price.replace(/[^0-9.]/g, ""),
         priceCurrency: "USD",
         url: "https://filetax.co/pricing",
-        // IRS fax is priced but not built, so it stays pre-order while
-        // everything else is purchasable. See handoff item 1.
-        availability: card.title.includes("IRS Fax")
+        // Fax and the Form 8832 classification change are priced but not
+        // built, so they stay pre-order while everything else is purchasable.
+        // Keyed off the same "(at launch)" marker the titles carry, so adding
+        // a third unbuilt service cannot forget to update this. Item 1.
+        availability: card.title.includes("(at launch)")
           ? "https://schema.org/PreOrder"
           : "https://schema.org/InStock",
       })),

@@ -334,11 +334,14 @@ export function Home() {
                   flex: 1,
                 }}
               >
-                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
+                {/* Not built. Said "Start Filing" into the portal until 3 Aug
+                    2026, for a service that does not exist. Same treatment as
+                    the fax card below. See handoff item 1. */}
+                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change (at launch)</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
                 <Link
-                  to="/portal"
+                  to="/waitlist?service=llc-classification"
                   style={{
                     color: "var(--tf-accent)",
                     fontWeight: 600,
@@ -353,7 +356,7 @@ export function Home() {
                     lineHeight: "1.8",
                   }}
                 >
-                  Start Filing
+                  Notify Me When This Launches
                 </Link>
               </div>
 
@@ -369,11 +372,11 @@ export function Home() {
                   flex: 1,
                 }}
               >
-                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission (at launch)</h3>
+                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: you sign in your browser, we fax the package to the IRS so you never need a printer, and you get a transmission receipt.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign in your browser, we fax the package to the IRS so you never need a printer, and the transmission receipt is stored against your filing.</p>
                 <Link
-                  to="/waitlist?service=irs-fax"
+                  to="/check"
                   style={{
                     color: "var(--tf-accent)",
                     fontWeight: 600,
@@ -388,7 +391,7 @@ export function Home() {
                     lineHeight: "1.8",
                   }}
                 >
-                  Notify Me
+                  Check My Eligibility
                 </Link>
               </div>
             </div>
