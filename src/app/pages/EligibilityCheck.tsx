@@ -48,20 +48,28 @@ const INITIAL_SUB: SubAnswers = {};
 // U.S.-activity question is reached, so Form 1040-NR is the right return to
 // name here. Form 1120 is a corporate return and Form 1120-F is for a foreign
 // corporation owner; both were previously named here and both were wrong.
-const REFER_US_SOURCE_INCOME =
-  "Income the IRS treats as U.S.-source may make you personally liable to file " +
-  "Form 1040-NR, and can change how the LLC's income is taxed. Services are " +
-  "sourced where the work is performed, so having U.S. customers does not by " +
-  "itself make income U.S.-source. This flow prepares Form 5472 and the pro " +
-  "forma 1120 only. Please confirm your position with a CPA or tax adviser " +
-  "before filing.";
+// Neither of these blocks the filing. A foreign-owned single-member LLC owes
+// Form 5472 and the pro forma 1120 whether or not it has U.S.-source income or
+// a U.S. presence; what those facts change is the owner's SEPARATE personal
+// position, which is not what this flow prepares. Answering yes used to end the
+// check on a refer screen with no way forward, which turned a filing we do
+// cover into a dead end. It now warns and lets the filer continue.
+const NOTICE_US_SOURCE_INCOME =
+  "This does not stop us preparing your filing. Your Form 5472 and pro forma " +
+  "1120 are still required and still what we produce. What it can change is " +
+  "your own position: U.S.-source income may make you personally liable to " +
+  "file Form 1040-NR, and can change how the LLC's income is taxed. Services " +
+  "are sourced where the work is performed, so having U.S. customers does not " +
+  "by itself make income U.S.-source. Have a CPA or tax adviser confirm your " +
+  "personal position alongside this filing.";
 
-const REFER_US_PRESENCE =
-  "Employing people or keeping premises in the U.S. can create what the IRS " +
-  "calls a U.S. trade or business. If it does, you would generally report that " +
-  "income on Form 1040-NR at graduated rates, and a return is required even " +
-  "when no tax is due. This flow prepares Form 5472 and the pro forma 1120 " +
-  "only. A CPA or tax adviser should confirm your position before you file.";
+const NOTICE_US_PRESENCE =
+  "This does not stop us preparing your filing either. Employing people or " +
+  "keeping premises in the U.S. can create what the IRS calls a U.S. trade or " +
+  "business. If it does, you would generally report that income on Form " +
+  "1040-NR at graduated rates, and a return is required even when no tax is " +
+  "due. That is separate from the Form 5472 and pro forma 1120 we prepare. " +
+  "Have a CPA or tax adviser confirm your personal position.";
 
 function ProgressBar({ current }: { current: number }) {
   return (
@@ -209,6 +217,32 @@ function HintBox({ text }: { text: string }) {
         lineHeight: 1.65,
       }}
     >
+      {text}
+    </div>
+  );
+}
+
+// Amber, and deliberately not the red used by the refer screen. This says
+// "there is more to your position than this filing", not "we cannot help you".
+function NoticeBox({ text }: { text: string }) {
+  return (
+    <div
+      role="note"
+      style={{
+        background: "rgba(217,119,6,0.06)",
+        border: "1px solid rgba(217,119,6,0.35)",
+        borderRadius: "0.5rem",
+        padding: "0.875rem 1rem",
+        marginTop: "0.875rem",
+        fontSize: "0.875rem",
+        color: "var(--tf-text)",
+        fontWeight: 400,
+        lineHeight: 1.65,
+      }}
+    >
+      <strong style={{ display: "block", marginBottom: "0.25rem" }}>
+        Worth knowing before you file
+      </strong>
       {text}
     </div>
   );
@@ -397,9 +431,22 @@ export function EligibilityCheck() {
               We can prepare this filing for you.
             </h1>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
-              A single-member LLC owned by a non-U.S. individual, with no U.S.-source income and no
-              U.S. premises, is what this platform is built for. Next you will choose the exact
-              years and tell us what moved between you and the LLC.
+              {subAnswers.usIncome === "yes" || subAnswers.usPresence === "yes" ? (
+                <>
+                  A single-member LLC owned by a non-U.S. individual is what this platform is built
+                  for, and the Form 5472 and pro forma 1120 we prepare are required whether or not
+                  the LLC has U.S.-source income or a U.S. presence. Your own personal return is a
+                  separate question that this filing does not answer, so have a CPA or tax adviser
+                  confirm that position alongside it. Next you will choose the exact years and tell
+                  us what moved between you and the LLC.
+                </>
+              ) : (
+                <>
+                  A single-member LLC owned by a non-U.S. individual, with no U.S.-source income and
+                  no U.S. premises, is what this platform is built for. Next you will choose the
+                  exact years and tell us what moved between you and the LLC.
+                </>
+              )}
             </p>
 
             <div
@@ -789,15 +836,13 @@ export function EligibilityCheck() {
                 <HintBox text="Income is U.S.-source when the work producing it was done in the U.S., or when it comes from U.S. real estate or U.S. royalties. Having U.S. customers or a U.S. bank account on its own does not make income U.S.-source." />
                 <YesNoButtons
                   selected={subAnswers.usIncome}
-                  onYes={() => {
-                    setSub("usIncome", "yes");
-                    triggerRefer(REFER_US_SOURCE_INCOME);
-                  }}
+                  onYes={() => setSub("usIncome", "yes")}
                   onNo={() => setSub("usIncome", "no")}
                 />
+                {subAnswers.usIncome === "yes" && <NoticeBox text={NOTICE_US_SOURCE_INCOME} />}
               </div>
 
-              {subAnswers.usIncome === "no" && (
+              {subAnswers.usIncome && (
                 <>
                   <Divider />
                   <div>
@@ -806,12 +851,10 @@ export function EligibilityCheck() {
                     </h2>
                     <YesNoButtons
                       selected={subAnswers.usPresence}
-                      onYes={() => {
-                        setSub("usPresence", "yes");
-                        triggerRefer(REFER_US_PRESENCE);
-                      }}
+                      onYes={() => setSub("usPresence", "yes")}
                       onNo={() => setSub("usPresence", "no")}
                     />
+                    {subAnswers.usPresence === "yes" && <NoticeBox text={NOTICE_US_PRESENCE} />}
                   </div>
                 </>
               )}
@@ -819,7 +862,7 @@ export function EligibilityCheck() {
               <StepNav
                 onBack={() => setStep(3)}
                 onReset={resetAll}
-                showContinue={subAnswers.usIncome === "no" && subAnswers.usPresence === "no"}
+                showContinue={!!subAnswers.usIncome && !!subAnswers.usPresence}
                 onContinue={() => setOutcome("pass")}
                 continueLabel="See what this costs"
               />
