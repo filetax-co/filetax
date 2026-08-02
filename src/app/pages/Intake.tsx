@@ -1,6 +1,7 @@
 // src/app/pages/Intake.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
@@ -483,19 +484,25 @@ function InfoTooltip({ text, label }: { text: string; label?: string }) {
         onMouseLeave={() => setOpen(false)}
         onBlur={() => setOpen(false)}
         style={{
-          // Filled accent circle so the info affordance is easy to spot
-          // (previously a low-contrast outlined "i" that was hard to find).
-          // Kept small: the fill alone makes it findable, so it does not need
-          // the size as well, at 16px it competed with the field label.
-          width: '14px', height: '14px', borderRadius: '9999px',
-          border: 'none', background: 'var(--tf-accent)',
-          color: 'var(--tf-on-accent)', fontSize: '9.5px', fontWeight: 700,
-          lineHeight: 1, cursor: 'pointer', padding: 0,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          marginLeft: '0.3rem', flexShrink: 0,
+          // The outlined lucide Info icon, matching the eligibility check and
+          // the pricing page so the affordance reads as one thing across the
+          // product. This replaces a small filled accent circle, which itself
+          // existed because an EARLIER outlined "i" was hard to find. The risk
+          // is therefore known, and this answers it with a real 16px icon
+          // rather than a 14px circle holding a 9.5px letter. If it proves hard
+          // to spot again, raise the contrast rather than going back to a dot.
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--tf-muted)',
+          padding: '2px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          marginLeft: '0.3rem',
+          flexShrink: 0,
         }}
       >
-        i
+        <Info size={16} />
       </button>
       {open && box && (
         <span

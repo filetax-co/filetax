@@ -153,7 +153,10 @@ export function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { step: "1", title: "Complete a short eligibility check" },
-              { step: "2", title: "Enter your LLC details and transactions" },
+              // "LLC" was too narrow: intake also collects the owner and every
+              // foreign related party, which is the part that surprises people.
+              // Duplicated verbatim in the marketing repo's Home.tsx, change both.
+              { step: "2", title: "Enter your details and transactions" },
               { step: "3", title: "Review your complete filing summary" },
               { step: "4", title: "Download IRS-ready forms" },
             ].map((item) => (

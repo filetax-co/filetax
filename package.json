@@ -10,6 +10,8 @@
     "gen:scenarios100b": "node scripts/genScenarios100.mjs",
     "report:e2e": "node scripts/e2eReport.mjs",
     "audit:pdfs": "node scripts/audit-pdf-fields.mjs",
+    "gen:samples": "esbuild scripts/genSamplePreview.mjs --bundle --platform=node --format=esm --packages=external --define:import.meta.env={\\\"BASE_URL\\\":\\\"/\\\"} --outfile=tmp-verify/genSample.mjs --log-level=error && node tmp-verify/genSample.mjs && node scripts/rasterSamplePreview.mjs && npm run gen:samples:rcl",
+    "gen:samples:rcl": "esbuild scripts/genSampleRcl.mjs --bundle --platform=node --format=esm --packages=external --define:import.meta.env={\\\"BASE_URL\\\":\\\"/\\\"} --outfile=tmp-verify/genRcl.mjs --log-level=error && node tmp-verify/genRcl.mjs",
     "typecheck": "tsc --noEmit",
     "verify:logic": "node --experimental-strip-types --import ./scripts/tsResolve.mjs scripts/verifyRegressions.mjs",
     "verify:pdf": "esbuild scripts/verifyPackageOutput.mjs --bundle --platform=node --format=esm --packages=external --define:import.meta.env={\\\"BASE_URL\\\":\\\"/\\\"} --outfile=tmp-verify/verifyPackage.mjs --log-level=error && node tmp-verify/verifyPackage.mjs",
@@ -88,12 +90,14 @@
   },
   "devDependencies": {
     "@fontsource/dancing-script": "^5.3.0",
+    "@napi-rs/canvas": "^1.0.3",
     "@tailwindcss/vite": "4.1.12",
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@types/zxcvbn": "^4.4.5",
     "@vitejs/plugin-react": "4.7.0",
+    "pdfjs-dist": "^6.2.108",
     "tailwindcss": "4.1.12",
     "typescript": "~5.8.3",
     "vite": "^6.4.2"
