@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
+import { Info } from "lucide-react";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pricing";
 
@@ -28,7 +29,7 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pri
 // ---------------------------------------------------------------------
 const PORTAL_PATH = "/portal";
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 type Outcome = "pass" | "refer" | null;
 type YesNo = "yes" | "no";
 
@@ -36,11 +37,9 @@ interface SubAnswers {
   llcEIN?: YesNo;
   llcResidency?: YesNo;
   llcTaxTreatment?: YesNo;
-  usIncome?: YesNo;
-  usPresence?: YesNo;
 }
 
-const totalSteps = 4;
+const totalSteps = 3;
 
 const INITIAL_SUB: SubAnswers = {};
 
@@ -48,28 +47,13 @@ const INITIAL_SUB: SubAnswers = {};
 // U.S.-activity question is reached, so Form 1040-NR is the right return to
 // name here. Form 1120 is a corporate return and Form 1120-F is for a foreign
 // corporation owner; both were previously named here and both were wrong.
-// Neither of these blocks the filing. A foreign-owned single-member LLC owes
-// Form 5472 and the pro forma 1120 whether or not it has U.S.-source income or
-// a U.S. presence; what those facts change is the owner's SEPARATE personal
-// position, which is not what this flow prepares. Answering yes used to end the
-// check on a refer screen with no way forward, which turned a filing we do
-// cover into a dead end. It now warns and lets the filer continue.
-const NOTICE_US_SOURCE_INCOME =
-  "This does not stop us preparing your filing. Your Form 5472 and pro forma " +
-  "1120 are still required and still what we produce. What it can change is " +
-  "your own position: U.S.-source income may make you personally liable to " +
-  "file Form 1040-NR, and can change how the LLC's income is taxed. Services " +
-  "are sourced where the work is performed, so having U.S. customers does not " +
-  "by itself make income U.S.-source. Have a CPA or tax adviser confirm your " +
-  "personal position alongside this filing.";
-
-const NOTICE_US_PRESENCE =
-  "This does not stop us preparing your filing either. Employing people or " +
-  "keeping premises in the U.S. can create what the IRS calls a U.S. trade or " +
-  "business. If it does, you would generally report that income on Form " +
-  "1040-NR at graduated rates, and a return is required even when no tax is " +
-  "due. That is separate from the Form 5472 and pro forma 1120 we prepare. " +
-  "Have a CPA or tax adviser confirm your personal position.";
+// U.S. activity used to be a fourth step here, and it is not asked any more.
+// It never gated anything: a foreign-owned single-member LLC owes Form 5472 and
+// the pro forma 1120 whether or not it has U.S.-source income or a U.S.
+// presence. What it affects is the owner's own return, which this flow does not
+// prepare. The intake asks it properly, PER TAX YEAR, which is how the fact
+// actually behaves, with the same warning and a link back here. Asking it once
+// for a whole multi-year job was the less accurate of the two.
 
 function ProgressBar({ current }: { current: number }) {
   return (
@@ -202,49 +186,33 @@ function YesNoButtons({
   );
 }
 
-function HintBox({ text }: { text: string }) {
-  return (
-    <div
-      style={{
-        background: "var(--tf-bg)",
-        border: "1px solid var(--tf-border)",
-        borderRadius: "0.5rem",
-        padding: "0.875rem 1rem",
-        marginTop: "0.75rem",
-        fontSize: "0.875rem",
-        color: "var(--tf-muted)",
-        fontWeight: 400,
-        lineHeight: 1.65,
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
 // Amber, and deliberately not the red used by the refer screen. This says
 // "there is more to your position than this filing", not "we cannot help you".
-function NoticeBox({ text }: { text: string }) {
+// Sits inline after the question text rather than as a block underneath it.
+// These explanations are the difference between a confident answer and a wrong
+// one, but printing all of them at once made each step a wall. Same `.tf-tooltip`
+// pattern as the pricing page: hover, and focus-within so a tap or the keyboard
+// opens it too.
+function InfoTip({ label, text }: { label: string; text: string }) {
   return (
-    <div
-      role="note"
-      style={{
-        background: "rgba(217,119,6,0.06)",
-        border: "1px solid rgba(217,119,6,0.35)",
-        borderRadius: "0.5rem",
-        padding: "0.875rem 1rem",
-        marginTop: "0.875rem",
-        fontSize: "0.875rem",
-        color: "var(--tf-text)",
-        fontWeight: 400,
-        lineHeight: 1.65,
-      }}
-    >
-      <strong style={{ display: "block", marginBottom: "0.25rem" }}>
-        Worth knowing before you file
-      </strong>
-      {text}
-    </div>
+    <span className="tf-tooltip" style={{ marginLeft: "0.375rem", verticalAlign: "middle" }}>
+      <button
+        type="button"
+        aria-label={label}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "var(--tf-muted)",
+          padding: "2px",
+          display: "inline-flex",
+          alignItems: "center",
+        }}
+      >
+        <Info size={16} />
+      </button>
+      <span className="tf-tooltip-text">{text}</span>
+    </span>
   );
 }
 
@@ -431,22 +399,8 @@ export function EligibilityCheck() {
               We can prepare this filing for you.
             </h1>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
-              {subAnswers.usIncome === "yes" || subAnswers.usPresence === "yes" ? (
-                <>
-                  A single-member LLC owned by a non-U.S. individual is what this platform is built
-                  for, and the Form 5472 and pro forma 1120 we prepare are required whether or not
-                  the LLC has U.S.-source income or a U.S. presence. Your own personal return is a
-                  separate question that this filing does not answer, so have a CPA or tax adviser
-                  confirm that position alongside it. Next you will choose the exact years and tell
-                  us what moved between you and the LLC.
-                </>
-              ) : (
-                <>
-                  A single-member LLC owned by a non-U.S. individual, with no U.S.-source income and
-                  no U.S. premises, is what this platform is built for. Next you will choose the
-                  exact years and tell us what moved between you and the LLC.
-                </>
-              )}
+              A single-member LLC owned by a non-U.S. individual is what this platform is built for.
+              Next you will choose the exact years and tell us what moved between you and the LLC.
             </p>
 
             <div
@@ -743,8 +697,11 @@ export function EligibilityCheck() {
                   <div>
                     <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Is the person who owns this LLC a non-U.S. individual?
+                      <InfoTip
+                        label="What counts as non-U.S."
+                        text="This means you do not hold U.S. citizenship or a U.S. Green Card, and have not met the IRS Substantial Presence Test. The test is based on days you spent in the U.S. over the past three years."
+                      />
                     </h2>
-                    <HintBox text="This means you do not hold U.S. citizenship or a U.S. Green Card, and have not met the IRS Substantial Presence Test. The test is based on days you spent in the U.S. over the past three years." />
                     <YesNoButtons
                       selected={subAnswers.llcResidency}
                       onYes={() => setSub("llcResidency", "yes")}
@@ -765,8 +722,11 @@ export function EligibilityCheck() {
                   <div>
                     <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Is the LLC taxed the same way it was when it was first formed, with no elections filed to change that?
+                      <InfoTip
+                        label="What counts as an election"
+                        text="Answer Yes if you have not submitted Form 8832 or Form 2553 to the IRS. Most single-member LLCs have never filed either form and remain on the default treatment as a disregarded entity."
+                      />
                     </h2>
-                    <HintBox text="Answer Yes if you have not submitted Form 8832 or Form 2553 to the IRS. Most single-member LLCs have never filed either form and remain on the default treatment as a disregarded entity." />
                     <YesNoButtons
                       selected={subAnswers.llcTaxTreatment}
                       onYes={() => setSub("llcTaxTreatment", "yes")}
@@ -808,7 +768,7 @@ export function EligibilityCheck() {
                     label={n === 1 ? "Just one year" : `${n} years`}
                     onClick={() => {
                       setYearCount(n);
-                      setStep(4);
+                      setOutcome("pass");
                     }}
                   />
                 ))}
@@ -817,7 +777,7 @@ export function EligibilityCheck() {
                   sublabel="We support tax years back to 2019."
                   onClick={() => {
                     setYearCount(4);
-                    setStep(4);
+                    setOutcome("pass");
                   }}
                 />
               </div>
@@ -825,49 +785,6 @@ export function EligibilityCheck() {
             </div>
           )}
 
-          {step === 4 && (
-            <div>
-              <SectionLabel text="U.S. Activity" />
-
-              <div>
-                <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
-                  Did the LLC receive income that the IRS would consider to have originated in the United States?
-                </h2>
-                <HintBox text="Income is U.S.-source when the work producing it was done in the U.S., or when it comes from U.S. real estate or U.S. royalties. Having U.S. customers or a U.S. bank account on its own does not make income U.S.-source." />
-                <YesNoButtons
-                  selected={subAnswers.usIncome}
-                  onYes={() => setSub("usIncome", "yes")}
-                  onNo={() => setSub("usIncome", "no")}
-                />
-                {subAnswers.usIncome === "yes" && <NoticeBox text={NOTICE_US_SOURCE_INCOME} />}
-              </div>
-
-              {subAnswers.usIncome && (
-                <>
-                  <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
-                      Does the LLC have employees based in the U.S., rent a U.S. office or storage space, or have anyone whose full-time role is working for the LLC from inside the U.S.?
-                    </h2>
-                    <YesNoButtons
-                      selected={subAnswers.usPresence}
-                      onYes={() => setSub("usPresence", "yes")}
-                      onNo={() => setSub("usPresence", "no")}
-                    />
-                    {subAnswers.usPresence === "yes" && <NoticeBox text={NOTICE_US_PRESENCE} />}
-                  </div>
-                </>
-              )}
-
-              <StepNav
-                onBack={() => setStep(3)}
-                onReset={resetAll}
-                showContinue={!!subAnswers.usIncome && !!subAnswers.usPresence}
-                onContinue={() => setOutcome("pass")}
-                continueLabel="See what this costs"
-              />
-            </div>
-          )}
         </div>
       </div>
     </section>
