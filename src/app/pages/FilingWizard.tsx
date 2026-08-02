@@ -394,6 +394,27 @@ export default function FilingWizard() {
                   {has7004 && (
                     <IncludedItem icon="" label="Form 7004" desc="6-month extension to file, included with your package" always />
                   )}
+                  {/* The reasonable cause letter was missing from this list until
+                      3 Aug 2026, on the one screen where the customer pays. It is
+                      the $199 line item, the most expensive thing in the package,
+                      and it was the only document generated but never named here.
+                      The signature copy below already said "your reasonable cause
+                      statement", so the screen contradicted itself. Driven by the
+                      same `filing.include_rcl` the copy uses, so the two cannot
+                      disagree again. */}
+                  {filing?.include_rcl && (
+                    <IncludedItem
+                      icon=""
+                      label="Reasonable Cause Letter"
+                      desc="CPA-authored statement asking the IRS to abate the late-filing penalty, one letter covering every late year"
+                      // Not "if applicable". This row renders only when the letter
+                      // IS in the package, so hedging next to the $199 line item
+                      // would read as doubt about the thing they are paying most
+                      // for. (Part V above has the same shape and still carries
+                      // the badge; left alone rather than widened into a refactor.)
+                      always
+                    />
+                  )}
                 </ul>
                 <p style={{
                   marginTop: '1rem',
