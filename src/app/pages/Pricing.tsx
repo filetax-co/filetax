@@ -5,14 +5,12 @@ import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
-// ---------------------------------------------------------------------
-// TEMPORARY: Services are not yet live. All pricing-card CTAs route
-// to /waitlist instead of their original destinations. To revert when
-// services launch, change CHECK_URL and PORTAL_URL back to their
-// originals (shown in comments below).
-// ---------------------------------------------------------------------
-const CHECK_URL = "/waitlist";  // original: "/check"
-const PORTAL_URL = "/waitlist"; // original: "/portal"
+const CHECK_URL = "/check";
+const PORTAL_URL = "/portal";
+// IRS fax is priced and sold but NOT BUILT. Its card is the one place on this
+// page that still collects interest rather than starting a filing. Remove this
+// and the card's copy in the same commit that ships fax. See handoff item 1.
+const FAX_URL = "/waitlist?service=irs-fax";
 
 interface PricingCard {
   title: string;
@@ -36,8 +34,8 @@ const cards: PricingCard[] = [
     description: "Any prior unfiled year. Same output as current year. Pair with the CPA-Authored Reasonable Cause Letter for the strongest abatement case.",
     microcopy: "One-time filing. No ongoing fees.",
     badge: "Recommended for Late Filers",
-    cta: "Join the Waitlist",
-    ctaLink: CHECK_URL, // original: "/check"
+    cta: "Start My Filing",
+    ctaLink: CHECK_URL,
     highlight: true,
   },
   {
@@ -46,24 +44,24 @@ const cards: PricingCard[] = [
     description: "One filing year. Print-ready PDF. Ready to mail or fax.",
     microcopy: `One-time filing. No subscription. Your next two filings are guaranteed at $${PRICE_PER_YEAR}.`,
     tooltip: "One Filing. Two Forms. One Price. The IRS requires these to be filed together. You are not paying for extras.",
-    cta: "Join the Waitlist",
-    ctaLink: CHECK_URL, // original: "/check"
+    cta: "Start My Filing",
+    ctaLink: CHECK_URL,
   },
   {
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
     price: `+$${PRICE_RCL}`,
     priceNote: "one letter, covers every year",
     description: `Generated from a framework written by a practising U.S. CPA to argue for abatement of the automatic $25,000 penalty, populated with your filing details. Charged once, however many years you are catching up on, never per year. Total with a single past-year filing: $${PRICE_PER_YEAR + PRICE_RCL}. Three years: $${3 * PRICE_PER_YEAR + PRICE_RCL}.`,
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
+    cta: "Check My Eligibility",
+    ctaLink: CHECK_URL,
   },
   {
     title: "Add-On: Additional Related Party (Form 5472)",
     price: `+$${PRICE_ADDITIONAL_PARTY}`,
     priceNote: "per related party, per year",
     description: "Required when the LLC had reportable transactions with more than one foreign related party. A separate Form 5472 is prepared for each party, for each year filed, with the totals reconciled on lines 1f and 1h.",
-    cta: "Join the Waitlist",
-    ctaLink: CHECK_URL, // original: "/check"
+    cta: "Check My Eligibility",
+    ctaLink: CHECK_URL,
   },
   {
     title: "Add-On: IRS Fax Transmission (at launch)",
@@ -71,8 +69,8 @@ const cards: PricingCard[] = [
     priceNote: "one fee, however many years",
     description: "Not yet available. At launch: you sign the completed forms, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
     note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
+    cta: "Notify Me When Fax Launches",
+    ctaLink: FAX_URL,
   },
   {
     title: "LLC Tax Classification Change",
@@ -80,27 +78,18 @@ const cards: PricingCard[] = [
     priceNote: "per filing",
     description: "Standalone Form 8832, electing to be taxed as a C-Corporation instead of the default disregarded entity. Print-ready PDF. Must be mailed. Fax add-on not available.",
     microcopy: "One-time filing. No ongoing fees.",
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
+    cta: "Start Filing",
+    ctaLink: PORTAL_URL,
   },
   {
     title: "Multi-Year Past Filing Package",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: `per year + one $${PRICE_RCL} letter`,
     description: `Catch up on several unfiled years at once, back to 2019. $${PRICE_PER_YEAR} per year, plus a single $${PRICE_RCL} reasonable cause letter covering all of them.`,
-    cta: "Join the Waitlist",
-    ctaLink: PORTAL_URL, // original: "/portal"
+    cta: "Start My Filing",
+    ctaLink: CHECK_URL,
   },
 ];
-
-// Original card CTA copy preserved for revert:
-//   1. "Start My Filing"      → /check
-//   2. "Start My Filing"      → /check
-//   3. "Check My Eligibility" → /check
-//   4. "Add to Filing"        → /portal
-//   5. "Add to Filing"        → /portal
-//   6. "Start Filing"         → /portal
-//   7. "Get in Touch"         → /portal
 
 export function Pricing() {
   usePageMeta({
@@ -133,10 +122,11 @@ export function Pricing() {
         price: card.price.replace(/[^0-9.]/g, ""),
         priceCurrency: "USD",
         url: "https://filetax.co/pricing",
-        // Nothing is purchasable yet, every CTA on this page routes to the
-        // waitlist. Advertising these as InStock would be false, so the prices
-        // are published as pre-order until the product opens.
-        availability: "https://schema.org/PreOrder",
+        // IRS fax is priced but not built, so it stays pre-order while
+        // everything else is purchasable. See handoff item 1.
+        availability: card.title.includes("IRS Fax")
+          ? "https://schema.org/PreOrder"
+          : "https://schema.org/InStock",
       })),
   });
 

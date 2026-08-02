@@ -82,7 +82,7 @@ export function Home() {
           </div>
 
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2.5rem" }}>
-            The eligibility check is live now and takes about 2 minutes. Filing opens ahead of the April 15, 2027 deadline.
+            Live now. Start without an account, and pay only when your forms are ready to download.
           </p>
         </div>
 
@@ -305,9 +305,8 @@ export function Home() {
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
-                {/* Original link (restore when portal is ready): <Link to="/portal" ...>Start Filing</Link> */}
                 <Link
-                  to="/waitlist?service=llc-classification"
+                  to="/portal"
                   style={{
                     color: "var(--tf-accent)",
                     fontWeight: 600,
@@ -340,7 +339,6 @@ export function Home() {
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission (at launch)</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: you sign the forms, we fax them to the IRS so you never need a printer, and you get a transmission receipt.</p>
-                {/* Original link (restore when portal is ready): <Link to="/portal" ...>Add to Filing</Link> */}
                 <Link
                   to="/waitlist?service=irs-fax"
                   style={{
@@ -357,7 +355,7 @@ export function Home() {
                     lineHeight: "1.8",
                   }}
                 >
-                  Add to Filing
+                  Notify Me
                 </Link>
               </div>
             </div>
@@ -389,7 +387,7 @@ export function Home() {
               minHeight: "44px",
             }}
           >
-            Join the Waitlist
+            Get Notified
           </Link>
         </div>
       </section>

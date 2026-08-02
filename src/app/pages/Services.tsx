@@ -2,14 +2,11 @@ import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
 
-// ---------------------------------------------------------------------
-// TEMPORARY: Services are not yet live. All "start filing" CTAs route
-// to /waitlist instead of their original destinations. To revert when
-// services launch, change CHECK_URL and PORTAL_URL back to their
-// originals (shown in comments below).
-// ---------------------------------------------------------------------
-const CHECK_URL = "/waitlist";  // original: "/check"
-const PORTAL_URL = "/waitlist"; // original: "/portal"
+const CHECK_URL = "/check";
+const PORTAL_URL = "/portal";
+// IRS fax is priced and sold but NOT BUILT, so its section still collects
+// interest. Remove with the commit that ships fax. See handoff item 1.
+const FAX_URL = "/waitlist?service=irs-fax";
 
 export function Services() {
   usePageMeta({
@@ -111,9 +108,8 @@ export function Services() {
             </p>
           </div>
 
-          {/* original CTA: <Link to="/check">Check My Eligibility</Link> - revert when services go live */}
           <Link to={CHECK_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Join the Waitlist
+            Check My Eligibility
           </Link>
         </div>
       </section>
@@ -147,7 +143,6 @@ export function Services() {
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
             <strong>${PRICE_PER_YEAR + PRICE_RCL} for one missed year</strong> (${PRICE_PER_YEAR} filing + one ${PRICE_RCL} reasonable cause letter). The letter is charged once however many years you file, so three missed years is ${3 * PRICE_PER_YEAR + PRICE_RCL}, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.
           </p>
-          {/* original CTA: <Link to="/check">Fix a Missed Year</Link> - revert when services go live */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
             <Link to={CHECK_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
               Fix a Missed Year
@@ -172,9 +167,8 @@ export function Services() {
             We do not prepare Form 2553, the S-Corporation election, because it is not available to the owners this service is built for. An S corporation cannot have a nonresident alien as a shareholder, so an LLC owned by a non-U.S. individual cannot make the election. If your circumstances have changed, for example you are now a U.S. resident or a U.S. person is joining the ownership, speak to a CPA about whether an S election is open to you.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>One-time filing. No ongoing fees.</p>
-          {/* original CTA: <Link to="/portal">Start Filing</Link> - revert when services go live */}
           <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Join the Waitlist
+            Start Filing
           </Link>
         </div>
       </section>
@@ -194,9 +188,8 @@ export function Services() {
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             When it launches, one ${PRICE_FAX} fee is intended to cover the whole job, however many years you are filing. It will be an add-on to Form 5472 filings only, and not available for Form 8832, which must be mailed.
           </p>
-          {/* original CTA: <Link to="/portal">Add to My Filing</Link> - revert when services go live */}
-          <Link to={PORTAL_URL} style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Join the Waitlist
+          <Link to={FAX_URL} style={{ background: "transparent", color: "#0284C7", border: "1px solid #0284C7", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
+            Notify Me When Fax Launches
           </Link>
         </div>
       </section>

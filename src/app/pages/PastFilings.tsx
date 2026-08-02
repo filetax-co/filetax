@@ -2,12 +2,7 @@ import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { PRICE_PER_YEAR, PRICE_RCL } from "../../lib/pricing";
 
-// ---------------------------------------------------------------------
-// TEMPORARY: Services are not yet live. The "Fix a Missed Year" CTA
-// routes to /waitlist instead of the eligibility check. To revert when
-// services launch, change FIX_MISSED_YEAR_URL back to "/check".
-// ---------------------------------------------------------------------
-const FIX_MISSED_YEAR_URL = "/waitlist"; // original: "/check"
+const FIX_MISSED_YEAR_URL = "/check";
 
 export function PastFilings() {
   usePageMeta({
@@ -103,15 +98,14 @@ export function PastFilings() {
             </p>
           </div>
 
-          {/* original CTA: <Link to="/check">Fix a Missed Year</Link> - revert when services go live */}
           <Link
             to={FIX_MISSED_YEAR_URL}
             style={{ background: "#0284C7", color: "white", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}
           >
-            Join the Waitlist
+            Fix a Missed Year
           </Link>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginTop: "0.625rem" }}>
-            Get notified the moment past-year filings open up.
+            Start with the eligibility check. About 2 minutes, and you do not need an account to begin.
           </p>
         </div>
       </section>

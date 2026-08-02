@@ -21,11 +21,12 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pri
 // chosen later in the multi-year flow, where the incorporation date is
 // known and can rule years out.
 //
-// TEMPORARY: Services are not yet live. The CTA at the end routes to
-// /waitlist instead of the portal. To revert when services launch,
-// change PORTAL_PATH back to "/portal".
+// NOTE: this links to the portal bare, with no query string. Portal.tsx
+// reads `years`, `sections`, `parties` and `rcl` to render its
+// "Your Filing is Pre-Configured" panel, and nothing sets them, so that
+// panel never shows and the answers below are re-asked. See handoff item 36.
 // ---------------------------------------------------------------------
-const PORTAL_PATH = "/waitlist"; // original: "/portal"
+const PORTAL_PATH = "/portal";
 
 type Step = 1 | 2 | 3 | 4;
 type Outcome = "pass" | "refer" | null;
@@ -495,7 +496,7 @@ export function EligibilityCheck() {
                 marginBottom: "0.75rem",
               }}
             >
-              Join the Waitlist
+              Start My Filing
             </Link>
             <p
               style={{
@@ -506,7 +507,7 @@ export function EligibilityCheck() {
                 lineHeight: 1.6,
               }}
             >
-              We will email you the moment this is live.
+              Free to create an account. You pay only when your completed forms are ready to download.
             </p>
           </div>
         </div>
