@@ -159,7 +159,15 @@ export default function FilingWizard() {
       body: { filing_id: id },
     });
     if (error || !data?.url) {
-      setPaymentNotice(data?.error || error?.message || 'Unable to start checkout. Please try again.');
+      let functionMessage = data?.error;
+      const context = (error as { context?: Response } | null)?.context;
+      if (!functionMessage && context) {
+        try {
+          const body = await context.clone().json();
+          functionMessage = body?.error;
+        } catch { /* retain the safe fallback below */ }
+      }
+      setPaymentNotice(functionMessage || error?.message || 'Unable to start checkout. Please try again.');
       setCheckoutBusy(false);
       return;
     }
@@ -382,7 +390,7 @@ export default function FilingWizard() {
 
         {/* ── Page heading ──────────────────────────────────────────────── */}
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' }}>
-          Generate Filing Package
+          {isPaid ? 'Generate Filing Package' : 'Review and Payment'}
         </h2>
         {filing && (
           <p style={{ fontSize: '0.875rem', color: 'var(--tf-muted)', marginBottom: '1.75rem' }}>
@@ -570,12 +578,12 @@ export default function FilingWizard() {
                   background: 'var(--tf-surface)',
                 }}>
                   <h3 style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>
-                    Complete payment to download
+                    Complete payment before generating your package
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.55, marginBottom: '1rem' }}>
                     {hasUnpaidRelatedParties
-                      ? `${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} additional related ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party requires' : 'parties require'} payment before the updated forms are available.`
-                      : 'Your checkout is calculated from the tax years and optional services in this filing. Dodo Payments handles the secure payment page and applicable tax.'}
+                      ? `${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} additional related ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party requires' : 'parties require'} payment. After payment, you can generate and download the updated filing package.`
+                      : 'Your checkout is calculated from the tax years and optional services in this filing. After payment, you can generate and download the filing package.'}
                   </p>
                   <button
                     onClick={handleCheckout}

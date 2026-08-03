@@ -1,11 +1,6 @@
 alter table public.filings
   add column if not exists paid_related_party_count integer not null default 0;
 
-update public.filings
-set paid_related_party_count = jsonb_array_length(coalesce(related_parties, '[]'::jsonb))
-where status in ('paid', 'completed')
-  and paid_related_party_count = 0;
-
 create or replace function public.filings_freeze_when_paid()
 returns trigger language plpgsql security definer as $$
 declare

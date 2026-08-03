@@ -497,7 +497,7 @@ export const RELATED_PARTY_TX: QuickTx[] = [
   { value: 'interest',             label: 'Interest' },
   { value: 'loan_to_llc',          label: 'Loan to the LLC',  direction: 'received' },
   { value: 'loan_from_llc',        label: 'Loan from the LLC', direction: 'paid' },
-  { value: 'tangible_purchase',    label: 'Goods or inventory' },
+  { value: 'tangible_purchase',    label: 'Purchase of goods or inventory' },
   { value: 'other',                label: 'Other' },
 ];
 
