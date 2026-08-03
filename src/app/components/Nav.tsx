@@ -221,10 +221,17 @@ export function Nav() {
               textDecoration: "none",
               padding: "0.5rem 1.125rem",
               borderRadius: "0.5rem",
-              display: "inline-block",
+              // inline-FLEX and centred, matching the Sign up button beside it.
+              // This was inline-block with a lineHeight: 1.6 hack to fake the
+              // 44px height, which left its text sitting higher than Sign up's:
+              // an inline-block takes its baseline from its last line box, an
+              // inline-flex from its first item, so the two never lined up.
+              // Both buttons must use the same box model or they drift again.
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               whiteSpace: "nowrap",
               minHeight: "44px",
-              lineHeight: "1.6",
             }}
           >
             Check Eligibility
