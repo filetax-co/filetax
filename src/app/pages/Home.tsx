@@ -375,7 +375,15 @@ export function Home() {
                     lineHeight: "1.8",
                   }}
                 >
-                  Check My Eligibility
+                  {/* "Offered when you file", not "Check My Eligibility".
+                      Fax is an add-on to a 5472 filing, never a standalone
+                      purchase, so a CTA that reads like the start of its own
+                      checkout misdescribes it. Pricing.tsx has said this since
+                      45ae987; Home and Services were the two that disagreed.
+                      All three now carry the same label, and all three still
+                      link to /check, which is where the filing actually
+                      starts. Keep them in step. */}
+                  Offered when you file
                 </Link>
               </div>
 

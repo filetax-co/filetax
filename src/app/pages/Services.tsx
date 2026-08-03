@@ -231,8 +231,11 @@ export function Services() {
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             One point worth stating plainly, because the rest of this market blurs it: a transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted or processed your filing, and no preparer can give you that.
           </p>
+          {/* Same label as the fax cards on Home and Pricing. Fax is an add-on
+              to a 5472 filing and cannot be bought on its own, so this must not
+              read like the start of its own checkout. Still links to /check. */}
           <Link to={CHECK_URL} style={{ background: "transparent", color: "#0284C7", border: "1px solid #0284C7", fontWeight: 600, fontSize: "1rem", padding: "0.75rem 1.75rem", borderRadius: "0.5rem", textDecoration: "none", display: "inline-block", minHeight: "44px" }}>
-            Check My Eligibility
+            Offered when you file
           </Link>
         </div>
       </section>
