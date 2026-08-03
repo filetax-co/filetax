@@ -3355,8 +3355,12 @@ export function Intake() {
               {includeReasonableCause && (
                 <div style={{ marginTop: '1rem' }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text-muted, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>
-                    Select all reasons that apply
+                    Select only the reasons that apply
                   </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--tf-text-muted, #6b7280)', lineHeight: 1.5, margin: '-0.125rem 0 0.75rem' }}>
+                    Choose only statements that are true for this filing. Your letter will include a
+                    declaration under penalties of perjury, and you will sign it before filing.
+                  </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {REASONABLE_CAUSE_REASONS.map((r) => {
                       const checked = reasonableCauseReasons.includes(r.value);
