@@ -25,6 +25,8 @@ export const PRICE_RCL = 199;
 export const PRICE_ADDITIONAL_PARTY = 25;
 /** Opt-in IRS fax delivery, charged once per job however many years are sent. */
 export const PRICE_FAX = 9;
+/** Standalone Form 8832 classification-change filing. */
+export const PRICE_CLASSIFICATION_CHANGE = 50;
 
 /** Number of subsequent filings guaranteed at the same base price. */
 export const RENEWAL_GUARANTEE_FILINGS = 2;

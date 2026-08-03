@@ -152,9 +152,9 @@ Scenarios 34 and 35.
 UAE, Panama and much of Ireland have no postal code. Scenario 30, a Hong Kong entity address, is
 rejected as incomplete.
 
-**4. `console.log('INSERT PAYLOAD:', …)` at `Intake.tsx:1371`** dumps the whole filing — EIN, owner
-legal name, foreign TIN, both addresses — to the browser console on every insert. Not `DEV`-gated,
-so it ships.
+**4. ~~`console.log('INSERT PAYLOAD:', …)` dumped the whole filing to the browser console.~~**
+**DONE 3 August 2026.** The diagnostic now runs only when `import.meta.env.DEV` is true, so EIN,
+owner legal name, foreign TIN and addresses are not logged by the production build.
 
 **5. Scenario 17 blocked at submit with no message.** Submit did not reach `/filing/` and the wizard
 displayed nothing to explain why. Either a slow save exceeding the driver's 25s wait, or a genuine

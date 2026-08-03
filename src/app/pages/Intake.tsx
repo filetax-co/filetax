@@ -1838,7 +1838,9 @@ export function Intake() {
       if (!filingId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not signed in');
-        console.log('INSERT PAYLOAD:', JSON.stringify({ ...patch, user_id: user.id }, null, 2));
+        if (import.meta.env.DEV) {
+          console.log('INSERT PAYLOAD:', JSON.stringify({ ...patch, user_id: user.id }, null, 2));
+        }
         const { data, error: err } = await supabase.from('filings').insert({ ...patch, user_id: user.id, status: 'draft' }).select('id').single();
         if (err) throw err;
         const newId = data.id as string;
