@@ -73,7 +73,7 @@ const filing = {
   naics_description: 'Software Development',
   initial_return: true,
   mailing_address: { line1: '123 Main St', city: 'Anchorage', region: 'AK', postal_code: '99501', country: 'US' },
-  // owner — literal answers from the screenshots
+  // owner - literal answers from the screenshots
   owner_full_name: 'Owner Name',
   owner_country: 'United States',         // "country where you do business"
   owner_primary_country: 'United States',
@@ -137,7 +137,7 @@ must(pkg.formCount === 2, `Line 1g should be 2 (owner + Vidhi), got ${pkg.formCo
 must(/November 1, 2025/.test(text), 'Short-year begin "November 1, 2025" not found (initial-return short year)');
 must(/December 31, 2025/.test(text), 'Period end "December 31, 2025" not found');
 
-// Owner countries — literal answers, not US/AK fallback
+// Owner countries - literal answers, not US/AK fallback
 must(/Albania/.test(text), 'Owner tax residence "Albania" not found');
 must(/India/.test(text), 'Owner citizenship "India" not found');
 

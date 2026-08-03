@@ -1,5 +1,5 @@
 /**
- * e2eReport.mjs — turns a browser run log into the results workbook.
+ * e2eReport.mjs - turns a browser run log into the results workbook.
  *
  *   node scripts/e2eReport.mjs [runDir]
  *
@@ -75,7 +75,7 @@ function entered(s) {
 }
 
 const rows = scenarios.map((s) => {
-  // A scenario can be run more than once — a bad-data scenario re-run after the
+  // A scenario can be run more than once - a bad-data scenario re-run after the
   // data was corrected, say. The LAST attempt is the current verdict; earlier
   // ones stay in results.json as evidence and are counted here, so a result that
   // only passed on a retry cannot look like a clean first pass.

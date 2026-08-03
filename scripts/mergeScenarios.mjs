@@ -1,5 +1,5 @@
 /**
- * mergeScenarios — combine the three scenario files into one set of 100.
+ * mergeScenarios - combine the three scenario files into one set of 100.
  *
  *   node scripts/mergeScenarios.mjs <in1> <in2> <in3> <out>
  *
@@ -55,7 +55,7 @@ if (problems.length) {
 
 const doc = {
   meta: {
-    generated_for: 'filetax.co — the complete 100-scenario end-to-end set',
+    generated_for: 'filetax.co - the complete 100-scenario end-to-end set',
     generated_on: new Date().toISOString().slice(0, 10),
     count: scenarios.length,
     sources: [path.basename(a), path.basename(b), path.basename(c)],
@@ -66,7 +66,7 @@ const doc = {
     negative_tests:
       'A scenario carrying `expected_result` must be REJECTED. It passes when the error appears and nothing is saved.',
     manual_steps:
-      'A scenario carrying `manual_step` needs the action described there — seeded data alone cannot prove it.',
+      'A scenario carrying `manual_step` needs the action described there - seeded data alone cannot prove it.',
     note_on_dates:
       'Due-date logic is computed live from today vs FILING_DUE_DATES. As of 2026-07-26 every tax year is past its ORIGINAL deadline; 2025 is the only year still inside its EXTENDED window (to 2026-10-15).',
   },

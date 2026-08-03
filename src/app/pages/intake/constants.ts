@@ -28,7 +28,7 @@ export const STEP_LABELS: Record<string, string> = {
  * deadline: a March year-end 2025 return covers April 2025 to March 2026 and is
  * due 15 July 2026, but the table said 15 April 2026, so the filer was told they
  * were still inside the extension window when they were already three months
- * late — and step 1b, which is the only route to a reasonable cause letter,
+ * late - and step 1b, which is the only route to a reasonable cause letter,
  * never appeared.
  *
  * The rule itself is simple and has no exceptions worth tabulating: Form 1120,

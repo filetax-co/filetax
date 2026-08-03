@@ -1,5 +1,5 @@
 /**
- * pdfReceiver — a throwaway local endpoint that catches PDFs the browser
+ * pdfReceiver - a throwaway local endpoint that catches PDFs the browser
  * downloads during an end-to-end run and writes them to disk.
  *
  *   node scripts/pdfReceiver.mjs [outDir] [port]
@@ -7,7 +7,7 @@
  * The app delivers its package with a blob URL and an <a download> click. In a
  * driven browser that file lands wherever the browser decides, which is no use
  * for checking it afterwards. The page-side hook (installed by the test driver)
- * intercepts those clicks, reads the blob back, and POSTs it here instead — so
+ * intercepts those clicks, reads the blob back, and POSTs it here instead - so
  * the bytes captured are exactly the bytes a real user receives.
  */
 import http from 'node:http';

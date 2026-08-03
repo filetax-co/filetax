@@ -1,12 +1,12 @@
 -- ============================================================================
 -- Adds fields required to make the generated Form 5472 / Pro Forma 1120 match
 -- the intake input exactly:
---   • owner_country_citizenship — Part II "country of citizenship" (was never
+--   • owner_country_citizenship - Part II "country of citizenship" (was never
 --     collected, so the form printed residence/US as a wrong fallback).
---   • reportable_transactions.loan_begin_usd — Form 5472 lines 17a / 31a
+--   • reportable_transactions.loan_begin_usd - Form 5472 lines 17a / 31a
 --     (beginning-of-year loan balance). Intake previously collected only the
 --     closing balance, leaving the beginning line blank or wrong.
---   • reportable_transactions.is_royalty — distinguishes rent (13a/27a) from
+--   • reportable_transactions.is_royalty - distinguishes rent (13a/27a) from
 --     royalty (13b/27b) when the canonical type is 'rent_royalty'. Idempotent
 --     here in case an older DB predates the schema.sql block that adds it.
 -- All statements are idempotent and safe to re-run.

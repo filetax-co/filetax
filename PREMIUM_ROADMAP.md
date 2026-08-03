@@ -1,7 +1,7 @@
-# Premium feature roadmap — to make FileTax the most premium 5472 filer
+# Premium feature roadmap - to make FileTax the most premium 5472 filer
 
 Competitive read of 5472direct.com (the premium benchmark) and Filabl, mapped
-to what we already have and what would move us ahead. **Report only — nothing
+to what we already have and what would move us ahead. **Report only - nothing
 here is built yet; pick what you want and I'll implement.**
 
 Where we already lead: per-party 5472s, correct IRS totals (1f/1h), multi-year
@@ -14,7 +14,7 @@ deadline-aware dashboard, and now Form 7004. Three gaps separate us from
 
 ## 1. IRS Direct Delivery (fax submission + timestamped receipt)  ← highest impact
 
-**What they do:** 5472direct sells "IRS Direct Delivery" for $49 — they fax the
+**What they do:** 5472direct sells "IRS Direct Delivery" for $49 - they fax the
 completed package to the IRS and return a timestamped transmission receipt as
 proof of filing. It's their main paid add-on and a big trust/convenience lever
 (the customer never has to print + mail).
@@ -24,7 +24,7 @@ The schema already has `include_irs_fax` and `filing_jobs.delivery = 'fax'`; the
 end-to-end logic doc fully specifies the fax flow (Ogden PIN unit cover sheet,
 transmission ID/timestamp storage, retry, status). Nothing is wired.
 
-**To build:** a pay-per-use fax API (Telnyx/Phaxio/Documo — no monthly minimum),
+**To build:** a pay-per-use fax API (Telnyx/Phaxio/Documo - no monthly minimum),
 an edge function that builds the fax cover sheet + dispatches the package,
 stores transmission ID + timestamp, and shows the receipt on the confirmation
 screen. Price it as a $39–49 add-on.
@@ -49,7 +49,7 @@ step). The schema reserves `ingestion_source = manual | bank_statement`.
   for the user to confirm. No third party.
 - Phase 2: **Plaid link** (or statement-parse) → auto-classify into our existing
   canonical types via deterministic rules (amount sign + counterparty), shown
-  for review. Keep it rules-based and transparent — match their "no black-box"
+  for review. Keep it rules-based and transparent - match their "no black-box"
   trust message.
 
 **Effort:** CSV = medium; Plaid = high (vendor, OAuth, security review).
@@ -63,13 +63,13 @@ step). The schema reserves `ingestion_source = manual | bank_statement`.
 cases *before* payment; both competitors show the prepared output before pay.
 
 **Where we are:** we have the eligibility checker (refers out multi-member /
-no-EIN / fiscal etc.) and tier-3 "CPA recommended" flags — most of the screener
+no-EIN / fiscal etc.) and tier-3 "CPA recommended" flags - most of the screener
 already exists. We do NOT show a form preview before payment, though the
 generator can already render the filled forms; the logic doc explicitly calls
 for a **watermarked preview before payment**.
 
 **To build:**
-- **Watermarked preview:** render the real filled 5472 + 1120 with a "PREVIEW —
+- **Watermarked preview:** render the real filled 5472 + 1120 with a "PREVIEW -
   full forms after payment" watermark on the review step. The generator is done;
   this is ~a watermark overlay + a preview view. Low effort, high conversion lever.
 - **Screener polish:** surface a single "here's what we'll prepare / here's what

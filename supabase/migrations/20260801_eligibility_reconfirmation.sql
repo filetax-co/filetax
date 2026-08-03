@@ -15,9 +15,9 @@
 -- filed, the LLC starts earning U.S.-source income. Nothing asked again means
 -- nothing caught.
 --
---   eligibility_confirmed — the filer re-attested, for THIS tax year, that the
+--   eligibility_confirmed - the filer re-attested, for THIS tax year, that the
 --                           conditions this flow depends on still hold.
---   has_us_activity       — the filer reported U.S. real estate, or work
+--   has_us_activity       - the filer reported U.S. real estate, or work
 --                           performed inside the U.S., this year. True is a
 --                           warning state: it points at a possible Form 1040-NR
 --                           obligation for the owner personally, which this

@@ -1,5 +1,5 @@
 /**
- * genSamplePreview — build the Form 5472 and pro forma 1120 shown in the
+ * genSamplePreview - build the Form 5472 and pro forma 1120 shown in the
  * "Sample Output Preview" on the marketing site's /services page.
  *
  * Runs the real generator, unmodified, so the sample cannot drift away from

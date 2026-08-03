@@ -41,7 +41,7 @@ const baseFiling = (over = {}) => ({
 
 /**
  * Read back the filled field values. This used to shell out to python3/pypdf,
- * which is not installed on every machine that needs to run the check — pd
+ * which is not installed on every machine that needs to run the check - pd
  * f-lib is already a dependency and reads the same values.
  */
 const dump = async (bytes) => {
@@ -60,7 +60,7 @@ const dump = async (bytes) => {
 };
 
 /**
- * Text drawn straight onto the page rather than into a field — the ending date
+ * Text drawn straight onto the page rather than into a field - the ending date
  * on the period line is drawn, because both date slots share one field name.
  */
 const pageText = (bytes) => {
@@ -79,7 +79,7 @@ const pageText = (bytes) => {
     catch { text += chunk.toString('latin1') + '\n'; }
     i = e + end.length;
   }
-  // pdf-lib writes drawn strings as hex — <446563656D626572...> Tj — so decode
+  // pdf-lib writes drawn strings as hex - <446563656D626572...> Tj - so decode
   // those runs, otherwise a search for the visible words finds nothing.
   return text.replace(/<([0-9A-Fa-f]{4,})>/g, (whole, hex) => {
     if (hex.length % 2) return whole;
@@ -91,7 +91,7 @@ const pageText = (bytes) => {
 const fails = [];
 const must = (c, m) => { if (!c) fails.push(m); };
 
-// 1. Standalone 7004 (initial return — formed 2025, filing 2025 => short year)
+// 1. Standalone 7004 (initial return - formed 2025, filing 2025 => short year)
 const f7004 = await gen.generateForm7004(baseFiling(), 2025);
 const t = await dump(f7004);
 console.log('=== 7004 (initial/short year) fields ===\n' + t);
@@ -109,10 +109,10 @@ must(!/= '2025'/.test(t), 'no year field may carry a 4-digit year');
 // Both date slots on that line share the field name LLC_Beginning_Date, so the
 // ending date is drawn onto the page instead. Beginning is the formation date
 // (short year); ending is 31 December.
-// The blank takes the month and day only — the year that follows it is the
+// The blank takes the month and day only - the year that follows it is the
 // "20 __" box, so a full date printed the year twice.
 const shortYearPage = pageText(f7004);
-must(/'LLC_Beginning_Date' = 'February 10'/.test(t), "beginning slot should read 'February 10' — the year goes in the 20 __ box");
+must(/'LLC_Beginning_Date' = 'February 10'/.test(t), "beginning slot should read 'February 10' - the year goes in the 20 __ box");
 must(!/February 10, 2025/.test(t), 'beginning slot must not repeat the year');
 must(/December 31/.test(shortYearPage), 'ending date must be printed in the ending slot, not a repeat of the beginning date');
 must(!/December 31, 2025/.test(shortYearPage), 'ending slot must not repeat the year');
@@ -121,7 +121,7 @@ must(!/December 31, 2025/.test(shortYearPage), 'ending slot must not repeat the 
 const f7004cal = await gen.generateForm7004(baseFiling({ date_of_incorporation: '2020-01-01' }), 2025);
 const tcal = await dump(f7004cal);
 console.log('=== 7004 (calendar year) fields ===\n' + tcal);
-must(/'LLC_Calendar_Year' = '25'/.test(tcal), "calendar year must print as '25' — the form already shows '20'");
+must(/'LLC_Calendar_Year' = '25'/.test(tcal), "calendar year must print as '25' - the form already shows '20'");
 must(!/2025/.test(tcal), "calendar year must not print '2025' (it would read '20 2025')");
 
 // 3. Package includes form7004 when extension_filed=true; absent when false

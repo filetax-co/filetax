@@ -5,14 +5,14 @@
 // SECURITY CONTRACT
 //   - Only the authenticated owner of the filing may create a session.
 //   - The price / product is defined server-side using STRIPE_PRICE_ID.
-//     The browser never passes an amount or price — it only sends filing_id.
+//     The browser never passes an amount or price - it only sends filing_id.
 //   - The session ID is stored on the filing row so verify-payment can look
 //     it up without trusting anything the browser returns.
 //
 // REQUIRED ENV VARS (set in Supabase Dashboard → Edge Functions → Secrets)
-//   STRIPE_SECRET_KEY   — sk_live_… or sk_test_…
-//   STRIPE_PRICE_ID     — price_… (the $XXX Form 5472 product in your Stripe dashboard)
-//   PUBLIC_SITE_URL     — https://yoursite.com  (no trailing slash)
+//   STRIPE_SECRET_KEY   - sk_live_… or sk_test_…
+//   STRIPE_PRICE_ID     - price_… (the $XXX Form 5472 product in your Stripe dashboard)
+//   PUBLIC_SITE_URL     - https://yoursite.com  (no trailing slash)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -64,7 +64,7 @@ serve(async (req) => {
 
     if (filingErr || !filing) return json({ error: 'Filing not found' }, 404);
 
-    // Already paid — return a sentinel so the client can skip checkout.
+    // Already paid - return a sentinel so the client can skip checkout.
     if (filing.status === 'paid' || filing.status === 'completed') {
       return json({ already_paid: true });
     }

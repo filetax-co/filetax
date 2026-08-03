@@ -117,7 +117,7 @@ function startStaticServer() {
 //
 // Cloudflare Pages resolves an extensionless request against a flat file first
 // and serves it at that exact URL. If only the directory form exists it instead
-// issues a 308 to the trailing-slash variant — which would redirect every
+// issues a 308 to the trailing-slash variant - which would redirect every
 // already-indexed URL (/pricing, /resources/<slug>) to a new one, while the
 // canonical tag and sitemap still point at the non-slash form. Flat files keep
 // the live URLs byte-identical to what Google has indexed.

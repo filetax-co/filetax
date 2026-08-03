@@ -1,5 +1,5 @@
 /**
- * genScenarios — build scenarios 31..80, complementing the original 30.
+ * genScenarios - build scenarios 31..80, complementing the original 30.
  *
  *   node scripts/genScenarios.mjs [outfile]
  *
@@ -101,7 +101,7 @@ const add = (title, tests, body) =>
 // ── 31-36 · older form templates (2019-2021 share one PDF; 2022 its own) ────
 for (const [i, year] of ['2019', '2020', '2021', '2022'].entries()) {
   add(
-    `Tax year ${year} — older Form 5472 template`,
+    `Tax year ${year} - older Form 5472 template`,
     `get5472PdfUrl/get1120PdfUrl select the ${year} template; period defaults to the full calendar year`,
     {
       filing: filing({
@@ -146,20 +146,20 @@ add('2021 fiscal year ending March (period spans two calendar years)',
 
 // ── 38-51 · the 14 transaction types never exercised ────────────────────────
 const untested = [
-  ['dividend', 'paid', 12000, 'Dividend to foreign owner — Part V'],
-  ['insurance', 'paid', 3400, 'Insurance premium paid to related party — Part IV line 20/34'],
-  ['loan_guarantee_fee', 'paid', 1500, 'Loan guarantee fee — Part IV'],
-  ['sales', 'received', 65000, 'Sales of goods to the LLC — Part IV line 9'],
-  ['cost_sharing', 'paid', 18000, 'Cost-sharing payment — maps to "other"'],
-  ['platform_contribution', 'paid', 26000, 'Platform contribution — maps to "other"'],
-  ['acquisition_tx', 'received', 40000, 'Acquisition of an interest — maps to capital_contribution'],
-  ['disposition_tx', 'paid', 31000, 'Disposition of an interest — maps to distribution'],
+  ['dividend', 'paid', 12000, 'Dividend to foreign owner - Part V'],
+  ['insurance', 'paid', 3400, 'Insurance premium paid to related party - Part IV line 20/34'],
+  ['loan_guarantee_fee', 'paid', 1500, 'Loan guarantee fee - Part IV'],
+  ['sales', 'received', 65000, 'Sales of goods to the LLC - Part IV line 9'],
+  ['cost_sharing', 'paid', 18000, 'Cost-sharing payment - maps to "other"'],
+  ['platform_contribution', 'paid', 26000, 'Platform contribution - maps to "other"'],
+  ['acquisition_tx', 'received', 40000, 'Acquisition of an interest - maps to capital_contribution'],
+  ['disposition_tx', 'paid', 31000, 'Disposition of an interest - maps to distribution'],
   ['other_part_v', 'received', 7000, 'Other Part V monetary event'],
-  ['less_than_fmv', 'paid', 5000, 'Transfer at less than fair market value — Part VI'],
-  ['property_transfer_fmv', 'paid', 15000, 'Property transfer at FMV — Part VI'],
-  ['other_part_vi', 'paid', 2500, 'Other non-monetary arrangement — Part VI'],
-  ['other', 'received', 4200, 'Other amount received — Part IV line 21'],
-  ['tech_services', 'paid', 9800, 'Technical services — maps to service_payment'],
+  ['less_than_fmv', 'paid', 5000, 'Transfer at less than fair market value - Part VI'],
+  ['property_transfer_fmv', 'paid', 15000, 'Property transfer at FMV - Part VI'],
+  ['other_part_vi', 'paid', 2500, 'Other non-monetary arrangement - Part VI'],
+  ['other', 'received', 4200, 'Other amount received - Part IV line 21'],
+  ['tech_services', 'paid', 9800, 'Technical services - maps to service_payment'],
 ];
 untested.forEach(([type, dir, amt, desc], i) => {
   add(`Transaction type coverage: ${type}`, desc, {
@@ -172,7 +172,7 @@ untested.forEach(([type, dir, amt, desc], i) => {
 });
 
 // ── 52-56 · formation costs & gross-payments reconciliation ─────────────────
-add('Formation costs ONLY — regression guard for the 1f/1h fix',
+add('Formation costs ONLY - regression guard for the 1f/1h fix',
   'formation_costs must appear in Part V and in gross payments; wizard total must equal formGross',
   {
     filing: filing({ name: 'Formation Only LLC', ein: '48-5200001', year: '2025', doi: '2025-01-05', assets: 0 }),
@@ -183,7 +183,7 @@ add('Formation costs ONLY — regression guard for the 1f/1h fix',
   });
 
 add('The reported mismatch: contribution + formation costs + services',
-  'Reproduces total 42,500 vs gross 30,000 — both figures must now read 42,500',
+  'Reproduces total 42,500 vs gross 30,000 - both figures must now read 42,500',
   {
     filing: filing({ name: 'Fresh Start Ventures LLC', ein: '48-5200002', year: '2025', doi: '2019-10-01', country: 'Brazil' }),
     owner: owner({ name: 'Wei Ling Tan', country: 'Singapore', ref: 'WEI001', ftin: 'SG-S1234567D', address: foreignAddr('1 Marina Blvd', 'Singapore', '018989', 'Singapore') }),
@@ -210,7 +210,7 @@ add('Part VI amount rolls into gross payments',
   });
 
 add('Formation costs across two related parties',
-  'formation_costs is a Part V (owner) concept — a non-owner party must not create a Part V statement',
+  'formation_costs is a Part V (owner) concept - a non-owner party must not create a Part V statement',
   {
     filing: filing({ name: 'Split Setup LLC', ein: '48-5200004', year: '2024', doi: '2024-02-14' }),
     owner: owner({ name: 'Marco Rossi', country: 'Italy', ref: 'MAR001', ftin: 'IT-3344', address: foreignAddr('Via Roma 1', 'Milan', '20121', 'Italy', 'MI') }),
@@ -253,7 +253,7 @@ add('Manual "Other" business for the OWNER and a related party',
   });
 
 add('LEGACY ROW: owner business code present, activity blank',
-  'resolveBizPreset must recover the preset from owner_naics_code — must NOT show "Other"',
+  'resolveBizPreset must recover the preset from owner_naics_code - must NOT show "Other"',
   {
     filing: filing({ name: 'Legacy Activity LLC', ein: '49-5700003', year: '2023', doi: '2020-06-06' }),
     owner: { ...owner({ name: 'Priya Nair', country: 'India', ref: 'PRI001', ftin: 'IN-ABCDE1234F', address: foreignAddr('MG Road 22', 'Bengaluru', '560001', 'India', 'KA') }), owner_business_activity: '', owner_naics_code: '541511' },
@@ -287,7 +287,7 @@ const noRegionCountries = [
   ['Qatar', 'Doha', '00000', 'QAT'],
 ];
 noRegionCountries.forEach(([country, city, zip, pfx], i) => {
-  add(`Owner in ${country} — no state/region concept`,
+  add(`Owner in ${country} - no state/region concept`,
     'State/region must be optional and must not block validation',
     {
       filing: filing({ name: `${country} Owner LLC`, ein: `50-62000${i}`, year: '2025', doi: '2023-03-03' }),
@@ -316,7 +316,7 @@ add('Mailing state differs from state of formation',
   });
 
 // ── 67-70 · many parties, reference codes, 1g count ─────────────────────────
-add('Five related parties — reference codes and the 1g form count',
+add('Five related parties - reference codes and the 1g form count',
   'Codes follow first-3-letters + 00n; one Form 5472 per party; 1g must read 6',
   {
     filing: filing({ name: 'Manyparties Group LLC', ein: '51-6700001', year: '2024', doi: '2019-01-01', assets: 500000 }),
@@ -446,7 +446,7 @@ add('Part VI managerial ON with no other transactions',
   });
 
 add('Absolute minimum: no transactions AND managerial disclosure off',
-  'The leanest package the generator can emit — must still produce 1120 + 5472',
+  'The leanest package the generator can emit - must still produce 1120 + 5472',
   {
     filing: filing({ name: 'Bare Minimum LLC', ein: '53-7500003', year: '2025', doi: '2023-01-01', assets: 0 }),
     owner: owner({ name: 'Leila Haddad', country: 'Morocco', ref: 'LEI001', ftin: 'MA-1414', address: foreignAddr('Blvd Mohammed V', 'Casablanca', '20000', 'Morocco') }),
@@ -534,7 +534,7 @@ S.push({
 // ── emit ────────────────────────────────────────────────────────────────────
 const doc = {
   meta: {
-    generated_for: 'filetax.co end-to-end testing — supplements scenarios 1-30',
+    generated_for: 'filetax.co end-to-end testing - supplements scenarios 1-30',
     generated_on: '2026-07-26',
     scenario_id_range: `${S[0].scenario_id}-${S[S.length - 1].scenario_id}`,
     count: S.length,
@@ -543,7 +543,7 @@ const doc = {
     note_on_dates:
       'Due-date logic is computed live from today vs FILING_DUE_DATES. As of 2026-07-26 every year in TAX_YEARS is past its ORIGINAL deadline, so Step 1b always shows. 2025 is the only year still inside its EXTENDED window (to 2026-10-15).',
     note_on_negative_tests:
-      'This set contains no deliberately invalid data — scenarios 8 and 27 in the original file already cover those. Everything here should complete successfully.',
+      'This set contains no deliberately invalid data - scenarios 8 and 27 in the original file already cover those. Everything here should complete successfully.',
     coverage: [
       'tax years 2019-2022 (older 5472/1120 templates)',
       'the 14 transaction types unused by scenarios 1-30',

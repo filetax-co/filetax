@@ -10,7 +10,7 @@
  *   node scripts/audit-pdf-fields.mjs
  *
  * Exits non-zero if any field declared in a per-year map is missing from the
- * corresponding PDF — that means a year override is out of sync.
+ * corresponding PDF - that means a year override is out of sync.
  */
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
@@ -24,9 +24,9 @@ const PDF_DIR = resolve(ROOT, 'public/pdf');
 // ── Map parsing ─────────────────────────────────────────────────────────────
 
 // Pull every `KEY: 'value'` pair from a TS file. Empty strings are skipped on
-// purpose — they mean "this field is intentionally absent in this revision."
+// purpose - they mean "this field is intentionally absent in this revision."
 // Parse a `KEY: 'value'` block. Empty values are preserved (an explicit ''
-// override means "this revision lacks the field" — when overlaid on a base
+// override means "this revision lacks the field" - when overlaid on a base
 // map, that REMOVES the field from the expected set).
 function parseConst(src) {
   const out = new Map();

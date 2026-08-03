@@ -1,5 +1,5 @@
 /**
- * genAll100 — generate the filing package for every scenario in the 100-case
+ * genAll100 - generate the filing package for every scenario in the 100-case
  * file, write the PDFs to disk, and dump a machine-readable "facts" file
  * describing what actually came out (page counts, which documents were
  * produced, every AcroForm field value on the 5472/1120, and the text drawn
@@ -48,7 +48,7 @@ const outDir = process.argv[3] ?? path.resolve(root, '../../Testing/out100');
 const doc = JSON.parse(await readFile(scenariosFile, 'utf8'));
 const scenarios = doc.scenarios ?? doc;
 
-// Clear the previous run's files rather than the directory itself — OneDrive
+// Clear the previous run's files rather than the directory itself - OneDrive
 // keeps a handle on synced folders and rmdir intermittently fails with EBUSY.
 await mkdir(outDir, { recursive: true });
 for (const f of await readdir(outDir)) {
@@ -59,7 +59,7 @@ for (const f of await readdir(outDir)) {
 /**
  * Pull the drawn text out of a PDF's content streams. The generated pages
  * (instructions, Part V/VI statements, RCL) are drawn with drawText, so their
- * content is in plain Tj/TJ operators — no font-encoding gymnastics needed.
+ * content is in plain Tj/TJ operators - no font-encoding gymnastics needed.
  */
 /** Inflate a stream object to its decoded bytes. */
 const streamBytes = (st) => {
@@ -131,7 +131,7 @@ const WINANSI_HIGH = {
   0x80: '€', 0x82: '‚', 0x83: 'ƒ', 0x84: '„', 0x85: '…',
   0x86: '†', 0x87: '‡', 0x88: 'ˆ', 0x89: '‰', 0x8A: 'Š',
   0x8B: '‹', 0x8C: 'Œ', 0x8E: 'Ž', 0x91: '‘', 0x92: '’',
-  0x93: '“', 0x94: '”', 0x95: '•', 0x96: '–', 0x97: '—',
+  0x93: '“', 0x94: '”', 0x95: '•', 0x96: '–', 0x97: '-',
   0x98: '˜', 0x99: '™', 0x9A: 'š', 0x9B: '›', 0x9C: 'œ',
   0x9E: 'ž', 0x9F: 'Ÿ',
 };
@@ -152,7 +152,7 @@ const mul = (m, n) => [
  *
  * Flattened AcroForm values live in Form XObjects that are placed with a `cm`
  * translation, so a reader that ignores the CTM reports every field at its
- * offset within its own little box — useless for saying which form line a
+ * offset within its own little box - useless for saying which form line a
  * value landed on. This tracks q/Q, cm, and Do so the coordinates are real.
  */
 const runStream = (pdfDoc, raw, res, ctm, out, seen, depth) => {
@@ -180,7 +180,7 @@ const runStream = (pdfDoc, raw, res, ctm, out, seen, depth) => {
       codes = [...lit].map((c) => c.charCodeAt(0));
     }
     if (f?.map) return codes.map((c) => f.map.get(c) ?? '').join('');
-    // No ToUnicode: the string is WinAnsi. Bytes 0x80-0x9F are NOT Latin-1 —
+    // No ToUnicode: the string is WinAnsi. Bytes 0x80-0x9F are NOT Latin-1 -
     // that range holds the typographic punctuation (en/em dashes, curly
     // quotes), so a naive fromCharCode turns a real em dash into an invisible
     // control character and makes correct output look like dropped text.
@@ -230,7 +230,7 @@ const runStream = (pdfDoc, raw, res, ctm, out, seen, depth) => {
       const ref = xo?.get?.(PDFName.of(m[11]));
       const sub = ref ? pdfDoc.context.lookup(ref) : null;
       if (sub?.getContents && String(sub.dict?.get(PDFName.of('Subtype'))) === '/Form') {
-        // Guard against cycles only — an XObject legitimately drawn twice at
+        // Guard against cycles only - an XObject legitimately drawn twice at
         // two positions must be reported twice, or a genuine double-print
         // would be silently deduplicated away.
         const key = String(ref);
@@ -284,7 +284,7 @@ const pageText = (pdfDoc) => pdfDoc.getPages().map((p) => itemsToText(pageItems(
 const pageRuns = (pdfDoc) => pdfDoc.getPages().map((p) => pageItems(pdfDoc, p));
 
 /**
- * Flattening destroys checkbox state — a cleared box and a checked box both
+ * Flattening destroys checkbox state - a cleared box and a checked box both
  * become "no text" once the appearance is baked in, so the finished PDF cannot
  * tell us whether box 3 ("foreign-owned U.S. DE") was ticked. The generator
  * flattens internally, so intercept PDFForm.flatten and snapshot every field
@@ -319,13 +319,13 @@ const formFields = (pdfDoc) => {
       else if (typeof f.getSelected === 'function') map[name] = (f.getSelected() ?? []).join(',');
     } catch { map[name] = '<unreadable>'; }
   }
-  // Only the fields that carry a value — the blanks are noise.
+  // Only the fields that carry a value - the blanks are noise.
   return Object.fromEntries(Object.entries(map).filter(([, v]) => v !== '' && v != null));
 };
 
 /**
  * Widget geometry of a blank template: `[{ name, page, x, y, w, h }]`.
- * Cached — the same handful of templates is reused across all 100 scenarios.
+ * Cached - the same handful of templates is reused across all 100 scenarios.
  */
 const rectCache = new Map();
 const templateRects = async (file) => {
@@ -333,7 +333,7 @@ const templateRects = async (file) => {
   const d = await PDFDocument.load(await readFile(path.join(root, 'public', 'pdf', file)));
 
   // These templates omit the widget's /P back-reference, so the owning page has
-  // to be found the other way round — by scanning each page's /Annots.
+  // to be found the other way round - by scanning each page's /Annots.
   const pageOfAnnot = new Map();
   d.getPages().forEach((p, i) => {
     const annots = p.node.Annots();
@@ -360,7 +360,7 @@ const templateRects = async (file) => {
 /**
  * Attribute each printed run to the form field whose widget box contains it.
  * This is what turns "the string 42,000 appears somewhere" into "line 1c
- * Total assets says 42,000" — the only way to prove the data landed on the
+ * Total assets says 42,000" - the only way to prove the data landed on the
  * right line rather than merely somewhere on the page.
  */
 const mapRunsToFields = (runs, rects) => {
@@ -376,7 +376,7 @@ const mapRunsToFields = (runs, rects) => {
       if (hit) (byField[hit.name] ??= []).push(r.s);
       // Anything the generator drew itself (rather than through a field) shows
       // up outside every widget box. The IRS template's own static text does
-      // too, so keep only runs in a font pdf-lib embedded — those are ours.
+      // too, so keep only runs in a font pdf-lib embedded - those are ours.
       else if (/^Helvetica|^Times|^Courier/.test(r.font)) {
         unplaced.push({ page: pageIdx + 1, x: r.x, y: r.y, s: r.s });
       }
@@ -400,7 +400,7 @@ const describe = async (bytes, withRuns = false) => {
  * The wizard derives tax_period_begin/end from the fiscal end month before it
  * writes the row (Intake.tsx deriveFiscalPeriod); the generator reads only the
  * derived dates. Mirror that here so a fiscal scenario is exercised the way
- * production produces it — otherwise every fiscal filer silently falls back to
+ * production produces it - otherwise every fiscal filer silently falls back to
  * a calendar year and the fiscal cases prove nothing.
  */
 const deriveFiscalPeriod = (taxYear, endMonth) => {
@@ -526,7 +526,7 @@ for (const s of scenarios) {
 
       flattenSnapshots.length = 0;
       const pkg = await generateFilingPackage(filing, txns, Number(s.filing.tax_year));
-      // Classify each snapshot by the fields it contains — the order the
+      // Classify each snapshot by the fields it contains - the order the
       // generator flattens in is an implementation detail, the field names
       // are not.
       const kindOf = (snap) => (

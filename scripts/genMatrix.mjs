@@ -1,5 +1,5 @@
 /**
- * genMatrix — build a large combinatorial scenario file in the same shape as
+ * genMatrix - build a large combinatorial scenario file in the same shape as
  * filetax_test_scenarios_all100.json, so genAll100 + auditAll100 can run over
  * it unchanged.
  *
@@ -29,7 +29,7 @@ const outFile = process.argv[3] ?? path.resolve(here, '../../../Testing/filetax_
  */
 const latin1Only = process.argv.includes('--latin1');
 
-// Deterministic PRNG (mulberry32) — reproducible findings matter more here
+// Deterministic PRNG (mulberry32) - reproducible findings matter more here
 // than statistical purity.
 let seed = 0x5472c0de;
 const rnd = () => {
@@ -61,7 +61,7 @@ const RCL_REASONS = ['first_time_filing', 'not_informed', 'no_tax_liability', 'm
 
 /**
  * Name sets. A US tax form is printed with WinAnsi fonts, so anything outside
- * Latin-1 is exactly where a generator is most likely to fail — these are the
+ * Latin-1 is exactly where a generator is most likely to fail - these are the
  * cases worth hammering, not more ASCII.
  */
 const NAME_SETS = {
@@ -144,7 +144,7 @@ for (let i = 1; i <= count; i++) {
       loan_begin_usd: isLoan && chance(0.6) ? String(money(0, 500000)) : '',
       description: pick([
         'Routine intercompany settlement',
-        'Payment under the master services agreement — schedule 2',
+        'Payment under the master services agreement - schedule 2',
         'Transfer of équipement at book value',
         '',
       ]),
@@ -200,7 +200,7 @@ for (let i = 1; i <= count; i++) {
 }
 
 // At least one RCL reason when an RCL was requested, or the letter has nothing
-// to say — that is a scenario-construction detail, not a product behaviour.
+// to say - that is a scenario-construction detail, not a product behaviour.
 for (const s of scenarios) {
   if (s.filing.include_reasonable_cause && s.filing.reasonable_cause_reasons.length === 0) {
     s.filing.reasonable_cause_reasons = ['first_time_filing'];

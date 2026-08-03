@@ -1,5 +1,5 @@
 /**
- * verifyPackageOutput — drives the real pdfGenerator end to end, in Node, with
+ * verifyPackageOutput - drives the real pdfGenerator end to end, in Node, with
  * a synthetic filing. No Supabase, no auth, no writes.
  *
  *   node --experimental-strip-types scripts/verifyPackageOutput.mjs
@@ -62,7 +62,7 @@ const baseFiling = {
   related_parties: [],
 };
 
-console.log('\n— scenario 5: formation costs —');
+console.log('\n- scenario 5: formation costs -');
 {
   const txns = [
     { transaction_type: 'capital_contribution', direction: 'received', amount_usd: 15000 },
@@ -85,7 +85,7 @@ console.log('\n— scenario 5: formation costs —');
   console.log(`        wrote tmp-verify/scenario5.pdf (${combined.getPageCount()} pages)`);
 }
 
-console.log('\n— scenarios 12/13/16: extension filed emits Form 7004 —');
+console.log('\n- scenarios 12/13/16: extension filed emits Form 7004 -');
 {
   const withExt = { ...baseFiling, extension_filed: true };
   const pkg = await generateFilingPackage(withExt, [
@@ -157,14 +157,14 @@ console.log('\n- reasonable cause with Form 7004 -');
   );
 }
 
-console.log('\n— scenarios 4/14: no transactions still generates —');
+console.log('\n- scenarios 4/14: no transactions still generates -');
 {
   const pkg = await generateFilingPackage(baseFiling, [], 2025);
   check('generates with zero transactions', !!pkg.combined && pkg.combined.length > 1000);
   check('Part VI statement still produced', !!pkg.statement_partVI);
 }
 
-console.log('\n— package assembly —');
+console.log('\n- package assembly -');
 {
   const pkg = await generateFilingPackage({ ...baseFiling, extension_filed: true }, [
     { transaction_type: 'formation_costs', direction: 'paid', amount_usd: 500 },
@@ -187,7 +187,7 @@ console.log('\n— package assembly —');
 // nothing in the product would ever complain. scripts/verifyPageSize.mjs checks
 // the templates; this checks the ASSEMBLED output, which is what is actually
 // delivered and is the only place a merge or a hand-built page could go wrong.
-console.log('\n— page size (US Letter) —');
+console.log('\n- page size (US Letter) -');
 {
   const isLetter = (page) => {
     const { width, height } = page.getSize();
@@ -227,7 +227,7 @@ console.log('\n— page size (US Letter) —');
 // value assertions matter more than they look: every form is FLATTENED during
 // assembly and content streams are compressed, so a byte search for a drawn
 // mark can never match. Assert on behaviour, not on the rendering.
-console.log('\n— drawn signature —');
+console.log('\n- drawn signature -');
 {
   // 1x1 transparent PNG. Enough to prove the plumbing; the visual result is not
   // something a byte check can assert.
@@ -288,7 +288,7 @@ console.log('\n— drawn signature —');
 // name_change and address_change sit wired-but-unreachable until 1 Aug 2026: a
 // wrong name in the map produces no error and no checked box. Assert the map
 // against the real AcroForm for every revision we ship.
-console.log('\n— Form 1120 item E field names resolve on every revision —');
+console.log('\n- Form 1120 item E field names resolve on every revision -');
 {
   const { getF1120Map } = await import('../src/lib/form1120Fields.ts');
   const KEYS = ['INITIAL_RETURN', 'FINAL_RETURN', 'NAME_CHANGE', 'ADDRESS_CHANGE'];
@@ -310,7 +310,7 @@ console.log('\n— Form 1120 item E field names resolve on every revision —');
 // Asserted against resolvePeriod rather than the rendered PDFs, because the
 // package flattens every form during assembly and a content stream is
 // compressed, so a byte search for "June 30, 2025" can never match.
-console.log('\n— final return truncates the tax period to the dissolution date —');
+console.log('\n- final return truncates the tax period to the dissolution date -');
 {
   const { resolvePeriod } = await import('../src/lib/pdfGenerator.ts');
   const { normalizeFiling } = await import('../src/lib/filingMapping.ts');
@@ -342,7 +342,7 @@ console.log('\n— final return truncates the tax period to the dissolution date
 // calendar-year LLC dissolved mid-year still ticked "calendar year" and printed
 // no short period. Form 7004 is saved BEFORE the merge flattens it, so unlike
 // the other two its fields can be read back.
-console.log('\n— a short final year reaches Form 7004 —');
+console.log('\n- a short final year reaches Form 7004 -');
 {
   const pkg = await generateFilingPackage(
     { ...baseFiling, extension_filed: true, final_return: true, date_of_closure: '2025-06-30' },
@@ -368,9 +368,9 @@ console.log('\n— a short final year reaches Form 7004 —');
 // Parts V and VI are built, and their checkboxes ticked, for the owner's Form
 // 5472 alone. The 1f/1h aggregate did not know that, so an owner-type amount
 // attached to an ADDITIONAL related party inflated that party's line 1f while
-// appearing on no line, no checkbox and no statement of theirs — a form whose
+// appearing on no line, no checkbox and no statement of theirs - a form whose
 // 1f exceeded line 22 + line 36 with nothing to explain the gap.
-console.log('\n— lines 1f / 1h, Part V/VI is owner-only —');
+console.log('\n- lines 1f / 1h, Part V/VI is owner-only -');
 {
   const { grossPaymentsForLines1f1h, aggregateTransactions } =
     await import('../src/lib/pdfGenerator.ts');

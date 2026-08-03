@@ -1,5 +1,5 @@
 /**
- * verifyRegressions — targeted checks for the two data risks introduced when
+ * verifyRegressions - targeted checks for the two data risks introduced when
  * formation costs were added to the gross-payments set and the owner /
  * related-party business dropdowns were re-keyed from `biz_code` to
  * `biz_activity`.
@@ -8,7 +8,7 @@
  *   node scripts/verifyRegressions.mjs
  *
  * Unlike the other verify*.mjs scripts these need no Supabase credentials and
- * they ASSERT — a failure exits non-zero.
+ * they ASSERT - a failure exits non-zero.
  */
 
 import {
@@ -32,7 +32,7 @@ const check = (name, actual, expected) => {
 // pdfGenerator's grossPaymentsForLines1f1h sums Part IV + Part V + formation
 // costs + Part VI. The wizard's summary must agree or the user is shown a
 // number the generated form contradicts.
-console.log('\n— gross payments —');
+console.log('\n- gross payments -');
 
 const onlyFormation = summarizeTransactions([
   { transaction_type: 'formation_costs', amount_usd: 1500 },
@@ -63,7 +63,7 @@ check('null / zero amounts contribute nothing', zeroish.formGross, 0);
 // ── Risk 1: legacy business-activity records must still resolve ─────────────
 // The dropdowns now key on the activity LABEL. A row written before that (or
 // seeded from `owner_naics_code`) can carry the code with a blank activity.
-console.log('\n— business activity resolution —');
+console.log('\n- business activity resolution -');
 
 const naive = (activity) => RP_NAICS.some((n) => n.label === activity);
 
@@ -88,7 +88,7 @@ check('resilient: the "Other" sentinel (a single space) stays custom',
 // selected, and a crypto row came back indistinguishable from any other
 // "other". These assert the round trip, which is the thing that was broken, and
 // they do it for EVERY type in the UI rather than the handful that are easy.
-console.log('\n— transaction type round trip —');
+console.log('\n- transaction type round trip -');
 
 let lossy = [];
 for (const t of TX_TYPES) {
@@ -118,7 +118,7 @@ check('every round-tripped code has a TX_TYPES entry',
 // everything (five codes collapse onto 'other'), but it must never return a
 // code with no card, and it must recover the two cases that have a
 // discriminator already stored.
-console.log('\n— legacy rows, no ui_transaction_type —');
+console.log('\n- legacy rows, no ui_transaction_type -');
 check('rent is recovered from is_royalty = false',
   resolveUiTxType({ transaction_type: 'rent_royalty', is_royalty: false }), 'rent');
 check('royalty is recovered from is_royalty = true',
@@ -144,9 +144,9 @@ check('an unrecognized canonical code falls back to other',
 // ── Risk 4: due dates must follow the PERIOD, not the tax-year label ────────
 // filingDueDates replaced a hardcoded table that was keyed on the tax year, so
 // a fiscal-year filer was measured against the calendar-year deadline and told
-// they were inside the extension window months after it closed — which hid step
+// they were inside the extension window months after it closed - which hid step
 // 1b and with it the only route to a reasonable cause letter.
-console.log('\n— filing due dates —');
+console.log('\n- filing due dates -');
 
 // Every calendar year must reproduce the table this replaced, exactly. If this
 // drifts, existing filings silently change their on-time/late verdict.

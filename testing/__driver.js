@@ -1,10 +1,10 @@
 /**
- * __driver.js — TEMPORARY end-to-end test driver. Dev only; delete after the run.
+ * __driver.js - TEMPORARY end-to-end test driver. Dev only; delete after the run.
  *
  * Drives the real intake wizard exactly as a user does: fills a scenario via
  * the dev scenario loader, clicks through all six steps, submits, generates,
  * and downloads. It keeps its queue and results in localStorage so it survives
- * the full page load between scenarios — the wizard is a react-router SPA and
+ * the full page load between scenarios - the wizard is a react-router SPA and
  * there is no client-side route back to a fresh /intake, so each scenario
  * genuinely starts from a cold page the way a real filing session would.
  *

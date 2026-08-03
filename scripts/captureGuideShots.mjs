@@ -1,5 +1,5 @@
 /**
- * captureGuideShots — photograph the product for the /guide walkthrough on the
+ * captureGuideShots - photograph the product for the /guide walkthrough on the
  * marketing site.
  *
  *   npm run seed:guide      once, to put Test LLC in the database

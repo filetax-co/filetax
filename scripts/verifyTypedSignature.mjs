@@ -1,5 +1,5 @@
 /**
- * verifyTypedSignature — proves, from the produced PDF bytes, that the typed
+ * verifyTypedSignature - proves, from the produced PDF bytes, that the typed
  * name is rendered in the script face, that a name the face cannot render falls
  * back to the plain typed name instead of printing blanks, and that a drawn
  * mark still wins over both.

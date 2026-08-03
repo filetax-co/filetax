@@ -1,12 +1,12 @@
 -- ============================================================================
--- FileTax — FINAL consolidated Supabase setup
+-- FileTax - FINAL consolidated Supabase setup
 --
 -- Run this ONE file in the Supabase SQL editor (New query → Run). It is fully
 -- idempotent and self-contained: safe on an empty project AND on an existing
 -- one. It creates/updates every table, column, constraint, RLS policy, and
--- trigger the application needs — including every fix from the full build
+-- trigger the application needs - including every fix from the full build
 -- (multi-year, payment integrity, Form 7004 include_7004, owner_ref_number,
--- tax_year NOT NULL) — and reloads the PostgREST schema cache at the end.
+-- tax_year NOT NULL) - and reloads the PostgREST schema cache at the end.
 --
 -- After running: the API immediately sees the new columns (no manual reload).
 -- ============================================================================
@@ -21,7 +21,7 @@ end;
 $$;
 
 -- ============================================================================
--- 1. intake_submissions — eligibility-check / signup captures
+-- 1. intake_submissions - eligibility-check / signup captures
 -- ============================================================================
 create table if not exists public.intake_submissions (
   id                uuid        primary key default gen_random_uuid(),
@@ -57,7 +57,7 @@ do $$ begin
 end $$;
 
 -- ============================================================================
--- 2. filing_jobs — multi-year catch-up groups (one shared RCL)
+-- 2. filing_jobs - multi-year catch-up groups (one shared RCL)
 -- ============================================================================
 create table if not exists public.filing_jobs (
   id            uuid        primary key default gen_random_uuid(),
@@ -87,7 +87,7 @@ create trigger filing_jobs_set_updated_at before update on public.filing_jobs
   for each row execute procedure public.set_updated_at();
 
 -- ============================================================================
--- 3. filings — core filing record (create base, then ensure every column)
+-- 3. filings - core filing record (create base, then ensure every column)
 -- ============================================================================
 create table if not exists public.filings (
   id          uuid        primary key default gen_random_uuid(),
@@ -344,7 +344,7 @@ create trigger txn_block_when_filing_paid before insert or update or delete on p
   for each row execute procedure public.txn_block_when_filing_paid();
 
 -- ============================================================================
--- 5. user_profiles — prefill source (year-2+ auto-fill)
+-- 5. user_profiles - prefill source (year-2+ auto-fill)
 -- ============================================================================
 create table if not exists public.user_profiles (
   id         uuid primary key default gen_random_uuid(),

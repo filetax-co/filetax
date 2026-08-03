@@ -10,7 +10,7 @@ async function dumpFields(filePath: string) {
   const buf = fs.readFileSync(filePath);
   const doc = await PDFDocument.load(buf);
   const fields = doc.getForm().getFields();
-  console.log(`\n=== ${path.basename(filePath)} — ${fields.length} fields ===`);
+  console.log(`\n=== ${path.basename(filePath)} - ${fields.length} fields ===`);
   fields.forEach(f => {
     const type = f.constructor.name.replace('PDF', '').replace('Field', '');
     console.log(`  [${type.padEnd(10)}]  ${f.getName()}`);

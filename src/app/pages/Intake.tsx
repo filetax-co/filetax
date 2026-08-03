@@ -315,8 +315,8 @@ function describeError(e: unknown): string {
  * trimmed, and stripped of diacritics.
  *
  * The diacritic stripping is what keeps this in step with CountrySelect. That
- * list spells the entries the IRS does — "Cote d'Ivoire" carries a circumflex,
- * "Curacao" a cedilla — and a plain lowercase comparison against an unaccented
+ * list spells the entries the IRS does - "Cote d'Ivoire" carries a circumflex,
+ * "Curacao" a cedilla - and a plain lowercase comparison against an unaccented
  * key silently fails to match, which is precisely the bug this set exists to
  * prevent. Folding both sides means the set can be written in plain ASCII and
  * still match whichever spelling reaches it, including values typed into the

@@ -1,7 +1,7 @@
 // scripts/generate-sitemap.mjs
 // Generates public/sitemap.xml at build time from Sanity + static routes.
 // Runs automatically via the "prebuild" npm hook, before `vite build`.
-// Node 20+ (uses global fetch). No token required — the `production`
+// Node 20+ (uses global fetch). No token required - the `production`
 // dataset is public-read, same as the front-end client in src/lib/sanity.ts.
 
 import { writeFileSync, mkdirSync } from 'node:fs';

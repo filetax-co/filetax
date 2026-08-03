@@ -1,4 +1,4 @@
-# Browser test run of the 5472 portal — handoff
+# Browser test run of the 5472 portal - handoff
 
 Written 1 August 2026. **Self-contained**: a new session can continue from this file alone.
 
@@ -10,7 +10,7 @@ what it found. Findings that belong in the project handoff are marked **[promote
 
 ## 1. What this is
 
-100 scenarios driven through the **real wizard in a real browser** — the scenario loader fills the
+100 scenarios driven through the **real wizard in a real browser** - the scenario loader fills the
 same React state a filer's typing fills, and every Save & continue, every validation message, the
 real generator, the real signature pad and the real download are exercised. Nothing is written to
 Supabase by the harness; the rows that appear are the ones the product itself wrote.
@@ -72,11 +72,11 @@ driver; `E2E_DRIVER=2` or `npm run dev:e2e` selects this one.
 
 The nine that did not pass, all analysed in §4:
 
-    #8  #9  #10  incorporation date postdated the tax year — scenario data, since fixed
-    #17          submit blocked with no message — UNRESOLVED, re-run it
+    #8  #9  #10  incorporation date postdated the tax year - scenario data, since fixed
+    #17          submit blocked with no message - UNRESOLVED, re-run it
     #30          Hong Kong address rejected: postal code required for every country
     #34 #35      blank foreign tax ID rejected
-    #36 #37      Cyrillic and CJK owner names — package correctly refused
+    #36 #37      Cyrillic and CJK owner names - package correctly refused
 
 **51–100 remain unrun.** They are authored and valid. They cover Parts V and VI, loans and loan
 guarantee fees, digital assets, the 30-transaction volume case, the 12 negatives and all 7
@@ -86,7 +86,7 @@ multi-year jobs. Resume with `window.__resume100([...])`.
 
 Scenarios 94–100 carry `year_specific_filings`, but the driver enters every scenario through the
 single-year `/intake` flow. `applyScenario` loads **year one only** and says so in its own summary
-line. So those seven currently test the first year of a catch-up job and **not** the job itself —
+line. So those seven currently test the first year of a catch-up job and **not** the job itself -
 not the year picker, not the shared reasonable cause letter, not the fan-out to one filing per year,
 not `Finish & generate all years`.
 
@@ -148,7 +148,7 @@ Scenarios 34 and 35.
 
 **[promote] 3. A postal code is required for every country.** `isAddressComplete`
 (`Intake.tsx:213`) requires `postal_code` unconditionally. The function two lines above
-*deliberately* exempts `region` for city-states, so the case was considered — but Hong Kong, the
+*deliberately* exempts `region` for city-states, so the case was considered - but Hong Kong, the
 UAE, Panama and much of Ireland have no postal code. Scenario 30, a Hong Kong entity address, is
 rejected as incomplete.
 
@@ -158,14 +158,14 @@ owner legal name, foreign TIN and addresses are not logged by the production bui
 
 **5. Scenario 17 blocked at submit with no message.** Submit did not reach `/filing/` and the wizard
 displayed nothing to explain why. Either a slow save exceeding the driver's 25s wait, or a genuine
-silent failure — a filer would see the button do nothing. **Unresolved; re-run 17 to find out.**
+silent failure - a filer would see the button do nothing. **Unresolved; re-run 17 to find out.**
 
 ### Confirmed limitation, working as designed
 
-**Non-Latin and CJK owner names produce no package** (scenarios 36, 37 — Cyrillic and Chinese).
+**Non-Latin and CJK owner names produce no package** (scenarios 36, 37 - Cyrillic and Chinese).
 This is not a crash. `toFormText()` drops characters WinAnsi cannot encode, reports them as
 `unsupportedText`, and `FilingWizard.tsx:130` refuses to deliver a package containing any. **The
-guard works** — it will not hand the IRS a mangled legal name. But the consequence is that those
+guard works** - it will not hand the IRS a mangled legal name. But the consequence is that those
 owners cannot file at all, and they are precisely this product's audience. The real fix is already
 recorded in the project handoff: a Unicode font via `@pdf-lib/fontkit`.
 
@@ -205,10 +205,10 @@ Outcome cells are colour-coded; all sheets have filters and frozen headers.
 
 `node scripts/checkSignatures.mjs` reads the captured bytes and reports, per scenario, what the
 scenario asked for against what the file actually contains. A drawn signature embeds an image
-XObject; the typed fallback is text in a font. This does not ask the generator what it did — it
+XObject; the typed fallback is text in a font. This does not ask the generator what it did - it
 inspects the artefact. Every PDF so far matches its scenario's `signature_mode`.
 
-Note the split: 56 scenarios draw, 44 leave the pad blank. Leaving it blank is not "no signature" —
+Note the split: 56 scenarios draw, 44 leave the pad blank. Leaving it blank is not "no signature" -
 it is the typed-name fallback, which is a real product path (`FilingWizard.tsx:477`).
 
 ---
@@ -221,9 +221,9 @@ Small, dev-only, and none of it reaches a build.
 |---|---|---|
 | `src/lib/supabase.ts` | `window.__supabase` under `import.meta.env.DEV` | The run must read back saved rows to compare against what was typed. Same anon key, same RLS |
 | `vite.config.ts` | `dev:e2e` script detection; serves `__driver100.js` and `__scenarios100.json`; `Cache-Control: no-store` | See §3 items 4 and the Windows note in §1 |
-| `package.json` | `dev:e2e`, `report:e2e`, `gen:scenarios100b` | — |
+| `package.json` | `dev:e2e`, `report:e2e`, `gen:scenarios100b` | - |
 
-**No product logic was changed.** Every defect in §4 is still present and unfixed — they are reported,
+**No product logic was changed.** Every defect in §4 is still present and unfixed - they are reported,
 not repaired, because fixing them was not the task.
 
 ---
@@ -243,7 +243,7 @@ not repaired, because fixing them was not the task.
   `cpa@taxclaim.co` with the owner's agreement, and the rows were kept. Expect ~50 filings named
   `S001 …` through `S050 …` on that account.
 - Every scenario has a **unique** entity name, EIN and owner. Identical data hides any bug that only
-  appears when two filings differ — which is exactly the class of bug that resume-the-wrong-draft
+  appears when two filings differ - which is exactly the class of bug that resume-the-wrong-draft
   turned out to be. The scenario number is stamped into the entity name so a dashboard row, a saved
   record and a PDF all trace back to one scenario.
 - Scenario 90 deliberately has a **blank** LLC name and is exempt from that stamping.

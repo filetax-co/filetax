@@ -12,7 +12,7 @@
 // language the filer already uses is the cheapest trust signal in the intake:
 // it says we have prepared this return for someone like them before.
 //
-// VALIDATION PHILOSOPHY — read before adding a `pattern`
+// VALIDATION PHILOSOPHY - read before adding a `pattern`
 // These patterns are advisory ONLY. `taxIdWarning()` returns a sentence to show
 // beside the field; nothing here blocks submission, and nothing here is wired
 // into validateStep2(). That is deliberate. A wrong regex on a country we
@@ -23,7 +23,7 @@
 // simply omitted and the entry still earns its keep through `label` and `help`.
 //
 // `issues: false` marks a jurisdiction that does not give individuals a tax ID
-// at all. Those filers are a large share of our audience — the UAE alone — and
+// at all. Those filers are a large share of our audience - the UAE alone - and
 // telling them plainly what to enter instead is the single most useful thing
 // this file does. The IRS accepts a passport number as the identifying number
 // here; what it does not accept is a blank box or the word "None".

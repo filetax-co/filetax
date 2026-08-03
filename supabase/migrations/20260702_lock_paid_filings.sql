@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Payment integrity (nuanced model).
 --
--- Goal: one payment must produce ONE company's filing — a user cannot pay once,
+-- Goal: one payment must produce ONE company's filing - a user cannot pay once,
 -- then re-skin the filing as a DIFFERENT company/owner/year and re-download.
 -- BUT genuine corrections (a typo in an address, a wrong transaction amount)
 -- must still be possible after payment, within a small edit budget.
@@ -54,7 +54,7 @@ begin
   -- Only constrain UPDATEs of an already-paid filing.
   if tg_op = 'UPDATE' and old.status in ('paid','completed') then
 
-    -- (1) Identity columns — frozen forever.
+    -- (1) Identity columns - frozen forever.
     identity_changed :=
          new.ein                  is distinct from old.ein
       or new.llc_name             is distinct from old.llc_name
@@ -74,7 +74,7 @@ begin
         using errcode = '42501';
     end if;
 
-    -- (2) Correctable columns — allowed only within the edit budget.
+    -- (2) Correctable columns - allowed only within the edit budget.
     -- Adding related parties is a separate paid add-on and does NOT consume the
     -- budget, so it is excluded from this check.
     correctable_changed :=
@@ -127,7 +127,7 @@ begin
   select status, post_payment_edits into v_status, v_edits
     from public.filings where id = v_filing_id;
 
-  -- Once the parent filing is paid, transaction edits are corrections — allowed
+  -- Once the parent filing is paid, transaction edits are corrections - allowed
   -- only while the filing still has correction budget left.
   if v_status in ('paid','completed') and coalesce(v_edits, 0) >= 2 then
     raise exception 'This filing has used all available post-payment edits; its transactions are locked. Contact support@filetax.co for further changes.'

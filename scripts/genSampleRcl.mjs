@@ -1,5 +1,5 @@
 /**
- * genSampleRcl — build the reasonable cause letter shown on the marketing
+ * genSampleRcl - build the reasonable cause letter shown on the marketing
  * site's /services page, and render it PARTIALLY OBSCURED.
  *
  *   node scripts/genSampleRcl.mjs

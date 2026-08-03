@@ -1,5 +1,5 @@
 /**
- * End-to-end matrix test — runs the REAL generator over many realistic filings
+ * End-to-end matrix test - runs the REAL generator over many realistic filings
  * and asserts the produced PDF text. No DB, no network (local PDF templates).
  *
  * Scenarios:

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_for": "filetax.co — the complete 100-scenario end-to-end set",
+    "generated_for": "filetax.co - the complete 100-scenario end-to-end set",
     "generated_on": "2026-07-26",
     "count": 100,
     "sources": [
@@ -13,7 +13,7 @@
       "In bulk, straight into the database: npm run seed -- --file <this file> --user-id <uuid> --only 42"
     ],
     "negative_tests": "A scenario carrying `expected_result` must be REJECTED. It passes when the error appears and nothing is saved.",
-    "manual_steps": "A scenario carrying `manual_step` needs the action described there — seeded data alone cannot prove it.",
+    "manual_steps": "A scenario carrying `manual_step` needs the action described there - seeded data alone cannot prove it.",
     "note_on_dates": "Due-date logic is computed live from today vs FILING_DUE_DATES. As of 2026-07-26 every tax year is past its ORIGINAL deadline; 2025 is the only year still inside its EXTENDED window (to 2026-10-15)."
   },
   "scenarios": [
@@ -498,12 +498,12 @@
       "transactions": [],
       "no_transactions_confirmed": true,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — do not allow Continue past Step 1"
+      "expected_result": "VALIDATION SHOULD FAIL - do not allow Continue past Step 1"
     },
     {
       "scenario_id": 9,
       "title": "Baseline: single owner, no related parties, one simple transaction",
-      "tests": "The most common real-world case — sanity baseline for the whole pipeline",
+      "tests": "The most common real-world case - sanity baseline for the whole pipeline",
       "filing": {
         "llc_name": "Evergreen Apps LLC",
         "ein": "31-4455667",
@@ -838,7 +838,7 @@
     },
     {
       "scenario_id": 13,
-      "title": "Owner with NO US tax ID (blank — the common case)",
+      "title": "Owner with NO US tax ID (blank - the common case)",
       "tests": "owner_us_tin empty string handled gracefully on the PDF (should print blank, not 'undefined')",
       "filing": {
         "llc_name": "Riverside Coaching LLC",
@@ -1255,7 +1255,7 @@
     {
       "scenario_id": 19,
       "title": "Category-3 complex transaction: IP license (requires acknowledgment)",
-      "tests": "cat3Acknowledged gate — 'Add transaction' button should be disabled until acknowledged; cat-banner-red shown",
+      "tests": "cat3Acknowledged gate - 'Add transaction' button should be disabled until acknowledged; cat-banner-red shown",
       "filing": {
         "llc_name": "Nimbus IP Holdings LLC",
         "ein": "58-2938475",
@@ -1398,7 +1398,7 @@
     {
       "scenario_id": 21,
       "title": "Owner opts OUT of the managerial-services (Part VI) disclosure",
-      "tests": "part_vi_managerial=false — confirm no Part VI statement generated even though the box is normally pre-checked",
+      "tests": "part_vi_managerial=false - confirm no Part VI statement generated even though the box is normally pre-checked",
       "filing": {
         "llc_name": "Skyline Freelance LLC",
         "ein": "72-8374659",
@@ -1802,12 +1802,12 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "note": "isAddressComplete() requires region non-empty even for non-US. Confirm the app either treats city-states' region as optional or requires a placeholder value like 'Singapore' — currently the code requires it non-blank, so region is deliberately left blank here to trigger validation and confirm the UX message is sensible."
+      "note": "isAddressComplete() requires region non-empty even for non-US. Confirm the app either treats city-states' region as optional or requires a placeholder value like 'Singapore' - currently the code requires it non-blank, so region is deliberately left blank here to trigger validation and confirm the UX message is sensible."
     },
     {
       "scenario_id": 27,
       "title": "NEGATIVE TEST: malformed EIN",
-      "tests": "isValidEIN() regex — EIN entered without dash / wrong digit count should block Continue",
+      "tests": "isValidEIN() regex - EIN entered without dash / wrong digit count should block Continue",
       "filing": {
         "llc_name": "Bad EIN Test LLC",
         "ein": "123456789",
@@ -1846,12 +1846,12 @@
       "transactions": [],
       "no_transactions_confirmed": true,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — EIN must format/reject as XX-XXXXXXX. Also try '12-345678' (8 digits) and '12-34567890' (10 digits) as additional negative variants."
+      "expected_result": "VALIDATION SHOULD FAIL - EIN must format/reject as XX-XXXXXXX. Also try '12-345678' (8 digits) and '12-34567890' (10 digits) as additional negative variants."
     },
     {
       "scenario_id": 28,
       "title": "Multi-year catch-up job (3 sibling filings, shared company/owner data)",
-      "tests": "sharedJobPatch propagation — Steps 1 & 2 identical across years; Step 4 transactions differ per year",
+      "tests": "sharedJobPatch propagation - Steps 1 & 2 identical across years; Step 4 transactions differ per year",
       "job_id": "TEST-JOB-0001",
       "shared_filing_fields": {
         "llc_name": "Catchup Global LLC",
@@ -2019,7 +2019,7 @@
     {
       "scenario_id": 30,
       "title": "Paid filing, correction cap EXHAUSTED (post_payment_edits = 2 of 2)",
-      "tests": "editsRemaining=0 — submit button should show 'contact support' messaging and be disabled",
+      "tests": "editsRemaining=0 - submit button should show 'contact support' messaging and be disabled",
       "filing_status": "paid",
       "post_payment_edits": 2,
       "filing": {
@@ -2082,7 +2082,7 @@
     },
     {
       "scenario_id": 31,
-      "title": "Tax year 2019 — older Form 5472 template",
+      "title": "Tax year 2019 - older Form 5472 template",
       "tests": "get5472PdfUrl/get1120PdfUrl select the 2019 template; period defaults to the full calendar year",
       "filing": {
         "llc_name": "Legacy Filings 2019 LLC",
@@ -2147,7 +2147,7 @@
     },
     {
       "scenario_id": 32,
-      "title": "Tax year 2020 — older Form 5472 template",
+      "title": "Tax year 2020 - older Form 5472 template",
       "tests": "get5472PdfUrl/get1120PdfUrl select the 2020 template; period defaults to the full calendar year",
       "filing": {
         "llc_name": "Legacy Filings 2020 LLC",
@@ -2212,7 +2212,7 @@
     },
     {
       "scenario_id": 33,
-      "title": "Tax year 2021 — older Form 5472 template",
+      "title": "Tax year 2021 - older Form 5472 template",
       "tests": "get5472PdfUrl/get1120PdfUrl select the 2021 template; period defaults to the full calendar year",
       "filing": {
         "llc_name": "Legacy Filings 2021 LLC",
@@ -2277,7 +2277,7 @@
     },
     {
       "scenario_id": 34,
-      "title": "Tax year 2022 — older Form 5472 template",
+      "title": "Tax year 2022 - older Form 5472 template",
       "tests": "get5472PdfUrl/get1120PdfUrl select the 2022 template; period defaults to the full calendar year",
       "filing": {
         "llc_name": "Legacy Filings 2022 LLC",
@@ -2499,7 +2499,7 @@
     {
       "scenario_id": 37,
       "title": "Transaction type coverage: dividend",
-      "tests": "Dividend to foreign owner — Part V",
+      "tests": "Dividend to foreign owner - Part V",
       "filing": {
         "llc_name": "TxType dividend LLC",
         "ein": "47-300000",
@@ -2551,7 +2551,7 @@
           "direction": "paid",
           "amount_usd": "12000",
           "loan_begin_usd": "",
-          "description": "Dividend to foreign owner — Part V",
+          "description": "Dividend to foreign owner - Part V",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2561,7 +2561,7 @@
     {
       "scenario_id": 38,
       "title": "Transaction type coverage: insurance",
-      "tests": "Insurance premium paid to related party — Part IV line 20/34",
+      "tests": "Insurance premium paid to related party - Part IV line 20/34",
       "filing": {
         "llc_name": "TxType insurance LLC",
         "ein": "47-300001",
@@ -2613,7 +2613,7 @@
           "direction": "paid",
           "amount_usd": "3400",
           "loan_begin_usd": "",
-          "description": "Insurance premium paid to related party — Part IV line 20/34",
+          "description": "Insurance premium paid to related party - Part IV line 20/34",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2623,7 +2623,7 @@
     {
       "scenario_id": 39,
       "title": "Transaction type coverage: loan_guarantee_fee",
-      "tests": "Loan guarantee fee — Part IV",
+      "tests": "Loan guarantee fee - Part IV",
       "filing": {
         "llc_name": "TxType loan_guarantee_fee LLC",
         "ein": "47-300002",
@@ -2675,7 +2675,7 @@
           "direction": "paid",
           "amount_usd": "1500",
           "loan_begin_usd": "",
-          "description": "Loan guarantee fee — Part IV",
+          "description": "Loan guarantee fee - Part IV",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2685,7 +2685,7 @@
     {
       "scenario_id": 40,
       "title": "Transaction type coverage: sales",
-      "tests": "Sales of goods to the LLC — Part IV line 9",
+      "tests": "Sales of goods to the LLC - Part IV line 9",
       "filing": {
         "llc_name": "TxType sales LLC",
         "ein": "47-300003",
@@ -2737,7 +2737,7 @@
           "direction": "received",
           "amount_usd": "65000",
           "loan_begin_usd": "",
-          "description": "Sales of goods to the LLC — Part IV line 9",
+          "description": "Sales of goods to the LLC - Part IV line 9",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2747,7 +2747,7 @@
     {
       "scenario_id": 41,
       "title": "Transaction type coverage: cost_sharing",
-      "tests": "Cost-sharing payment — maps to \"other\"",
+      "tests": "Cost-sharing payment - maps to \"other\"",
       "filing": {
         "llc_name": "TxType cost_sharing LLC",
         "ein": "47-300004",
@@ -2799,7 +2799,7 @@
           "direction": "paid",
           "amount_usd": "18000",
           "loan_begin_usd": "",
-          "description": "Cost-sharing payment — maps to \"other\"",
+          "description": "Cost-sharing payment - maps to \"other\"",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2809,7 +2809,7 @@
     {
       "scenario_id": 42,
       "title": "Transaction type coverage: platform_contribution",
-      "tests": "Platform contribution — maps to \"other\"",
+      "tests": "Platform contribution - maps to \"other\"",
       "filing": {
         "llc_name": "TxType platform_contribution LLC",
         "ein": "47-300005",
@@ -2861,7 +2861,7 @@
           "direction": "paid",
           "amount_usd": "26000",
           "loan_begin_usd": "",
-          "description": "Platform contribution — maps to \"other\"",
+          "description": "Platform contribution - maps to \"other\"",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2871,7 +2871,7 @@
     {
       "scenario_id": 43,
       "title": "Transaction type coverage: acquisition_tx",
-      "tests": "Acquisition of an interest — maps to capital_contribution",
+      "tests": "Acquisition of an interest - maps to capital_contribution",
       "filing": {
         "llc_name": "TxType acquisition_tx LLC",
         "ein": "47-300006",
@@ -2923,7 +2923,7 @@
           "direction": "received",
           "amount_usd": "40000",
           "loan_begin_usd": "",
-          "description": "Acquisition of an interest — maps to capital_contribution",
+          "description": "Acquisition of an interest - maps to capital_contribution",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -2933,7 +2933,7 @@
     {
       "scenario_id": 44,
       "title": "Transaction type coverage: disposition_tx",
-      "tests": "Disposition of an interest — maps to distribution",
+      "tests": "Disposition of an interest - maps to distribution",
       "filing": {
         "llc_name": "TxType disposition_tx LLC",
         "ein": "47-300007",
@@ -2985,7 +2985,7 @@
           "direction": "paid",
           "amount_usd": "31000",
           "loan_begin_usd": "",
-          "description": "Disposition of an interest — maps to distribution",
+          "description": "Disposition of an interest - maps to distribution",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3057,7 +3057,7 @@
     {
       "scenario_id": 46,
       "title": "Transaction type coverage: less_than_fmv",
-      "tests": "Transfer at less than fair market value — Part VI",
+      "tests": "Transfer at less than fair market value - Part VI",
       "filing": {
         "llc_name": "TxType less_than_fmv LLC",
         "ein": "47-300009",
@@ -3109,7 +3109,7 @@
           "direction": "paid",
           "amount_usd": "5000",
           "loan_begin_usd": "",
-          "description": "Transfer at less than fair market value — Part VI",
+          "description": "Transfer at less than fair market value - Part VI",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3119,7 +3119,7 @@
     {
       "scenario_id": 47,
       "title": "Transaction type coverage: property_transfer_fmv",
-      "tests": "Property transfer at FMV — Part VI",
+      "tests": "Property transfer at FMV - Part VI",
       "filing": {
         "llc_name": "TxType property_transfer_fmv LLC",
         "ein": "47-300010",
@@ -3171,7 +3171,7 @@
           "direction": "paid",
           "amount_usd": "15000",
           "loan_begin_usd": "",
-          "description": "Property transfer at FMV — Part VI",
+          "description": "Property transfer at FMV - Part VI",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3181,7 +3181,7 @@
     {
       "scenario_id": 48,
       "title": "Transaction type coverage: other_part_vi",
-      "tests": "Other non-monetary arrangement — Part VI",
+      "tests": "Other non-monetary arrangement - Part VI",
       "filing": {
         "llc_name": "TxType other_part_vi LLC",
         "ein": "47-300011",
@@ -3233,7 +3233,7 @@
           "direction": "paid",
           "amount_usd": "2500",
           "loan_begin_usd": "",
-          "description": "Other non-monetary arrangement — Part VI",
+          "description": "Other non-monetary arrangement - Part VI",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3243,7 +3243,7 @@
     {
       "scenario_id": 49,
       "title": "Transaction type coverage: other",
-      "tests": "Other amount received — Part IV line 21",
+      "tests": "Other amount received - Part IV line 21",
       "filing": {
         "llc_name": "TxType other LLC",
         "ein": "47-300012",
@@ -3295,7 +3295,7 @@
           "direction": "received",
           "amount_usd": "4200",
           "loan_begin_usd": "",
-          "description": "Other amount received — Part IV line 21",
+          "description": "Other amount received - Part IV line 21",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3305,7 +3305,7 @@
     {
       "scenario_id": 50,
       "title": "Transaction type coverage: tech_services",
-      "tests": "Technical services — maps to service_payment",
+      "tests": "Technical services - maps to service_payment",
       "filing": {
         "llc_name": "TxType tech_services LLC",
         "ein": "47-300013",
@@ -3357,7 +3357,7 @@
           "direction": "paid",
           "amount_usd": "9800",
           "loan_begin_usd": "",
-          "description": "Technical services — maps to service_payment",
+          "description": "Technical services - maps to service_payment",
           "transaction_date": "2024-05-05"
         }
       ],
@@ -3366,7 +3366,7 @@
     },
     {
       "scenario_id": 51,
-      "title": "Formation costs ONLY — regression guard for the 1f/1h fix",
+      "title": "Formation costs ONLY - regression guard for the 1f/1h fix",
       "tests": "formation_costs must appear in Part V and in gross payments; wizard total must equal formGross",
       "filing": {
         "llc_name": "Formation Only LLC",
@@ -3429,7 +3429,7 @@
     {
       "scenario_id": 52,
       "title": "The reported mismatch: contribution + formation costs + services",
-      "tests": "Reproduces total 42,500 vs gross 30,000 — both figures must now read 42,500",
+      "tests": "Reproduces total 42,500 vs gross 30,000 - both figures must now read 42,500",
       "filing": {
         "llc_name": "Fresh Start Ventures LLC",
         "ein": "48-5200002",
@@ -3580,7 +3580,7 @@
     {
       "scenario_id": 54,
       "title": "Formation costs across two related parties",
-      "tests": "formation_costs is a Part V (owner) concept — a non-owner party must not create a Part V statement",
+      "tests": "formation_costs is a Part V (owner) concept - a non-owner party must not create a Part V statement",
       "filing": {
         "llc_name": "Split Setup LLC",
         "ein": "48-5200004",
@@ -3873,7 +3873,7 @@
     {
       "scenario_id": 58,
       "title": "LEGACY ROW: owner business code present, activity blank",
-      "tests": "resolveBizPreset must recover the preset from owner_naics_code — must NOT show \"Other\"",
+      "tests": "resolveBizPreset must recover the preset from owner_naics_code - must NOT show \"Other\"",
       "filing": {
         "llc_name": "Legacy Activity LLC",
         "ein": "49-5700003",
@@ -4076,7 +4076,7 @@
     },
     {
       "scenario_id": 61,
-      "title": "Owner in Hong Kong — no state/region concept",
+      "title": "Owner in Hong Kong - no state/region concept",
       "tests": "State/region must be optional and must not block validation",
       "filing": {
         "llc_name": "Hong Kong Owner LLC",
@@ -4138,7 +4138,7 @@
     },
     {
       "scenario_id": 62,
-      "title": "Owner in Monaco — no state/region concept",
+      "title": "Owner in Monaco - no state/region concept",
       "tests": "State/region must be optional and must not block validation",
       "filing": {
         "llc_name": "Monaco Owner LLC",
@@ -4200,7 +4200,7 @@
     },
     {
       "scenario_id": 63,
-      "title": "Owner in Qatar — no state/region concept",
+      "title": "Owner in Qatar - no state/region concept",
       "tests": "State/region must be optional and must not block validation",
       "filing": {
         "llc_name": "Qatar Owner LLC",
@@ -4386,7 +4386,7 @@
     },
     {
       "scenario_id": 66,
-      "title": "Five related parties — reference codes and the 1g form count",
+      "title": "Five related parties - reference codes and the 1g form count",
       "tests": "Codes follow first-3-letters + 00n; one Form 5472 per party; 1g must read 6",
       "filing": {
         "llc_name": "Manyparties Group LLC",
@@ -5226,7 +5226,7 @@
     {
       "scenario_id": 76,
       "title": "Absolute minimum: no transactions AND managerial disclosure off",
-      "tests": "The leanest package the generator can emit — must still produce 1120 + 5472",
+      "tests": "The leanest package the generator can emit - must still produce 1120 + 5472",
       "filing": {
         "llc_name": "Bare Minimum LLC",
         "ein": "53-7500003",
@@ -5739,7 +5739,7 @@
       "transactions": [],
       "no_transactions_confirmed": true,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — error summary lists LLC name, EIN, state, assets, incorporation date, country and address; the page must scroll to the summary and no draft row may be created."
+      "expected_result": "VALIDATION SHOULD FAIL - error summary lists LLC name, EIN, state, assets, incorporation date, country and address; the page must scroll to the summary and no draft row may be created."
     },
     {
       "scenario_id": 83,
@@ -5802,7 +5802,7 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL on Step 1. If it is instead accepted, check what the PDF prints — a negative total-assets figure is not a valid return."
+      "expected_result": "VALIDATION SHOULD FAIL on Step 1. If it is instead accepted, check what the PDF prints - a negative total-assets figure is not a valid return."
     },
     {
       "scenario_id": 84,
@@ -5892,7 +5892,7 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — or, at minimum, both rows must be flagged. Record which of the two the product catches; a date outside the period is the single most common data error in a catch-up filing."
+      "expected_result": "VALIDATION SHOULD FAIL - or, at minimum, both rows must be flagged. Record which of the two the product catches; a date outside the period is the single most common data error in a catch-up filing."
     },
     {
       "scenario_id": 85,
@@ -5955,12 +5955,12 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — \"Add transaction\" must refuse the row. Line 17b/31b carries the ending balance, so a blank one would print an empty loan."
+      "expected_result": "VALIDATION SHOULD FAIL - \"Add transaction\" must refuse the row. Line 17b/31b carries the ending balance, so a blank one would print an empty loan."
     },
     {
       "scenario_id": 86,
       "title": "NEGATIVE: category-3 transaction added without acknowledgment",
-      "tests": "cat3Acknowledged gate — the intangible row must not be addable while the red category banner is unacknowledged (positive path is scenario 19)",
+      "tests": "cat3Acknowledged gate - the intangible row must not be addable while the red category banner is unacknowledged (positive path is scenario 19)",
       "filing": {
         "llc_name": "Unacked IP LLC",
         "ein": "81-3000004",
@@ -6030,7 +6030,7 @@
           "direction": "paid",
           "amount_usd": "55000",
           "loan_begin_usd": "",
-          "description": "Patent licence — acknowledgment intentionally skipped",
+          "description": "Patent licence - acknowledgment intentionally skipped",
           "transaction_date": "2024-08-08"
         }
       ],
@@ -6042,7 +6042,7 @@
     {
       "scenario_id": 87,
       "title": "NEGATIVE: two related parties given the same reference code by hand",
-      "tests": "Reference codes must be unique per filing — the auto-suggestion can be overtyped, so the collision has to be caught on save (contrast scenario 68, where the product assigns them)",
+      "tests": "Reference codes must be unique per filing - the auto-suggestion can be overtyped, so the collision has to be caught on save (contrast scenario 68, where the product assigns them)",
       "filing": {
         "llc_name": "Codeclash Ventures LLC",
         "ein": "81-3000005",
@@ -6144,7 +6144,7 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL — three parties share MAR001, including the owner. Each Form 5472 is identified by that code, so duplicates make the package ambiguous."
+      "expected_result": "VALIDATION SHOULD FAIL - three parties share MAR001, including the owner. Each Form 5472 is identified by that code, so duplicates make the package ambiguous."
     },
     {
       "scenario_id": 88,
@@ -6207,12 +6207,12 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "expected_result": "Signature date 2024-02-01 sits inside the 2024 tax year. Expect a validation error; if none appears, note it — the printed return would be signed before year-end."
+      "expected_result": "Signature date 2024-02-01 sits inside the 2024 tax year. Expect a validation error; if none appears, note it - the printed return would be signed before year-end."
     },
     {
       "scenario_id": 89,
       "title": "NEGATIVE: owner name is whitespace only, owner country left unselected",
-      "tests": "Trim before the required check — a name of spaces must not pass as present, and the country select must be genuinely required",
+      "tests": "Trim before the required check - a name of spaces must not pass as present, and the country select must be genuinely required",
       "filing": {
         "llc_name": "Blankowner Corp LLC",
         "ein": "81-3000007",
@@ -6260,12 +6260,12 @@
       "transactions": [],
       "no_transactions_confirmed": true,
       "part_vi_managerial": true,
-      "expected_result": "VALIDATION SHOULD FAIL on Step 2 — Part II of the 5472 would otherwise print a blank owner."
+      "expected_result": "VALIDATION SHOULD FAIL on Step 2 - Part II of the 5472 would otherwise print a blank owner."
     },
     {
       "scenario_id": 90,
       "title": "Delete a related party that transactions already point at",
-      "tests": "related_party_index must be re-mapped (or the orphaned rows removed) when a middle party is deleted — the danger is index 2 silently becoming someone else",
+      "tests": "related_party_index must be re-mapped (or the orphaned rows removed) when a middle party is deleted - the danger is index 2 silently becoming someone else",
       "filing": {
         "llc_name": "Reindex Partners LLC",
         "ein": "82-4000001",
@@ -6393,12 +6393,12 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "manual_step": "Enter all three parties and all three transactions, then DELETE \"Beta Trading GmbH\" from Step 3. The rent row must either disappear or move with Beta — the commission row must still read Gamma, never Beta. Then check the generated package has two related-party 5472s and line 1g reads 3."
+      "manual_step": "Enter all three parties and all three transactions, then DELETE \"Beta Trading GmbH\" from Step 3. The rent row must either disappear or move with Beta - the commission row must still read Gamma, never Beta. Then check the generated package has two related-party 5472s and line 1g reads 3."
     },
     {
       "scenario_id": 91,
       "title": "Dormant year: zero total assets, no transactions, no managerial disclosure",
-      "tests": "A genuinely dormant LLC still owes the return — 0 must print as 0, not blank, and not be treated as a missing field",
+      "tests": "A genuinely dormant LLC still owes the return - 0 must print as 0, not blank, and not be treated as a missing field",
       "filing": {
         "llc_name": "Dormant Shell LLC",
         "ein": "82-4000002",
@@ -6449,11 +6449,11 @@
       "transactions": [],
       "no_transactions_confirmed": true,
       "part_vi_managerial": false,
-      "note": "Watch that a 0 in total assets is not rejected as empty — a falsy-check bug shows up here and nowhere else."
+      "note": "Watch that a 0 in total assets is not rejected as empty - a falsy-check bug shows up here and nowhere else."
     },
     {
       "scenario_id": 92,
-      "title": "Fiscal year ending December — identical to the calendar year",
+      "title": "Fiscal year ending December - identical to the calendar year",
       "tests": "deriveFiscalPeriod with end month 12 must produce 01-01 to 12-31 and must not shift the period back a year",
       "filing": {
         "llc_name": "Decemberend Labs LLC",
@@ -6590,7 +6590,7 @@
     {
       "scenario_id": 94,
       "title": "Reasonable-cause letter with exactly one reason",
-      "tests": "The opposite extreme — single-reason wording must read as a sentence, not as a one-item list with dangling punctuation",
+      "tests": "The opposite extreme - single-reason wording must read as a sentence, not as a one-item list with dangling punctuation",
       "filing": {
         "llc_name": "Onereason Ventures LLC",
         "ein": "82-4000005",
@@ -6654,7 +6654,7 @@
     {
       "scenario_id": 95,
       "title": "Owner is a foreign CORPORATION holding a US EIN",
-      "tests": "The 25% owner need not be an individual — Part II must take a company name plus a US EIN in the US-TIN field (contrast scenario 12, an individual with an ITIN)",
+      "tests": "The 25% owner need not be an individual - Part II must take a company name plus a US EIN in the US-TIN field (contrast scenario 12, an individual with an ITIN)",
       "filing": {
         "llc_name": "Subsidiary One LLC",
         "ein": "82-4000006",
@@ -6721,7 +6721,7 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "note": "A company name is longer than a person name — check it does not clip in Part II, and that the signature block accepts \"Representative Director\"."
+      "note": "A company name is longer than a person name - check it does not clip in Part II, and that the signature block accepts \"Representative Director\"."
     },
     {
       "scenario_id": 96,
@@ -6986,7 +6986,7 @@
     {
       "scenario_id": 99,
       "title": "Same EIN and tax year filed twice",
-      "tests": "Duplicate detection — starting a second 2024 filing for an EIN that already has one must warn, or at least not corrupt the first",
+      "tests": "Duplicate detection - starting a second 2024 filing for an EIN that already has one must warn, or at least not corrupt the first",
       "filing": {
         "llc_name": "Double Filed LLC",
         "ein": "83-5000002",
@@ -7044,13 +7044,13 @@
       ],
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
-      "manual_step": "Complete this filing end to end. Then start a NEW filing from the dashboard with the SAME EIN and the SAME tax year 2024, and change the total assets. Expected: a duplicate warning, or two clearly separate filings on the dashboard — what must NOT happen is the second overwriting the first, or the dashboard showing one row whose figures came from both.",
+      "manual_step": "Complete this filing end to end. Then start a NEW filing from the dashboard with the SAME EIN and the SAME tax year 2024, and change the total assets. Expected: a duplicate warning, or two clearly separate filings on the dashboard - what must NOT happen is the second overwriting the first, or the dashboard showing one row whose figures came from both.",
       "expected_result": "Record the actual behaviour. This is the one scenario in the set whose correct outcome is a product decision rather than a known rule."
     },
     {
       "scenario_id": 100,
       "title": "Completed filing reopened: locked identity, package re-download",
-      "tests": "End of the journey — a completed filing must route to generate/preview/download, keep identity fields locked, and re-download the same package without regenerating different numbers",
+      "tests": "End of the journey - a completed filing must route to generate/preview/download, keep identity fields locked, and re-download the same package without regenerating different numbers",
       "filing": {
         "llc_name": "Finished Business LLC",
         "ein": "83-5000003",
@@ -7147,7 +7147,7 @@
       "no_transactions_confirmed": false,
       "part_vi_managerial": true,
       "seed_status": "completed",
-      "manual_step": "Seed this one with --status completed. Open it: it must land on the download page, not step 1. Identity fields (LLC name, EIN, tax year, owner name, incorporation date) must be disabled. Download the package twice and diff the two PDFs — gross payments must be identical both times."
+      "manual_step": "Seed this one with --status completed. Open it: it must land on the download page, not step 1. Identity fields (LLC name, EIN, tax year, owner name, incorporation date) must be disabled. Download the package twice and diff the two PDFs - gross payments must be identical both times."
     }
   ]
 }

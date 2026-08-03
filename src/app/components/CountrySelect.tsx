@@ -44,8 +44,8 @@
  * Åland Islands and Norfolk Island are inside the tax system of France, Finland
  * and Australia respectively, so a resident's country of tax residence is the
  * parent state and that is what belongs on the form. The overseas collectivités
- * that DO levy their own tax — French Polynesia, New Caledonia, Wallis and
- * Futuna, Saint Pierre and Miquelon, Saint Barthélemy — are listed.
+ * that DO levy their own tax - French Polynesia, New Caledonia, Wallis and
+ * Futuna, Saint Pierre and Miquelon, Saint Barthélemy - are listed.
  *
  * KEEP IT ALPHABETICAL, and keep NO_POSTAL_CODE_COUNTRIES in Intake.tsx in step
  * with the names used here.

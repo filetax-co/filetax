@@ -1,5 +1,5 @@
 /**
- * pdfGrep — decompress a PDF's content streams and assert on literal strings.
+ * pdfGrep - decompress a PDF's content streams and assert on literal strings.
  *
  *   node scripts/pdfGrep.mjs <file.pdf> "expected" "!not-expected" ...
  *
@@ -25,7 +25,7 @@ for (let i = 0; (i = buf.indexOf(marker, i)) !== -1; ) {
   try {
     text += zlib.inflateSync(buf.subarray(s, end)).toString('latin1') + '\n';
   } catch {
-    // Not a Flate stream (image, font, already plain) — skip it.
+    // Not a Flate stream (image, font, already plain) - skip it.
   }
   i = end + endMarker.length;
 }

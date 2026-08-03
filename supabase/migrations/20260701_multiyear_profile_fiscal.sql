@@ -2,15 +2,15 @@
 -- Multi-year catch-up, per-user prefill profile, fiscal-year & final-return.
 --
 -- Adds:
---   • filing_jobs            — groups one or more year-filings that share a
+--   • filing_jobs            - groups one or more year-filings that share a
 --                              SINGLE reasonable-cause letter + delivery prefs.
---   • filings.job_id         — links a year-filing into its job.
---   • filings.final_return   — Form 1120 item E "Final return".
---   • filings.is_fiscal_year — non-calendar filer flag (drives the review notice;
+--   • filings.job_id         - links a year-filing into its job.
+--   • filings.final_return   - Form 1120 item E "Final return".
+--   • filings.is_fiscal_year - non-calendar filer flag (drives the review notice;
 --                              tax_period_begin/end already exist for the dates).
---   • filings.part_vi_managerial — owner managerial-services Part VI disclosure
+--   • filings.part_vi_managerial - owner managerial-services Part VI disclosure
 --                              toggle (default true; user may opt out).
---   • user_profiles.*        — every prefillable entity + owner field, so year 2+
+--   • user_profiles.*        - every prefillable entity + owner field, so year 2+
 --                              is auto-populated for review.
 --
 -- All statements idempotent; safe to re-run.
@@ -64,7 +64,7 @@ create index if not exists filings_job_id_idx on public.filings(job_id);
 
 -- ── user_profiles: full prefill surface ──────────────────────────────────────
 -- The wizard prefills a new filing's entity + owner data from here, and upserts
--- it back on submit. "Edits apply to future filings only" — editing a filing
+-- it back on submit. "Edits apply to future filings only" - editing a filing
 -- does not retroactively change other filings.
 alter table public.user_profiles
   add column if not exists mailing_address            jsonb,

@@ -8,7 +8,7 @@
 //   2. The webhook is the source of truth. This function is a polite "did the
 //      webhook land yet?" check after the user returns from hosted checkout.
 //   3. Never trust amount_cents, payment_id, or status passed in from the
-//      browser — always re-read them from the PSP using a server secret.
+//      browser - always re-read them from the PSP using a server secret.
 //
 // IMPLEMENTATION NOTES
 //   - Pick a PSP (Stripe is the obvious default). Plug the SDK in below where
@@ -48,7 +48,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // 1. Authenticate caller — they must own this filing.
+    // 1. Authenticate caller - they must own this filing.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Unauthorized' }, 401);
     const token = authHeader.replace('Bearer ', '');
@@ -77,7 +77,7 @@ serve(async (req) => {
     //    const amount = session.amount_total ?? 0;
     //    const pspPaymentId = session.payment_intent as string;
     //
-    //    Until that wiring is live, fail closed — refuse to mark anything paid.
+    //    Until that wiring is live, fail closed - refuse to mark anything paid.
     return json({
       error: 'verify-payment is not wired to a PSP yet. Configure PSP_SECRET_KEY and the TODO block in supabase/functions/verify-payment/index.ts.',
     }, 501);

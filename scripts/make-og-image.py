@@ -3,7 +3,7 @@
 Run manually when the wording or brand colours change:
     python scripts/make-og-image.py
 
-Not part of the build — the output is committed so builds stay dependency-free.
+Not part of the build - the output is committed so builds stay dependency-free.
 """
 import os
 from PIL import Image, ImageDraw, ImageFont

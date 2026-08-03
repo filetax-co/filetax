@@ -1,5 +1,5 @@
 /**
- * seedScenarios — load a scenarios JSON into Supabase so the filings appear in
+ * seedScenarios - load a scenarios JSON into Supabase so the filings appear in
  * the app and can be opened, reviewed and downloaded like real ones.
  *
  * There is no JSON-upload screen in the product; this script is the loader.
@@ -13,7 +13,7 @@
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --status completed
  *   npm run seed -- --file ../Testing/filetax_test_scenarios_v2.json --user-id <uuid> --cleanup
  *
- * Credentials — set these in .env.local yourself; the script only reads them
+ * Credentials - set these in .env.local yourself; the script only reads them
  * from the environment and never prints them:
  *
  *   VITE_SUPABASE_URL=https://<project>.supabase.co
@@ -87,7 +87,7 @@ if (existsSync(envPath)) {
 const url = process.env.VITE_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// A dry run only prints a plan, so it must work before any credential exists —
+// A dry run only prints a plan, so it must work before any credential exists -
 // that is the whole point of being able to preview first.
 if (!dryRun && (!url || !serviceKey)) {
   console.error(`Missing ${!url ? 'VITE_SUPABASE_URL' : 'SUPABASE_SERVICE_ROLE_KEY'}.`);
@@ -112,7 +112,7 @@ const allNames = [...new Set(scenarios.map(nameOf).filter(Boolean))];
 // ── cleanup ─────────────────────────────────────────────────────────────────
 if (cleanup) {
   console.log(`Deleting filings owned by ${userId} whose llc_name is one of ${allNames.length} names in this file.`);
-  if (dryRun) { console.log('(dry run — nothing deleted)'); process.exit(0); }
+  if (dryRun) { console.log('(dry run - nothing deleted)'); process.exit(0); }
   const { data: doomed, error: selErr } = await db
     .from('filings').select('id, job_id, llc_name').eq('user_id', userId).in('llc_name', allNames);
   if (selErr) { console.error(selErr.message); process.exit(1); }
@@ -133,7 +133,7 @@ if (cleanup) {
 // ── helpers ─────────────────────────────────────────────────────────────────
 /**
  * Build a filings row. Status is always set explicitly because the column
- * default is 'pending', which filings_status_check rejects — an insert that
+ * default is 'pending', which filings_status_check rejects - an insert that
  * omits status fails outright.
  */
 const filingRow = (f, o, extra = {}) => ({
@@ -238,7 +238,7 @@ for (const s of scenarios) {
 console.log(`\n${dryRun ? '[dry run] would create' : 'created'}: ${filings} filing(s), ${txns} transaction(s), ${jobs} job(s)`);
 if (!dryRun && created.length) {
   console.log('\nOpen in the app:');
-  // A draft opens in the wizard, which takes the id as a QUERY param — there is
+  // A draft opens in the wizard, which takes the id as a QUERY param - there is
   // no /intake/:id route, so a path segment would land on the 404 page. A
   // paid/completed filing has its own /filing/:id route.
   const href = (id) =>

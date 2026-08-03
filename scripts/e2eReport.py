@@ -42,7 +42,7 @@ wb.remove(wb.active)
 
 # ── Summary ───────────────────────────────────────────────────────────────
 ws = wb.create_sheet("Summary")
-ws.append(["Form 5472 portal — browser test run"])
+ws.append(["Form 5472 portal - browser test run"])
 ws["A1"].font = Font(size=14, bold=True)
 ws.append([])
 ws.append(["Metric", "Value"])

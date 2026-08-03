@@ -1,5 +1,5 @@
 /**
- * genScenarios3 — build scenarios 82..100, completing the set of 100.
+ * genScenarios3 - build scenarios 82..100, completing the set of 100.
  *
  *   node scripts/genScenarios3.mjs [outfile]
  *
@@ -9,21 +9,21 @@
  * product that is supposed to STOP you, and the state a filing lands in after
  * money changes hands. That is what this file adds:
  *
- *   • 82-89 — negative tests. Only 8 and 27 existed; these cover blank Step 1,
+ *   • 82-89 - negative tests. Only 8 and 27 existed; these cover blank Step 1,
  *     a negative asset figure, a transaction date outside the tax year, a loan
  *     with no closing balance, an unacknowledged category-3 type, colliding
  *     hand-typed reference codes, an impossible signature date, and a
  *     whitespace-only owner name.
- *   • 90-97 — edges the happy paths skip: deleting a related party that
+ *   • 90-97 - edges the happy paths skip: deleting a related party that
  *     transactions point at, a dormant zero-asset year, a December fiscal
  *     year-end (equals the calendar year), the RCL at both extremes (all eight
  *     reasons and exactly one), a corporate owner carrying a US EIN, very long
  *     transaction descriptions, and the newest year filed late.
- *   • 98-100 — whole journeys: a 3-year job that ends in dissolution, the same
+ *   • 98-100 - whole journeys: a 3-year job that ends in dissolution, the same
  *     EIN and year filed twice, and a completed filing reopened for download.
  *
  * A scenario carrying `expected_result` is one the product should REJECT.
- * Passing it means the error appeared and nothing was saved — not that the
+ * Passing it means the error appeared and nothing was saved - not that the
  * filing completed.
  *
  * Field names are the CANONICAL columns, matching the first two files.
@@ -128,7 +128,7 @@ add('NEGATIVE: Step 1 submitted completely blank',
     transactions: [],
     no_transactions_confirmed: true,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL — error summary lists LLC name, EIN, state, assets, incorporation date, country and address; the page must scroll to the summary and no draft row may be created.',
+    expected_result: 'VALIDATION SHOULD FAIL - error summary lists LLC name, EIN, state, assets, incorporation date, country and address; the page must scroll to the summary and no draft row may be created.',
   });
 
 add('NEGATIVE: total assets is a negative number',
@@ -140,7 +140,7 @@ add('NEGATIVE: total assets is a negative number',
     transactions: [tx('capital_contribution', 'received', 1000, { date: '2024-03-01' })],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL on Step 1. If it is instead accepted, check what the PDF prints — a negative total-assets figure is not a valid return.',
+    expected_result: 'VALIDATION SHOULD FAIL on Step 1. If it is instead accepted, check what the PDF prints - a negative total-assets figure is not a valid return.',
   });
 
 add('NEGATIVE: transaction dated outside the tax year',
@@ -155,7 +155,7 @@ add('NEGATIVE: transaction dated outside the tax year',
     ],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL — or, at minimum, both rows must be flagged. Record which of the two the product catches; a date outside the period is the single most common data error in a catch-up filing.',
+    expected_result: 'VALIDATION SHOULD FAIL - or, at minimum, both rows must be flagged. Record which of the two the product catches; a date outside the period is the single most common data error in a catch-up filing.',
   });
 
 add('NEGATIVE: loan row saved with no closing balance',
@@ -167,16 +167,16 @@ add('NEGATIVE: loan row saved with no closing balance',
     transactions: [tx('loan_to_llc', 'received', '', { begin: 40000, date: '2024-12-31', desc: 'Closing balance deliberately blank' })],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL — "Add transaction" must refuse the row. Line 17b/31b carries the ending balance, so a blank one would print an empty loan.',
+    expected_result: 'VALIDATION SHOULD FAIL - "Add transaction" must refuse the row. Line 17b/31b carries the ending balance, so a blank one would print an empty loan.',
   });
 
 add('NEGATIVE: category-3 transaction added without acknowledgment',
-  'cat3Acknowledged gate — the intangible row must not be addable while the red category banner is unacknowledged (positive path is scenario 19)',
+  'cat3Acknowledged gate - the intangible row must not be addable while the red category banner is unacknowledged (positive path is scenario 19)',
   {
     filing: filing({ name: 'Unacked IP LLC', ein: '81-3000004', year: '2024', doi: '2022-02-02', code: '533110', activity: 'Licensor of Intellectual Property' }),
     owner: stdOwner(),
     related_parties: [rp('Zurich IP Partners AG', 'ZUR002', 'Switzerland')],
-    transactions: [tx('intangible', 'paid', 55000, { party: 1, date: '2024-08-08', desc: 'Patent licence — acknowledgment intentionally skipped' })],
+    transactions: [tx('intangible', 'paid', 55000, { party: 1, date: '2024-08-08', desc: 'Patent licence - acknowledgment intentionally skipped' })],
     no_transactions_confirmed: false,
     cat3_acknowledged: false,
     part_vi_managerial: true,
@@ -184,7 +184,7 @@ add('NEGATIVE: category-3 transaction added without acknowledgment',
   });
 
 add('NEGATIVE: two related parties given the same reference code by hand',
-  'Reference codes must be unique per filing — the auto-suggestion can be overtyped, so the collision has to be caught on save (contrast scenario 68, where the product assigns them)',
+  'Reference codes must be unique per filing - the auto-suggestion can be overtyped, so the collision has to be caught on save (contrast scenario 68, where the product assigns them)',
   {
     filing: filing({ name: 'Codeclash Ventures LLC', ein: '81-3000005', year: '2024', doi: '2020-11-11' }),
     owner: owner({ name: 'Maria Silva', country: 'Portugal', ref: 'MAR001', ftin: 'PT-123456789', address: foreignAddr('Rua Augusta 100', 'Lisboa', '1100-053', 'Portugal') }),
@@ -198,7 +198,7 @@ add('NEGATIVE: two related parties given the same reference code by hand',
     ],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL — three parties share MAR001, including the owner. Each Form 5472 is identified by that code, so duplicates make the package ambiguous.',
+    expected_result: 'VALIDATION SHOULD FAIL - three parties share MAR001, including the owner. Each Form 5472 is identified by that code, so duplicates make the package ambiguous.',
   });
 
 add('NEGATIVE: signature date before the end of the tax year',
@@ -210,11 +210,11 @@ add('NEGATIVE: signature date before the end of the tax year',
     transactions: [tx('distribution', 'paid', 6000, { date: '2024-09-09' })],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    expected_result: 'Signature date 2024-02-01 sits inside the 2024 tax year. Expect a validation error; if none appears, note it — the printed return would be signed before year-end.',
+    expected_result: 'Signature date 2024-02-01 sits inside the 2024 tax year. Expect a validation error; if none appears, note it - the printed return would be signed before year-end.',
   });
 
 add('NEGATIVE: owner name is whitespace only, owner country left unselected',
-  'Trim before the required check — a name of spaces must not pass as present, and the country select must be genuinely required',
+  'Trim before the required check - a name of spaces must not pass as present, and the country select must be genuinely required',
   {
     filing: filing({ name: 'Blankowner Corp LLC', ein: '81-3000007', year: '2024', doi: '2022-07-07' }),
     owner: {
@@ -235,13 +235,13 @@ add('NEGATIVE: owner name is whitespace only, owner country left unselected',
     transactions: [],
     no_transactions_confirmed: true,
     part_vi_managerial: true,
-    expected_result: 'VALIDATION SHOULD FAIL on Step 2 — Part II of the 5472 would otherwise print a blank owner.',
+    expected_result: 'VALIDATION SHOULD FAIL on Step 2 - Part II of the 5472 would otherwise print a blank owner.',
   });
 
 // ── 90-97 · edges the happy paths skip ──────────────────────────────────────
 
 add('Delete a related party that transactions already point at',
-  'related_party_index must be re-mapped (or the orphaned rows removed) when a middle party is deleted — the danger is index 2 silently becoming someone else',
+  'related_party_index must be re-mapped (or the orphaned rows removed) when a middle party is deleted - the danger is index 2 silently becoming someone else',
   {
     filing: filing({ name: 'Reindex Partners LLC', ein: '82-4000001', year: '2024', doi: '2019-04-04' }),
     owner: stdOwner(),
@@ -257,11 +257,11 @@ add('Delete a related party that transactions already point at',
     ],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    manual_step: 'Enter all three parties and all three transactions, then DELETE "Beta Trading GmbH" from Step 3. The rent row must either disappear or move with Beta — the commission row must still read Gamma, never Beta. Then check the generated package has two related-party 5472s and line 1g reads 3.',
+    manual_step: 'Enter all three parties and all three transactions, then DELETE "Beta Trading GmbH" from Step 3. The rent row must either disappear or move with Beta - the commission row must still read Gamma, never Beta. Then check the generated package has two related-party 5472s and line 1g reads 3.',
   });
 
 add('Dormant year: zero total assets, no transactions, no managerial disclosure',
-  'A genuinely dormant LLC still owes the return — 0 must print as 0, not blank, and not be treated as a missing field',
+  'A genuinely dormant LLC still owes the return - 0 must print as 0, not blank, and not be treated as a missing field',
   {
     filing: filing({ name: 'Dormant Shell LLC', ein: '82-4000002', year: '2023', doi: '2020-08-08', assets: 0, rcl: true, rclReasons: ['minimal_activity', 'no_tax_liability'] }),
     owner: stdOwner(),
@@ -269,10 +269,10 @@ add('Dormant year: zero total assets, no transactions, no managerial disclosure'
     transactions: [],
     no_transactions_confirmed: true,
     part_vi_managerial: false,
-    note: 'Watch that a 0 in total assets is not rejected as empty — a falsy-check bug shows up here and nowhere else.',
+    note: 'Watch that a 0 in total assets is not rejected as empty - a falsy-check bug shows up here and nowhere else.',
   });
 
-add('Fiscal year ending December — identical to the calendar year',
+add('Fiscal year ending December - identical to the calendar year',
   'deriveFiscalPeriod with end month 12 must produce 01-01 to 12-31 and must not shift the period back a year',
   {
     filing: filing({ name: 'Decemberend Labs LLC', ein: '82-4000003', year: '2024', doi: '2021-03-15', fiscal: true, fiscalEndMonth: 12 }),
@@ -301,7 +301,7 @@ add('Reasonable-cause letter with ALL eight reasons selected',
   });
 
 add('Reasonable-cause letter with exactly one reason',
-  'The opposite extreme — single-reason wording must read as a sentence, not as a one-item list with dangling punctuation',
+  'The opposite extreme - single-reason wording must read as a sentence, not as a one-item list with dangling punctuation',
   {
     filing: filing({ name: 'Onereason Ventures LLC', ein: '82-4000005', year: '2022', doi: '2021-12-01', rcl: true, rclReasons: ['first_time_filing'] }),
     owner: stdOwner(),
@@ -312,7 +312,7 @@ add('Reasonable-cause letter with exactly one reason',
   });
 
 add('Owner is a foreign CORPORATION holding a US EIN',
-  'The 25% owner need not be an individual — Part II must take a company name plus a US EIN in the US-TIN field (contrast scenario 12, an individual with an ITIN)',
+  'The 25% owner need not be an individual - Part II must take a company name plus a US EIN in the US-TIN field (contrast scenario 12, an individual with an ITIN)',
   {
     filing: filing({ name: 'Subsidiary One LLC', ein: '82-4000006', year: '2024', doi: '2022-05-20', state: 'DE', address: delaware, country: 'Japan' }),
     owner: owner({
@@ -333,7 +333,7 @@ add('Owner is a foreign CORPORATION holding a US EIN',
     ],
     no_transactions_confirmed: false,
     part_vi_managerial: true,
-    note: 'A company name is longer than a person name — check it does not clip in Part II, and that the signature block accepts "Representative Director".',
+    note: 'A company name is longer than a person name - check it does not clip in Part II, and that the signature block accepts "Representative Director".',
   });
 
 add('FIELD OVERFLOW: very long transaction descriptions',
@@ -391,21 +391,21 @@ S.push({
 S.push({
   scenario_id: 99,
   title: 'Same EIN and tax year filed twice',
-  tests: 'Duplicate detection — starting a second 2024 filing for an EIN that already has one must warn, or at least not corrupt the first',
+  tests: 'Duplicate detection - starting a second 2024 filing for an EIN that already has one must warn, or at least not corrupt the first',
   filing: filing({ name: 'Double Filed LLC', ein: '83-5000002', year: '2024', doi: '2021-02-18' }),
   owner: stdOwner(),
   related_parties: [],
   transactions: [tx('capital_contribution', 'received', 5000, { date: '2024-03-01' })],
   no_transactions_confirmed: false,
   part_vi_managerial: true,
-  manual_step: 'Complete this filing end to end. Then start a NEW filing from the dashboard with the SAME EIN and the SAME tax year 2024, and change the total assets. Expected: a duplicate warning, or two clearly separate filings on the dashboard — what must NOT happen is the second overwriting the first, or the dashboard showing one row whose figures came from both.',
+  manual_step: 'Complete this filing end to end. Then start a NEW filing from the dashboard with the SAME EIN and the SAME tax year 2024, and change the total assets. Expected: a duplicate warning, or two clearly separate filings on the dashboard - what must NOT happen is the second overwriting the first, or the dashboard showing one row whose figures came from both.',
   expected_result: 'Record the actual behaviour. This is the one scenario in the set whose correct outcome is a product decision rather than a known rule.',
 });
 
 S.push({
   scenario_id: 100,
   title: 'Completed filing reopened: locked identity, package re-download',
-  tests: 'End of the journey — a completed filing must route to generate/preview/download, keep identity fields locked, and re-download the same package without regenerating different numbers',
+  tests: 'End of the journey - a completed filing must route to generate/preview/download, keep identity fields locked, and re-download the same package without regenerating different numbers',
   filing: filing({
     name: 'Finished Business LLC', ein: '83-5000003', year: '2024', doi: '2020-03-03',
     assets: 88000, code: '541512', activity: 'IT Consulting',
@@ -424,13 +424,13 @@ S.push({
   no_transactions_confirmed: false,
   part_vi_managerial: true,
   seed_status: 'completed',
-  manual_step: 'Seed this one with --status completed. Open it: it must land on the download page, not step 1. Identity fields (LLC name, EIN, tax year, owner name, incorporation date) must be disabled. Download the package twice and diff the two PDFs — gross payments must be identical both times.',
+  manual_step: 'Seed this one with --status completed. Open it: it must land on the download page, not step 1. Identity fields (LLC name, EIN, tax year, owner name, incorporation date) must be disabled. Download the package twice and diff the two PDFs - gross payments must be identical both times.',
 });
 
 // ── emit ────────────────────────────────────────────────────────────────────
 const doc = {
   meta: {
-    generated_for: 'filetax.co end-to-end testing — completes the set at 100',
+    generated_for: 'filetax.co end-to-end testing - completes the set at 100',
     generated_on: '2026-07-26',
     scenario_id_range: `${S[0].scenario_id}-${S[S.length - 1].scenario_id}`,
     count: S.length,
@@ -439,7 +439,7 @@ const doc = {
     negative_tests:
       'A scenario with `expected_result` must be REJECTED by the product. It passes when the error appears and nothing is saved.',
     manual_steps:
-      'A scenario with `manual_step` cannot be judged from the seeded data alone — the instruction there is the test.',
+      'A scenario with `manual_step` cannot be judged from the seeded data alone - the instruction there is the test.',
     coverage: [
       'blank Step 1, negative assets, out-of-period dates, incomplete loan rows',
       'the category-3 acknowledgment gate, colliding reference codes, impossible signature dates, whitespace-only names',

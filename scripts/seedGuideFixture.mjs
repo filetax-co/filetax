@@ -1,5 +1,5 @@
 /**
- * seedGuideFixture — put the Test LLC filing into Supabase so the /guide
+ * seedGuideFixture - put the Test LLC filing into Supabase so the /guide
  * screenshots have something real to photograph.
  *
  *   npm run seed:guide            insert (replaces any previous run)

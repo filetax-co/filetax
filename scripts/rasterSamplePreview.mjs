@@ -1,5 +1,5 @@
 /**
- * rasterSamplePreview — turn the sample PDFs from genSamplePreview.mjs into
+ * rasterSamplePreview - turn the sample PDFs from genSamplePreview.mjs into
  * watermarked PNGs for the marketing site's /services page.
  *
  *   node scripts/rasterSamplePreview.mjs

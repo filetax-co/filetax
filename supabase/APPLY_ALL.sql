@@ -1,5 +1,5 @@
 -- ============================================================================
--- FileTax — APPLY ALL CHANGES
+-- FileTax - APPLY ALL CHANGES
 --
 -- Paste this entire file into the Supabase SQL editor (New query → Run).
 -- It is idempotent: safe to run on your existing database and safe to re-run.
@@ -22,7 +22,7 @@ end;
 $$;
 
 -- ============================================================================
--- 1. filing_jobs — groups the year-filings of a multi-year catch-up so a
+-- 1. filing_jobs - groups the year-filings of a multi-year catch-up so a
 --    SINGLE reasonable-cause letter can cover every year.
 -- ============================================================================
 create table if not exists public.filing_jobs (
@@ -57,7 +57,7 @@ create trigger filing_jobs_set_updated_at
   for each row execute procedure public.set_updated_at();
 
 -- ============================================================================
--- 2. filings — every column the wizard + PDF generator read/write.
+-- 2. filings - every column the wizard + PDF generator read/write.
 -- ============================================================================
 alter table public.filings
   -- wizard step 1 (entity)
@@ -107,7 +107,7 @@ alter table public.filings
 create index if not exists filings_job_id_idx on public.filings(job_id);
 
 -- ============================================================================
--- 3. reportable_transactions — new per-row columns + canonical type CHECK.
+-- 3. reportable_transactions - new per-row columns + canonical type CHECK.
 -- ============================================================================
 alter table public.reportable_transactions
   add column if not exists related_party_index int     not null default 0,
@@ -131,7 +131,7 @@ exception when others then
 end $$;
 
 -- ============================================================================
--- 4. user_profiles — prefill surface (year-2+ auto-fill for review).
+-- 4. user_profiles - prefill surface (year-2+ auto-fill for review).
 --    Created here if missing (it lives in migration 20260621, which may or may
 --    not have been applied), then expanded with the full prefill column set.
 -- ============================================================================
@@ -187,7 +187,7 @@ alter table public.user_profiles
   add column if not exists related_parties            jsonb not null default '[]'::jsonb;
 
 -- ============================================================================
--- 5. Payment integrity — identity freeze + correction budget.
+-- 5. Payment integrity - identity freeze + correction budget.
 --    One payment must produce ONE company's filing. Identity columns are
 --    frozen once paid; other fields are correctable up to 2 edits; transactions
 --    lock once the budget is exhausted. Service-role (edge functions) bypasses.

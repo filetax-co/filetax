@@ -66,7 +66,7 @@ must(/already printed across the top/.test(text), 'instructions do not confirm t
 // (The instructions page legitimately mentions "January 1, 2022 through ..." as
 // prose, so we check only the 1120 page itself.)
 // The 1120 page is uniquely identified by its signature block ("Managing
-// Member") — the instructions page also mentions "Foreign-owned U.S. DE".
+// Member") - the instructions page also mentions "Foreign-owned U.S. DE".
 const pages = text.split(/==== PAGE \d+ ====/);
 const form1120Page = pages.find((p) => /Foreign-owned U\.S\. DE/.test(p) && /Managing Member/.test(p)) || '';
 must(/September 10, 2021/.test(form1120Page), 'incorporation date not on the 1120');

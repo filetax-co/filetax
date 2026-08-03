@@ -1,6 +1,6 @@
 // supabase/functions/generate-forms/index.ts
 //
-// ⚠️ DEPRECATED / DEAD CODE — DO NOT EXTEND. ⚠️
+// ⚠️ DEPRECATED / DEAD CODE - DO NOT EXTEND. ⚠️
 //
 // This edge function is NOT invoked anywhere in the app. The live download
 // path is the client-side generator in src/lib/pdfGenerator.ts (used by
@@ -98,7 +98,7 @@ serve(async (req) => {
       try {
         form.getTextField(name).setText(value ?? '')
       } catch {
-        // Field doesn't exist in this PDF version — skip silently.
+        // Field doesn't exist in this PDF version - skip silently.
       }
     }
 

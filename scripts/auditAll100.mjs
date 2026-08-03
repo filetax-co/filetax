@@ -1,5 +1,5 @@
 /**
- * auditAll100 — compliance audit of the packages produced by genAll100.
+ * auditAll100 - compliance audit of the packages produced by genAll100.
  *
  *   node scripts/auditAll100.mjs [factsFile]
  *
@@ -10,10 +10,10 @@
  * in the generator cannot hide, because nothing here is computed by it.
  *
  * Findings are graded:
- *   CRITICAL — the filing is wrong or unusable as filed
- *   HIGH     — a value the IRS reads is missing, wrong, or self-inconsistent
- *   MEDIUM   — cosmetic or presentational defect in a filed document
- *   INFO     — observation / design question, not necessarily a defect
+ *   CRITICAL - the filing is wrong or unusable as filed
+ *   HIGH     - a value the IRS reads is missing, wrong, or self-inconsistent
+ *   MEDIUM   - cosmetic or presentational defect in a filed document
+ *   INFO     - observation / design question, not necessarily a defect
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -32,7 +32,7 @@ const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 const eq = (a, b) => norm(a) === norm(b);
 const num = (s) => Number(String(s ?? '').replace(/[^0-9.-]/g, '') || 0);
 
-/** Part V (owner-transaction) types — disclosed in a statement, not Part IV. */
+/** Part V (owner-transaction) types - disclosed in a statement, not Part IV. */
 const PART_V_TYPES = new Set(['distribution', 'dividend', 'capital_contribution', 'formation_costs']);
 /** Part VI (nonmonetary / below-FMV) types. */
 const PART_VI_TYPES = new Set(['property_transfer', 'nonmonetary_other']);
@@ -159,12 +159,12 @@ for (const rec of facts) {
 
   if (rec.negative) {
     add('INFO', id, 'negative input still produced a filing',
-      `${rec.expected_result} — generator emitted a complete ${out.combined?.pages}pp package with no validation of its own`);
+      `${rec.expected_result} - generator emitted a complete ${out.combined?.pages}pp package with no validation of its own`);
   }
 
   // ── document set ─────────────────────────────────────────────────────────
   // A Form 5472 is filed for each related party the corporation actually had
-  // reportable transactions WITH — not for every party merely listed. A party
+  // reportable transactions WITH - not for every party merely listed. A party
   // carried on the filing with no transactions needs no form of its own.
   const txPartyIdx = [...new Set((inp.transactions ?? []).map((t) => t.related_party_index ?? 0))]
     .filter((i) => i > 0).sort((a, b) => a - b);
@@ -201,18 +201,18 @@ for (const rec of facts) {
   const hasPartV = ownerTxns.some((t) => PART_V_TYPES.has(t.transaction_type));
   // NOTE: a Part V type booked against a NON-owner related party is not audited
   // here. Part V exists so a foreign-owned U.S. DE can describe transactions
-  // with its FOREIGN OWNER — contributions to and distributions from the
+  // with its FOREIGN OWNER - contributions to and distributions from the
   // entity, and amounts connected with its formation, dissolution, acquisition
   // and disposition. Those are owner/equity events by definition; a
   // contribution from a non-owner related party is not a Part V item at all,
   // it is a Part IV payment or loan. The generator restricting Part V to the
   // owner's Form 5472 is correct, and an earlier version of this audit wrongly
   // flagged it. (The wizard should stop the combination being entered in the
-  // first place — that is an Intake guard, not a generator defect.)
+  // first place - that is an Intake guard, not a generator defect.)
   if (hasPartV && !out.partV) add('CRITICAL', id, 'Part V statement missing', 'owner Part V transactions present but no statement');
   if (!hasPartV && out.partV) add('MEDIUM', id, 'unexpected Part V statement', 'statement produced with no owner Part V transactions');
 
-  // ── Part I — identity, on EVERY 5472 (it repeats per related party) ──────
+  // ── Part I - identity, on EVERY 5472 (it repeats per related party) ──────
   f5472.forEach((form, i) => {
     const who = i === 0 ? 'owner form' : `related-party form ${i}`;
     const check = (field, expected, label, sev = 'HIGH') => {
@@ -228,7 +228,7 @@ for (const rec of facts) {
     check('Total5472', String(wantForms), 'Part I 1g number of Forms 5472');
     check('CorpIncorpCountry', 'United States', 'Part I 1l country of incorporation');
     check('CorpBusCountry', inp.entity_principal_country, 'Part I 1o principal country of business');
-    // A zero balance prints as a blank box rather than "0" — noted once, not
+    // A zero balance prints as a blank box rather than "0" - noted once, not
     // treated as a missing value.
     if (inp.total_assets != null && Number(inp.total_assets) !== 0) {
       check('TotalAssets', money(inp.total_assets), 'Part I 1c total assets');
@@ -265,7 +265,7 @@ for (const rec of facts) {
     add('MEDIUM', id, 'initial return not marked', 'initial_return set but the 1120 initial-return box is clear');
   }
 
-  // ── Part II — the 25% foreign shareholder (the owner) ────────────────────
+  // ── Part II - the 25% foreign shareholder (the owner) ────────────────────
   const owner = f5472[0] ?? {};
   if (inp.owner_full_name && !norm(owner.ShareholderNameAddress ?? '').includes(norm(inp.owner_full_name))) {
     add('CRITICAL', id, 'Part II 1a shareholder name', `expected to contain "${inp.owner_full_name}", got "${owner.ShareholderNameAddress ?? '(blank)'}"`);
@@ -281,7 +281,7 @@ for (const rec of facts) {
     add('HIGH', id, 'Part II 1c foreign TIN', `expected "${inp.owner_foreign_tax_id}", got "${owner.ShareholderFTIN ?? '(blank)'}"`);
   }
 
-  // ── Part III — related party on each non-owner form ──────────────────────
+  // ── Part III - related party on each non-owner form ──────────────────────
   formParty.slice(1).forEach((partyIdx, k) => {
     const rp = (inp.related_parties ?? [])[partyIdx - 1];
     const form = f5472[k + 1];
@@ -301,7 +301,7 @@ for (const rec of facts) {
     }
   });
 
-  // Reference codes must be unique — the IRS keys related parties on them.
+  // Reference codes must be unique - the IRS keys related parties on them.
   const refs = (inp.related_parties ?? []).map((r) => r.ref).filter(Boolean);
   if (new Set(refs).size !== refs.length) {
     // On a negative scenario the collision IS the input under test; the point
@@ -310,7 +310,7 @@ for (const rec of facts) {
       `related parties share a code (${refs.join(', ')}) and the package was produced anyway`);
   }
 
-  // ── Part IV — every transaction on its correct line, at its exact amount ─
+  // ── Part IV - every transaction on its correct line, at its exact amount ─
   const byParty = new Map();
   for (const t of inp.transactions ?? []) {
     const k = t.related_party_index ?? 0;
@@ -347,7 +347,7 @@ for (const rec of facts) {
       const line = type === 'rent_royalty'
         ? RENT_ROYALTY_LINE[t.is_royalty ? 'royalty' : 'rent']
         : guaranteeHasNoLine ? PART_IV_LINE.other : PART_IV_LINE[type];
-      if (!line) { add('INFO', id, 'unmodelled transaction type', `${type} — audit has no Part IV expectation for it`); continue; }
+      if (!line) { add('INFO', id, 'unmodelled transaction type', `${type} - audit has no Part IV expectation for it`); continue; }
       const field = line[t.direction];
       if (!field) continue;
       if (amt > 0) expect[field] = (expect[field] ?? 0) + amt;
@@ -391,7 +391,7 @@ for (const rec of facts) {
 
   // 1f is this form's gross; 1h is the gross across ALL Forms 5472 in the
   // filing. So 1h must be identical on every form and equal the sum of the 1f
-  // figures — that is the cross-check the IRS applies.
+  // figures - that is the cross-check the IRS applies.
   if (f5472.length) {
     const allValues = [...new Set(f5472.map((f) => f.GrossPaymentsAll5472 ?? '(blank)'))];
     if (allValues.length > 1) {
@@ -502,7 +502,7 @@ for (const rec of facts) {
   for (const [label, d] of [['Form 5472', out.form5472], ['Form 1120', out.form1120], ['Form 7004', out.form7004]]) {
     for (const u of d?.drawnOutsideFields ?? []) {
       add('MEDIUM', id, 'value drawn outside its field',
-        `${label} page ${u.page}: "${u.s}" at (${u.x}, ${u.y}) sits in no form field — position is unverified`);
+        `${label} page ${u.page}: "${u.s}" at (${u.x}, ${u.y}) sits in no form field - position is unverified`);
     }
   }
 
@@ -543,7 +543,7 @@ for (const rec of facts) {
 
   // ── truncation of long free text ─────────────────────────────────────────
   // Only text the forms actually render is checked. Form 5472 Part IV has no
-  // description column, so a Part IV narrative is never printed by design —
+  // description column, so a Part IV narrative is never printed by design -
   // Part V and Part VI statements are the ones that carry descriptions.
   // Part V and Part VI statements are produced for the OWNER only, so only an
   // owner-indexed transaction has its description printed anywhere. Likewise a
@@ -590,7 +590,7 @@ for (const [key, list] of [...groups.entries()].sort((a, b) =>
   const [sev, check] = key.split('|');
   if (sev !== lastSev) { console.log(`\n──────── ${sev} ────────`); lastSev = sev; }
   const ids = [...new Set(list.map((f) => f.id))].sort((a, b) => a - b);
-  console.log(`\n▸ ${check}  —  ${list.length} occurrence(s) across ${ids.length} scenario(s)`);
+  console.log(`\n▸ ${check}  -  ${list.length} occurrence(s) across ${ids.length} scenario(s)`);
   console.log(`  scenarios: ${ids.join(', ')}`);
   for (const f of list.slice(0, 4)) console.log(`    #${f.id}: ${f.detail}`);
   if (list.length > 4) console.log(`    … and ${list.length - 4} more`);

@@ -129,7 +129,7 @@ const FORM_FIELD_FONT_SIZE = 8;
 /** Code points WinAnsiEncoding can represent, beyond printable ASCII. */
 const WINANSI_EXTRA = new Set(
   ('€‚ƒ„…†‡ˆ‰Š‹ŒŽ'
-    + '‘’“”•–—˜™š›œžŸ')
+    + '‘’“”•–-˜™š›œžŸ')
     .split(''),
 );
 const isFormSafeChar = (ch: string): boolean => {
@@ -208,7 +208,7 @@ const setText = (doc: PDFDocument, fieldName: string, value: string): void => {
       // the same size across every field and every page.
       field.setFontSize(FORM_FIELD_FONT_SIZE);
       // setFontSize writes the size onto the FIELD's /DA only, and pdf-lib's
-      // appearance provider resolves `widgetFontSize ?? fieldFontSize` — a
+      // appearance provider resolves `widgetFontSize ?? fieldFontSize` - a
       // widget's own /DA wins. Most template fields keep the widget merged into
       // the field dict, so writing one writes both, but a field with a separate
       // kid widget (Form 7004's LLC_State and LLC_Country) kept the template's
@@ -638,7 +638,7 @@ const totalPaid = (t: AggregatedTransactions): number =>
  * the owner only. This aggregate was ungated, so a distribution, dividend,
  * capital contribution, formation cost, property transfer or other nonmonetary
  * item attached to an ADDITIONAL related party still counted toward that
- * party's line 1f and the entity-wide line 1h — while appearing on no Part IV
+ * party's line 1f and the entity-wide line 1h - while appearing on no Part IV
  * line, no checkbox and no statement, because a non-owner's form has none of
  * those.
  *
@@ -1592,7 +1592,7 @@ const fill5472 = async (
 
   // 1f gross payments on THIS form / 1g number of 5472s / 1h gross across ALL forms.
   // 1f/1h aggregate the monetary transactions for this party: Part IV flows,
-  // plus — for the OWNER's form only, which is the only one carrying them — the
+  // plus - for the OWNER's form only, which is the only one carrying them - the
   // monetary Part V (distributions/contributions/dividends) and Part VI amounts.
   const grossThisForm = grossPaymentsForLines1f1h(txn, party.is_owner);
   setText(doc, F.CORP_GROSS_PAYMENTS, fmt(grossThisForm));

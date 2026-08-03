@@ -1,5 +1,5 @@
 -- ============================================================================
--- FileTax.co — Supabase schema
+-- FileTax.co - Supabase schema
 -- Run in: Dashboard → SQL Editor → New query
 -- Safe to re-run on an existing database (all migrations are idempotent)
 -- ============================================================================
@@ -66,7 +66,7 @@ create table if not exists public.filings (
   current_step  int  not null default 1,
 
   -- ── Tax year / period ─────────────────────────────────────────────────────
-  -- tax_year: the four-digit year string, e.g. '2024'. Required — every insert
+  -- tax_year: the four-digit year string, e.g. '2024'. Required - every insert
   -- path seeds it (the wizard lets the user change it in step 1). NOT NULL
   -- catches any code path that forgets to set it.
   -- tax_period_begin / tax_period_end: exact ISO dates for the Form 5472 header
@@ -88,7 +88,7 @@ create table if not exists public.filings (
   date_of_incorporation   date,
   date_of_closure         date,
   -- "Initial return" checkbox on Form 5472 + Pro Forma 1120 cover.
-  -- Never set manually — derived by the wizard rules engine.
+  -- Never set manually - derived by the wizard rules engine.
   initial_return    boolean not null default false,
   name_change       boolean,
   address_change    boolean,
@@ -312,7 +312,7 @@ create policy "Users read own filled forms" on storage.objects
 
 
 -- ============================================================================
--- MIGRATIONS — idempotent, safe to run on existing databases
+-- MIGRATIONS - idempotent, safe to run on existing databases
 -- ============================================================================
 
 -- linked_filing_id on intake_submissions
