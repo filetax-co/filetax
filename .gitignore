@@ -25,3 +25,11 @@ Thumbs.db
 
 npm-debug.log*
 yarn-error.log*
+
+# Internal strategy docs. These live OUTSIDE this repo, in the parent
+# directory, because this repo is PUBLIC. FILETAX-HANDOFF.md carries
+# competitor analysis, pricing rationale, the unbuilt roadmap and candid
+# product weaknesses. It was briefly committed here on 3 Aug 2026 and the
+# commits were rewritten before any push. Do not move it back in.
+FILETAX-HANDOFF.md
+blog-headings-and-faq-rewrite.md
