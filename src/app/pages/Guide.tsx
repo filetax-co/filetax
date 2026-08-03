@@ -3,7 +3,6 @@ import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
 import {
   PRICE_PER_YEAR,
-  PRICE_RCL,
   PRICE_ADDITIONAL_PARTY,
   PRICE_FAX,
 } from "../../lib/pricing";
@@ -20,8 +19,23 @@ import {
 // WHY IT EXISTS. The filer is being asked to hand over an EIN and a year of
 // transactions to a site they found an hour ago, against a $25,000 penalty.
 // Every screenshot below is a minute of that anxiety removed. This page does
-// conversion work that no article does, which is why it lives in the primary
-// nav and not under /resources.
+// conversion work that no article does, which is why it is linked sitewide
+// from the footer as "How Filing Works" rather than buried under /resources.
+// It is deliberately NOT in the primary nav: that is already six items and a
+// seventh crowds mobile. See handoff item 32, which settled the same question
+// for /compare.
+//
+// THE REASONABLE CAUSE LETTER IS NOT ON THIS PAGE. Removed entirely on
+// 3 Aug 2026 on the owner's instruction, and this is the rule, not a trim:
+// the guide walks the filer to the pay screen, and the letter is the $199
+// line item they decide on there. Explaining it here, pricing it here, or
+// showing a sample of it here all argue with that decision at the worst
+// possible moment, and the three reasonable cause ARTICLES that used to be
+// linked from step 5 argued hardest of all, because they are a competent set
+// of instructions for writing the letter yourself. Our own blog was the best
+// case against our own product. /past-filings and /services sell the letter,
+// /resources explains it, and the pay screen offers it. This page does none
+// of the three. Do not reintroduce it here in any form.
 //
 // SCREENSHOTS ARE GENERATED, NOT PASTED. They come from the Test LLC fixture
 // in `CNL 5472/5472/scripts/genSamplePreview.mjs`, the same fictional filer
@@ -50,15 +64,9 @@ interface Stage {
   shot?: string;
   shotAlt?: string;
   points: { label: string; body: string }[];
-  /**
-   * An output sample shown under the points, reusing an image from
-   * public/samples. Only the reasonable cause letter uses this, and its image
-   * is PARTIALLY OBSCURED by genSampleRcl.mjs: letterhead, the IRS address
-   * block, the RE line, headings, the perjury declaration and the signature are
-   * visible, the argument paragraphs are not. The argument is the product.
-   * Never point this at a clean render of the letter.
-   */
-  sample?: { src: string; alt: string; caption: string };
+  // A `sample` field used to live here, carrying the obscured reasonable cause
+  // letter image onto step 5. It was removed with the rest of the letter on
+  // 3 Aug 2026, on the owner's instruction. See the note above `STAGES`.
   /**
    * Articles for the filer who wants the tax detail behind this screen.
    *
@@ -236,7 +244,7 @@ const STAGES: Stage[] = [
         label: "Filing Status, only when the year is late",
         body:
           "This section appears only if the due date for that year has passed. It asks why the " +
-          "filing is late, and those answers become the reasonable cause letter. If you are " +
+          "filing is late, in a few structured questions rather than a blank box. If you are " +
           "filing on time you will never see this screen.",
       },
       {
@@ -295,15 +303,6 @@ const STAGES: Stage[] = [
           "applies to your year. The screen lists exactly what yours contains before you pay.",
       },
       {
-        label: "The reasonable cause letter is optional, and only offered on a late year",
-        body:
-          "The IRS does not require it. A late filing is accepted without one; the letter is the " +
-          `argument for waiving the penalty rather than paying it, which is why it costs $${PRICE_RCL} ` +
-          "and why it is a choice rather than a step. It is never offered on a year filed on " +
-          "time, and one letter covers every late year in the same job however many you file. " +
-          "Skip it and the rest of the package generates exactly as it would otherwise.",
-      },
-      {
         label: "You sign it here, at the end and not before",
         body:
           "Draw your signature, or leave the pad blank and it falls back to your typed name, " +
@@ -314,31 +313,21 @@ const STAGES: Stage[] = [
       {
         label: "Then you pay and download",
         body:
-          `$${PRICE_PER_YEAR} per tax year, one $${PRICE_RCL} reasonable cause letter covering ` +
-          `every late year in the job, and $${PRICE_ADDITIONAL_PARTY} for each additional ` +
-          "related party per year. The download is a print-ready PDF.",
+          `$${PRICE_PER_YEAR} per tax year, and $${PRICE_ADDITIONAL_PARTY} for each additional ` +
+          "related party per year. Any add-ons you chose are itemised on the same screen, and " +
+          "you see the total before you are asked to pay. The download is a print-ready PDF.",
       },
     ],
-    reading: [
-      { slug: "reasonable-cause-letter-late-form-5472", label: "What a reasonable cause letter has to contain" },
-      { slug: "diirsp-reasonable-cause-fta-late-5472", label: "Reasonable cause, DIIRSP or first-time abatement, which path fits" },
-      { slug: "missed-form-5472-penalty-exposure-relief-paths", label: "Missed the filing: your exposure and the relief paths" },
-    ],
-    // The letter is the one document a filer cannot write themselves, and the
-    // one they are most sceptical exists. Showing its shape here, on the screen
-    // where they decide to pay for it, answers that. The same image is on
-    // /services, so the two pages cannot show two different letters.
-    sample: {
-      src: "/samples/sample-rcl.webp",
-      alt:
-        "A sample reasonable cause letter, showing the letterhead, the IRS address block, " +
-        "the entity and years it covers, the section headings, and the signed declaration " +
-        "under penalties of perjury. The argument paragraphs are obscured.",
-      caption:
-        "A sample reasonable cause letter, which is optional and offered only on a late year. " +
-        "The structure, the authority it cites and the declaration under penalties of perjury " +
-        "are shown; the argument itself is not.",
-    },
+    // NO `reading` LIST ON THIS STAGE, DELIBERATELY, AND DO NOT RESTORE IT.
+    // It held the three reasonable cause articles: what a letter must contain,
+    // reasonable cause versus DIIRSP versus first-time abatement, and the
+    // penalty exposure piece. This is the one screen where the filer is
+    // deciding whether to pay for the letter, and those three links are a set
+    // of instructions for writing it themselves. Our own blog would have been
+    // the best argument against our own $199 product, at the exact moment it
+    // mattered. They stay published, they stay linked from /resources and from
+    // /past-filings, and they earn their traffic there. They do not belong on
+    // the pay screen's guide. Owner's instruction, 3 Aug 2026.
   },
   {
     id: "sending",
@@ -596,45 +585,6 @@ export function Guide() {
               </div>
             )}
 
-            {stage.sample && (
-              <figure
-                style={{
-                  margin: "0 0 1.5rem",
-                  border: "1px solid var(--tf-border)",
-                  borderRadius: "0.75rem",
-                  overflow: "hidden",
-                  background: "var(--tf-bg)",
-                }}
-              >
-                <img
-                  src={stage.sample.src}
-                  alt={stage.sample.alt}
-                  loading="lazy"
-                  decoding="async"
-                  style={{ display: "block", width: "100%", height: "auto" }}
-                  // Same self-hiding behaviour as Shot: a missing sample must
-                  // degrade to text, never to a broken image icon on the page a
-                  // nervous filer trusts most.
-                  onError={(e) => {
-                    const fig = (e.currentTarget as HTMLImageElement).closest("figure");
-                    if (fig) (fig as HTMLElement).style.display = "none";
-                  }}
-                />
-                <figcaption
-                  style={{
-                    color: "var(--tf-muted)",
-                    fontSize: "0.8125rem",
-                    fontWeight: 400,
-                    lineHeight: 1.55,
-                    padding: "0.75rem 1rem",
-                    borderTop: "1px solid var(--tf-border)",
-                  }}
-                >
-                  {stage.sample.caption}
-                </figcaption>
-              </figure>
-            )}
-
             {stage.note && (
               <p
                 style={{
@@ -666,21 +616,47 @@ export function Guide() {
             The flow above describes one tax year. Several missed years work the
             same way, with two differences worth knowing before you start.
           </p>
-          <ul style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, paddingLeft: "1.25rem", margin: 0 }}>
-            <li style={{ marginBottom: "0.5rem" }}>
-              <strong style={{ fontWeight: 600 }}>You enter the shared details once.</strong>{" "}
-              Your LLC and owner details carry across every year in the job. What
-              changes year to year is the transactions and the total assets.
-            </li>
-            <li style={{ marginBottom: "0.5rem" }}>
-              <strong style={{ fontWeight: 600 }}>One reasonable cause letter covers all of them.</strong>{" "}
-              It is written once, names every late year, and is charged once at $
-              {PRICE_RCL} no matter how many years the job covers.
-            </li>
-            <li>
-              <strong style={{ fontWeight: 600 }}>Each year gets its own correct form revision.</strong>{" "}
-              A 2021 filing is rendered on the 2021 Form 1120, not on this year's.
-            </li>
+          {/* Same marker treatment as the homepage's "What you receive" list:
+              listStyle none, a green tick in its own flex column, and a rule
+              under each row. The bullets used to be browser discs, which is
+              the only list on the site that looked like that.
+
+              The reasonable cause letter bullet was removed on 3 Aug 2026 with
+              the rest of the letter, and the intro above says "two differences"
+              again as a result. It had said two while showing three since the
+              page was built. If you add a third difference, fix the count. */}
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {[
+              {
+                label: "You enter the shared details once.",
+                body:
+                  "Your LLC and owner details carry across every year in the job. What changes " +
+                  "year to year is the transactions and the total assets.",
+              },
+              {
+                label: "Each year gets its own correct form revision.",
+                body: "A 2021 filing is rendered on the 2021 Form 1120, not on this year's.",
+              },
+            ].map((item) => (
+              <li
+                key={item.label}
+                style={{
+                  padding: "0.625rem 0",
+                  borderBottom: "1px solid var(--tf-border)",
+                  color: "var(--tf-text)",
+                  fontSize: "0.9375rem",
+                  lineHeight: 1.7,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "0.75rem",
+                }}
+              >
+                <span style={{ color: "var(--tf-success)", fontWeight: 700, fontSize: "1.125rem", flexShrink: 0, lineHeight: 1.4 }}>&#10003;</span>
+                <span>
+                  <strong style={{ fontWeight: 600 }}>{item.label}</strong> {item.body}
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
       </section>

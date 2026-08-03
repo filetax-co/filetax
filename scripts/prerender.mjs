@@ -29,6 +29,16 @@ const STATIC_ROUTES = [
   '/services',
   '/past-filings',
   '/compare',
+  // Was missing until 3 Aug 2026. The route existed in routes.tsx and the
+  // footer linked to it, but with no entry here there was no /guide.html, so
+  // the page existed only for someone already inside the SPA. Item 32 wired
+  // /compare into all four places; /guide got two of them.
+  //
+  // Note the name collision: public/guide/ holds the generated screenshots and
+  // ships as dist/guide/. Pages resolves the extensionless /guide to
+  // guide.html before it considers the directory, so both work, but do not
+  // rename either half without checking the other.
+  '/guide',
   '/check',
   '/resources',
   '/faq',

@@ -21,6 +21,7 @@ const STATIC_ROUTES = [
   { path: '/services',     changefreq: 'monthly', priority: '0.9' },
   { path: '/past-filings', changefreq: 'monthly', priority: '0.9' },
   { path: '/compare',      changefreq: 'monthly', priority: '0.8' },
+  { path: '/guide',        changefreq: 'monthly', priority: '0.8' },
   { path: '/check',        changefreq: 'monthly', priority: '0.8' },
   { path: '/resources',    changefreq: 'weekly',  priority: '0.8' },
   { path: '/faq',          changefreq: 'monthly', priority: '0.7' },
