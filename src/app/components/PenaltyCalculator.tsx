@@ -341,7 +341,11 @@ export function PenaltyCalculator() {
           both awkward English and reads as a sales claim; the bare comparison
           is more striking and cannot be argued with. */}
       <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-        <strong style={{ fontWeight: 700 }}>{money(cost)} to clear {money(penalty)} of exposure.</strong>{" "}
+        {/* Not "to clear". The paragraph below already says abatement is at
+            the IRS's discretion and nobody can promise it, so a headline
+            promising the exposure is cleared contradicts our own disclaimer
+            one line later. "Address" is what the filing actually does. */}
+        <strong style={{ fontWeight: 700 }}>{money(cost)} to address {money(penalty)} of exposure.</strong>{" "}
         The reasonable cause letter asks the IRS to waive the penalty entirely, and filing
         voluntarily is a far stronger position than replying to a notice.
       </p>

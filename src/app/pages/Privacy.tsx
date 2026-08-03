@@ -73,7 +73,14 @@ export function Privacy() {
           </p>
           <ul style={styles.ul}>
             <li style={styles.li}>
-              <strong>Information you provide directly.</strong> Your name, email address, postal address, phone number, business and entity details (such as LLC name and EIN), tax-related information (such as ownership details, related-party transactions, and financial data needed to prepare filings), identification documents, and any messages you send us.
+              {/* Was "identification documents", which we do not collect. The
+                  intake asks the filer to TYPE a foreign tax ID, or a passport
+                  number where their country issues no personal tax ID. There
+                  is no document upload anywhere in the portal. A privacy
+                  policy should describe what is actually collected, and this
+                  one was describing a heavier collection than the product
+                  performs, which is the wrong direction to be wrong in. */}
+              <strong>Information you provide directly.</strong> Your name, email address, postal address, phone number, business and entity details (such as LLC name and EIN), tax-related information (such as ownership details, related-party transactions, and financial data needed to prepare filings), identification numbers you type in (such as a foreign tax identification number, or a passport number where your country issues no personal tax ID), and any messages you send us. We do not ask you to upload identity documents or bank statements.
             </li>
             <li style={styles.li}>
               <strong>Payment information.</strong> When you purchase services, our payment processor collects your payment details. We do not store full card numbers ourselves.
@@ -100,9 +107,28 @@ export function Privacy() {
             <li style={styles.li}>comply with legal obligations and enforce our Terms.</li>
           </ul>
 
-          <h2 style={styles.h2}>3. Tax Return Information (IRC §7216)</h2>
+          {/* Rewritten 3 Aug 2026. The old version opened by describing what
+              IRC §7216 requires of "tax return preparers" and then stated our
+              obligations in the next breath, which reads as a claim that we
+              are one. We are not. FileTax is a self-serve portal: you enter
+              your own figures, you sign your own forms, and you file them. No
+              preparer at FileTax reviews, signs or submits your return, and
+              the reasonable cause letter is generated from a CPA-authored
+              framework rather than prepared for you by a CPA.
+
+              Rather than assert a status either way, this now states the
+              handling commitment on its own terms and lets it stand whether
+              or not §7216 reaches us. That is the only version that is true
+              under both readings. Do NOT reinstate the preparer framing
+              without counsel: the §7216 regulations reach further than most
+              software companies assume, and the fix for that risk is to keep
+              the promise and drop the label, not the reverse. */}
+          <h2 style={styles.h2}>3. How We Treat Your Tax Information</h2>
           <p style={styles.p}>
-            United States federal law (Internal Revenue Code §7216) restricts how tax return preparers may use or disclose tax return information. We will not use or disclose your tax return information for any purpose other than preparing your return, except as permitted by law or with your written consent. Where your consent is required for a specific use or disclosure, we will request it separately and explain the purpose at the time.
+            FileTax is a self-serve portal. You enter your own information, you sign your own forms, and you file them with the IRS. We are not your tax return preparer and we do not sign or submit a return on your behalf, and nothing in this policy or on this site is tax advice.
+          </p>
+          <p style={styles.p}>
+            The information you enter to produce a filing is the most sensitive information we hold, and we treat it accordingly. We use it to generate your forms, to let you re-open and amend a filing, and, where you buy the IRS Fax Transmission add-on, to transmit the signed package. We will not use or disclose it for any other purpose except as permitted by law or with your consent, and we will not sell it or use it to target advertising. Where your consent is needed for a specific use or disclosure, we will ask for it separately and explain the purpose at the time.
           </p>
 
           <h2 style={styles.h2}>4. How We Share Information</h2>

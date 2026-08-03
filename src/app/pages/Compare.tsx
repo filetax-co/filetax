@@ -107,8 +107,16 @@ const ROWS: Row[] = [
   },
   {
     label: "Turnaround",
+    // Guide.tsx and Portal.tsx both qualify the ten minutes with "for a
+    // straightforward year". This row was the only place stating it bare,
+    // which made it the one number a filer with four years and three related
+    // parties would hold against us.
+    tip:
+      "Ten minutes is a straightforward single year. Several missed years, or " +
+      "more than one related party, take longer, but it is still one sitting " +
+      "and you finish the same day.",
     diy: "However long it takes you",
-    filetax: "About 10 minutes, same day",
+    filetax: "About 10 minutes for a straightforward year, same day",
     cpa: "Days to weeks, depending on their workload",
   },
   {

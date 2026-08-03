@@ -30,6 +30,20 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const DEFAULT_CATEGORY_COLOR = "#64748B";
 
+// Start Here. The grid below orders by `featured desc, publishedAt desc`, so
+// it is deliberately not in date order and looks arbitrary to someone who
+// arrived from a search result and does not yet know which of thirty articles
+// answers their question. These four are the questions that come before all
+// the others, in the order a filer actually hits them. Slugs are hardcoded
+// rather than queried because this is an editorial ordering, not a data one;
+// if you unpublish one of these posts, fix it here too.
+const START_HERE: { q: string; slug: string }[] = [
+  { q: "Do I have to file at all?", slug: "reportable-transactions-form-5472" },
+  { q: "What is pro forma Form 1120?", slug: "pro-forma-1120-explained" },
+  { q: "I missed prior years. How bad is it?", slug: "missed-form-5472-penalty-exposure-relief-paths" },
+  { q: "What goes in a reasonable cause letter?", slug: "reasonable-cause-letter-late-form-5472" },
+];
+
 function getCategoryColor(title: string): string {
   return CATEGORY_COLORS[title] ?? DEFAULT_CATEGORY_COLOR;
 }
@@ -139,6 +153,56 @@ export function Resources() {
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
             Guides for foreign-owned U.S. LLCs, Form 5472 filing, and IRS compliance.
           </p>
+        </div>
+      </section>
+
+      {/* Start Here. Static, so it renders immediately rather than waiting on
+          Sanity, and it is above the category chips because a filter is only
+          useful to someone who already knows what they are looking for. */}
+      <section style={{ background: "var(--tf-bg)", padding: "0 1rem 2rem" }} aria-labelledby="start-here-heading">
+        <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+          <div
+            style={{
+              background: "var(--tf-surface)",
+              border: "1px solid var(--tf-border)",
+              borderRadius: "0.75rem",
+              padding: "1.5rem",
+            }}
+          >
+            <h2 id="start-here-heading" style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>Start here</h2>
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.25rem" }}>
+              New to Form 5472? These four answer the questions that come before the rest.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+              {START_HERE.map((item, i) => (
+                <Link
+                  key={item.slug}
+                  to={`/resources/${item.slug}`}
+                  style={{
+                    display: "flex",
+                    gap: "0.75rem",
+                    alignItems: "baseline",
+                    color: "var(--tf-text)",
+                    fontSize: "0.9375rem",
+                    fontWeight: 500,
+                    textDecoration: "none",
+                    paddingBottom: "0.25rem",
+                  }}
+                >
+                  <span style={{ color: "var(--tf-accent)", fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                  <span>{item.q}</span>
+                </Link>
+              ))}
+            </div>
+            <div style={{ borderTop: "1px solid var(--tf-border)", marginTop: "1.25rem", paddingTop: "1rem" }}>
+              <Link
+                to="/check"
+                style={{ color: "var(--tf-accent)", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}
+              >
+                Or check whether we can file for you &#8594;
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 

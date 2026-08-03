@@ -5,11 +5,22 @@ import { useJsonLd } from "../hooks/useJsonLd";
 const faqs = [
   {
     q: "What is Form 5472 and who needs to file it?",
-    a: "Form 5472 is an IRS information return required for any U.S. corporation or foreign-owned disregarded entity that had reportable transactions with a foreign related party. A single-member LLC owned 25% or more by a non-U.S. person must file it for any year in which such a transaction occurred, whether or not the LLC had any revenue. In practice that is most years: the act of forming the LLC and making a capital contribution is itself a reportable transaction, and so is money moving between you and the LLC in either direction.",
+    // The "owned 25% or more" test does not belong here. A single-member LLC
+    // is 100% owned by its sole member by definition, so applying a 25%
+    // threshold to it reads as a condition the filer has to check and gives
+    // some of them a reason to conclude they are under it. The 25% test is a
+    // related-party test, and it is used correctly as one on Pricing and
+    // Services. Here the trigger is the reportable transaction.
+    a: "Form 5472 is an IRS information return required for any U.S. corporation or foreign-owned U.S. disregarded entity that had a reportable transaction with a foreign related party. If you are a non-U.S. person and you own a U.S. single-member LLC, that describes you: the LLC is a disregarded entity and you are a foreign related party. The form is due for any year in which such a transaction occurred, whether or not the LLC had any revenue. In practice that is most years, because the act of forming the LLC and making a capital contribution is itself a reportable transaction, and so is money moving between you and the LLC in either direction.",
   },
   {
     q: "Does a dormant LLC with no revenue need to file Form 5472?",
-    a: "The requirement is triggered by reportable transactions, not by revenue, so strictly speaking a year with no reportable transactions at all does not require the form. In practice that year is rarer than it sounds, and we recommend filing anyway. Three reasons. First, if you provide management or other services to the LLC, or charge it for anything, that is reportable. Second, state annual fees and registered agent charges paid by the owner on the LLC's behalf are themselves reportable transactions. Third, the downside is lopsided: filing a form you did not strictly need costs you very little, while not filing one you did need means arguing your way out of an automatic $25,000 penalty after the IRS has already sent a notice. The formation year is not in doubt either way, since the initial capital contribution is always reportable.",
+    // Was "we recommend filing anyway", which is a paid preparer of forms
+    // recommending you buy a form you may not owe. Reframed around the thing
+    // the filer actually has to establish, which is whether the year was
+    // genuinely transaction-free. The three reasons stay, because they are
+    // the reasons most filers are wrong about that.
+    a: "The requirement is triggered by reportable transactions, not by revenue, so a year with no reportable transactions at all does not require the form. The thing to be careful about is that such a year is rarer than it sounds, and most owners who believe they had one are counting only revenue. Three things to check before you conclude a year was genuinely dormant. First, if you provide management or other services to the LLC, or charge it for anything, that is reportable. Second, state annual fees and registered agent charges paid by the owner on the LLC's behalf are themselves reportable transactions. Third, the downside is lopsided: filing a form you did not strictly need costs you very little, while not filing one you did need means arguing your way out of an automatic $25,000 penalty after the IRS has already sent a notice. If any of the three apply, you had a reportable transaction and the form is due. If after checking you are still unsure, that uncertainty is worth resolving with a tax professional before you decide not to file. The formation year is not in doubt either way, since the initial capital contribution is always reportable.",
   },
   {
     q: "What counts as a reportable transaction for Form 5472?",

@@ -352,7 +352,13 @@ export function Home() {
               >
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>IRS Fax Transmission</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>+${PRICE_FAX} add-on</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign in your browser, we fax the package to the IRS so you never need a printer, and the transmission receipt is stored against your filing.</p>
+                {/* Aligned with the Services page fax section on 3 Aug 2026.
+                    Two facts that sell the add-on were only on Services: one
+                    fee covers the whole job however many years, and it is an
+                    add-on to 5472 filings only. The card read as $9 per year
+                    to anyone catching up, which is the exact filer this page
+                    is written for. */}
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>You sign in your browser, we fax the package to the IRS so you never need a printer, and the transmission receipt is stored against your filing. One fee covers the whole job however many years you are filing.</p>
                 <Link
                   to="/check"
                   style={{
