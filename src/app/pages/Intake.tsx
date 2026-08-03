@@ -818,11 +818,10 @@ export function Intake() {
     return (s >= 1 && s <= 5 ? s : 1) as IntakeStep;
   });
 
-  // Vertical-accordion model: every step is a section on one page. openSections
-  // holds which are expanded; the intake opens all sections so the filer can
-  // scroll the whole form and always see where they are.
+  // Vertical-accordion model: open only the requested section. Later sections
+  // are unlocked as earlier required sections become valid.
   const [openSections, setOpenSections] = useState<Set<string>>(
-    () => new Set<string>(['1', '1b', '2', '3', '4', '5']),
+    () => new Set<string>([String(step)]),
   );
 
   const [loadingFiling, setLoadingFiling] = useState(!!params.get('filing_id'));
@@ -1811,6 +1810,45 @@ export function Intake() {
     return [];
   }
 
+  function validationForStep(target: IntakeStep): string[] {
+    if (target === 1) return validateStep1();
+    if (target === '1b') return validateStep1b();
+    if (target === 2) return validateStep2();
+    if (target === 3) return validateStep3();
+    if (target === 4) return validateStep4();
+    return [];
+  }
+
+  function furthestReachableIndex(): number {
+    if (completedOnce) return stepOrder.length - 1;
+    for (let i = 0; i < stepOrder.length - 1; i += 1) {
+      if (validationForStep(stepOrder[i]).length > 0) return i;
+    }
+    return stepOrder.length - 1;
+  }
+
+  // Treat ?step= as presentation state, never as proof that earlier intake is
+  // complete. A manually edited URL is clamped to the first incomplete section.
+  useEffect(() => {
+    if (loadingFiling) return;
+    const requestedIndex = stepOrder.indexOf(step);
+    const allowedIndex = furthestReachableIndex();
+    const target = requestedIndex < 0 || requestedIndex > allowedIndex
+      ? stepOrder[allowedIndex]
+      : step;
+
+    setOpenSections(new Set([String(target)]));
+    if (target === step) return;
+
+    setStep(target);
+    const nextParams = new URLSearchParams(params.toString());
+    nextParams.set('step', String(target));
+    navigate(`?${nextParams.toString()}`, { replace: true });
+  // The guard intentionally runs after a filing is hydrated or the requested
+  // URL step changes. Continue buttons already validate live field changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingFiling, step, completedOnce, show1b]);
+
   /**
    * Everything that must hold before a package is generated, not just the step
    * the filer happens to be looking at. The accordion lets a section be left
@@ -1895,6 +1933,18 @@ export function Intake() {
   // the draft is saved as the filer moves through the page (unless paid-locked
   // with no edits left, or nothing has been entered yet).
   const toggleSection = (key: string) => {
+    const target = key === '1b' ? ('1b' as IntakeStep) : (Number(key) as IntakeStep);
+    const targetIndex = stepOrder.indexOf(target);
+    if (!completedOnce && (targetIndex < 0 || targetIndex > furthestReachableIndex())) {
+      const firstIncomplete = stepOrder[furthestReachableIndex()];
+      setStepErrors([`Complete ${STEP_LABELS[firstIncomplete]} before opening a later section.`]);
+      setStep(firstIncomplete);
+      setOpenSections(new Set([String(firstIncomplete)]));
+      const nextParams = new URLSearchParams(params.toString());
+      nextParams.set('step', String(firstIncomplete));
+      navigate(`?${nextParams.toString()}`, { replace: true });
+      return;
+    }
     setOpenSections((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
