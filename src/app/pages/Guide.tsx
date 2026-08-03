@@ -50,6 +50,31 @@ interface Stage {
   shot?: string;
   shotAlt?: string;
   points: { label: string; body: string }[];
+  /**
+   * An output sample shown under the points, reusing an image from
+   * public/samples. Only the reasonable cause letter uses this, and its image
+   * is PARTIALLY OBSCURED by genSampleRcl.mjs: letterhead, the IRS address
+   * block, the RE line, headings, the perjury declaration and the signature are
+   * visible, the argument paragraphs are not. The argument is the product.
+   * Never point this at a clean render of the letter.
+   */
+  sample?: { src: string; alt: string; caption: string };
+  /**
+   * Articles for the filer who wants the tax detail behind this screen.
+   *
+   * THIS IS HOW THE GUIDE STAYS ABOUT THE PRODUCT. The rule at the top of this
+   * file is that /guide answers "what happens when I click Start" and never
+   * explains tax law. That rule only holds if there is somewhere to send the
+   * person whose real question is "yes, but what counts as a reportable
+   * transaction". Without these links the pressure to answer it here is
+   * constant, and the guide slowly turns into a worse copy of /resources.
+   *
+   * So: when a stage tempts you into a paragraph of tax explanation, add a link
+   * instead. Slugs must exist in the Sanity corpus, they are not rewritten if a
+   * post is renamed, and a dead one gives the filer a 404 at the exact moment
+   * they were told to go and read something.
+   */
+  reading?: { slug: string; label: string }[];
   /** Shown in an amber note under the points. */
   note?: string;
 }
@@ -89,6 +114,10 @@ const STAGES: Stage[] = [
           "actual years later, once we know your incorporation date and can rule out years " +
           "the LLC did not exist. We support tax years back to 2019.",
       },
+    ],
+    reading: [
+      { slug: "form-5472-vs-form-5471", label: "Form 5472 vs Form 5471, which one you actually file" },
+      { slug: "form-5472-filing-checklist", label: "What you need before you start" },
     ],
     note:
       "Your answers here are never stored and never carried into the portal. That is why the " +
@@ -238,6 +267,12 @@ const STAGES: Stage[] = [
           "Read it properly. This is the last point at which a typo is free to fix.",
       },
     ],
+    reading: [
+      { slug: "reportable-transactions-form-5472", label: "Reportable transactions: contributions, loans and distributions explained" },
+      { slug: "form-5472-field-by-field", label: "Form 5472 field by field, every line explained" },
+      { slug: "pro-forma-1120-explained", label: "The pro forma 1120, and every field you complete" },
+      { slug: "top-mistakes-form-5472", label: "The mistakes foreign LLC owners make most often" },
+    ],
     note:
       "Each section validates before it lets you continue. If something is missing or does not " +
       "look right, you are told on that screen rather than after payment.",
@@ -256,9 +291,17 @@ const STAGES: Stage[] = [
         label: "What is in the package",
         body:
           "Always the pro forma Form 1120 and Form 5472, and a Part VI statement. A Part V " +
-          "statement is added if you had monetary transactions, a Form 7004 if an extension " +
-          "applies to your year, and the reasonable cause letter if the filing is late. The " +
-          "screen lists exactly what yours contains before you pay.",
+          "statement is added if you had monetary transactions, and a Form 7004 if an extension " +
+          "applies to your year. The screen lists exactly what yours contains before you pay.",
+      },
+      {
+        label: "The reasonable cause letter is optional, and only offered on a late year",
+        body:
+          "The IRS does not require it. A late filing is accepted without one; the letter is the " +
+          `argument for waiving the penalty rather than paying it, which is why it costs $${PRICE_RCL} ` +
+          "and why it is a choice rather than a step. It is never offered on a year filed on " +
+          "time, and one letter covers every late year in the same job however many you file. " +
+          "Skip it and the rest of the package generates exactly as it would otherwise.",
       },
       {
         label: "You sign it here, at the end and not before",
@@ -276,6 +319,26 @@ const STAGES: Stage[] = [
           "related party per year. The download is a print-ready PDF.",
       },
     ],
+    reading: [
+      { slug: "reasonable-cause-letter-late-form-5472", label: "What a reasonable cause letter has to contain" },
+      { slug: "diirsp-reasonable-cause-fta-late-5472", label: "Reasonable cause, DIIRSP or first-time abatement, which path fits" },
+      { slug: "missed-form-5472-penalty-exposure-relief-paths", label: "Missed the filing: your exposure and the relief paths" },
+    ],
+    // The letter is the one document a filer cannot write themselves, and the
+    // one they are most sceptical exists. Showing its shape here, on the screen
+    // where they decide to pay for it, answers that. The same image is on
+    // /services, so the two pages cannot show two different letters.
+    sample: {
+      src: "/samples/sample-rcl.webp",
+      alt:
+        "A sample reasonable cause letter, showing the letterhead, the IRS address block, " +
+        "the entity and years it covers, the section headings, and the signed declaration " +
+        "under penalties of perjury. The argument paragraphs are obscured.",
+      caption:
+        "A sample reasonable cause letter, which is optional and offered only on a late year. " +
+        "The structure, the authority it cites and the declaration under penalties of perjury " +
+        "are shown; the argument itself is not.",
+    },
   },
   {
     id: "sending",
@@ -503,6 +566,74 @@ export function Guide() {
                 </div>
               ))}
             </dl>
+
+            {stage.reading && (
+              <div style={{ margin: "0 0 1.5rem" }}>
+                <p
+                  style={{
+                    color: "var(--tf-muted)",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    margin: "0 0 0.5rem",
+                  }}
+                >
+                  If you want the detail
+                </p>
+                <ul style={{ margin: 0, paddingLeft: "1.125rem", display: "grid", gap: "0.3rem" }}>
+                  {stage.reading.map((r) => (
+                    <li key={r.slug} style={{ fontSize: "0.875rem", lineHeight: 1.55 }}>
+                      <Link
+                        to={`/resources/${r.slug}`}
+                        style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}
+                      >
+                        {r.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {stage.sample && (
+              <figure
+                style={{
+                  margin: "0 0 1.5rem",
+                  border: "1px solid var(--tf-border)",
+                  borderRadius: "0.75rem",
+                  overflow: "hidden",
+                  background: "var(--tf-bg)",
+                }}
+              >
+                <img
+                  src={stage.sample.src}
+                  alt={stage.sample.alt}
+                  loading="lazy"
+                  decoding="async"
+                  style={{ display: "block", width: "100%", height: "auto" }}
+                  // Same self-hiding behaviour as Shot: a missing sample must
+                  // degrade to text, never to a broken image icon on the page a
+                  // nervous filer trusts most.
+                  onError={(e) => {
+                    const fig = (e.currentTarget as HTMLImageElement).closest("figure");
+                    if (fig) (fig as HTMLElement).style.display = "none";
+                  }}
+                />
+                <figcaption
+                  style={{
+                    color: "var(--tf-muted)",
+                    fontSize: "0.8125rem",
+                    fontWeight: 400,
+                    lineHeight: 1.55,
+                    padding: "0.75rem 1rem",
+                    borderTop: "1px solid var(--tf-border)",
+                  }}
+                >
+                  {stage.sample.caption}
+                </figcaption>
+              </figure>
+            )}
 
             {stage.note && (
               <p
