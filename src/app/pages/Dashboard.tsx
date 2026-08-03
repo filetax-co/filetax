@@ -4,7 +4,7 @@ import { supabase, type Filing, type ServiceType } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { FILING_DUE_DATES } from './intake/constants';
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
+import { PRICE_PER_YEAR, PRICE_RCL, unavailableServices, serviceWithPrice } from '../../lib/pricing';
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -358,12 +358,24 @@ export function Dashboard() {
             {(() => {
               const counts = { action: 0, in_progress: 0, ready: 0, done: 0 } as Record<Bucket, number>;
               for (const f of filings) counts[BUCKET_OF[f.status]]++;
-              // Nearest upcoming/most-urgent deadline among non-done filings.
-              const upcoming = filings
+              // A past-due filing's dueState carries the extended date of that
+              // old year, so sorting every non-done filing by date ascending and
+              // taking the first always returned the OLDEST overdue year and
+              // printed it under the label "Next deadline". In August 2026 that
+              // read "Next deadline: October 15, 2020". It was never a stale
+              // constant, it was a mislabelled minimum.
+              //
+              // The two facts are different questions and now get a tile each:
+              // the earliest deadline still ahead of today, and the oldest one
+              // already missed. Same shape as getNextDeadline(now) on the
+              // marketing clock, which had this bug in its own form.
+              const pending = filings
                 .filter((f) => BUCKET_OF[f.status] !== 'done')
                 .map((f) => dueState(f.tax_year))
                 .filter((d): d is NonNullable<DueState> => !!d)
-                .sort((a, b) => a.due.localeCompare(b.due))[0];
+                .sort((a, b) => a.due.localeCompare(b.due));
+              const overdue = pending.filter((d) => d.tone === 'late')[0];
+              const upcoming = pending.filter((d) => d.tone !== 'late')[0];
               const stat = (label: string, value: string, tone?: 'late' | 'warn') => (
                 <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '0.875rem 1rem' }}>
                   <div style={{ fontSize: '1.375rem', fontWeight: 700, color: tone === 'late' ? 'var(--tf-banner-red-text)' : tone === 'warn' ? 'var(--tf-banner-amber-text)' : 'var(--tf-text)' }}>{value}</div>
@@ -376,7 +388,8 @@ export function Dashboard() {
                   {counts.ready > 0 && stat('Ready to download', String(counts.ready))}
                   {counts.in_progress > 0 && stat('In progress', String(counts.in_progress))}
                   {stat('Total filings', String(filings.length))}
-                  {upcoming && stat('Next deadline', humanDate(upcoming.due), upcoming.tone === 'late' ? 'late' : upcoming.tone === 'warn' ? 'warn' : undefined)}
+                  {overdue && stat('Oldest missed deadline', humanDate(overdue.due), 'late')}
+                  {upcoming && stat('Next deadline', humanDate(upcoming.due), upcoming.tone === 'warn' ? 'warn' : undefined)}
                 </>
               );
             })()}
@@ -502,9 +515,16 @@ export function Dashboard() {
 
           {/* Secondary / additional services */}
           <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem 1.25rem', flexWrap: 'wrap', padding: '1rem 1.25rem', background: 'var(--tf-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem' }}>
+            {/* This line used to be written out by hand and listed IRS fax and
+                Form 7004 as coming soon. Fax has been live for weeks and the
+                7004 ships inside the package, so the portal was telling a
+                paying filer that two things they already have are unavailable.
+                It is now derived from SERVICES, so it cannot say that again:
+                flipping a service's `available` changes this line and every
+                other surface in one edit. */}
             <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Coming soon:</span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
-              LLC tax classification change (8832 / 2553) · $50 &nbsp;·&nbsp; IRS fax submission · +${PRICE_FAX} &nbsp;·&nbsp; Form 7004, FBAR &amp; more
+              {unavailableServices().map(serviceWithPrice).join(' · ')}
             </span>
             <button onClick={() => navigate('/waitlist')} style={linkBtnStyle}>
               Join the waitlist →

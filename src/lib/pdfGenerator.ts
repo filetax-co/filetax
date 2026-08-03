@@ -150,10 +150,22 @@ let unsupportedSink: UnsupportedText[] | null = null;
  * non-null result. It lives here, next to toFormText, because it did not: the
  * single-year download in FilingWizard refused correctly while the multi-year
  * download had no check at all, so the one population the guard exists to
- * protect — an owner whose legal name is not Latin — got a catch-up package
+ * protect - an owner whose legal name is not Latin - got a catch-up package
  * with their name silently stripped on every year's return. Two call sites, one
  * of them written months later, is exactly how that happens; one function they
  * both call is the fix.
+ *
+ * This refusal is CORRECT BEHAVIOUR and is not a gap to be closed later. The
+ * IRS does not hold a non-Latin business name at all: its systems allow only
+ * A-Z, 0-9, hyphen and ampersand, so the EIN was issued against a Latin name on
+ * the SS-4 and the return has to carry that same name or it does not match the
+ * entity. See the handoff, section 4.
+ *
+ * Do NOT "solve" this by transliterating for the filer. Any romanization we
+ * generate is a guess at a string the IRS already has on file, and a near miss
+ * is worse than a refusal: it files a return under a name that does not match
+ * the EIN record. Only the filer can read their own EIN letter. That is why
+ * this message names the document to copy the name from.
  */
 export const refuseUnsupportedText = (
   unsupported: UnsupportedText[] | undefined,
@@ -161,9 +173,12 @@ export const refuseUnsupportedText = (
   if (!unsupported?.length) return null;
   const detail = unsupported.map((u) => `"${u.value}" (${u.characters.join(' ')})`).join('; ');
   return (
-    'These forms can only print Latin characters, so this filing cannot be '
-    + `generated as entered: ${detail}. Please edit the filing and enter the `
-    + 'romanized spelling of the name(s) as they should appear on the IRS forms.'
+    'The IRS only holds names in Latin characters, so this filing cannot be '
+    + `generated as entered: ${detail}. Edit the filing and enter the name `
+    + 'exactly as it appears on your IRS EIN confirmation letter (CP 575) or '
+    + 'your Form SS-4, which is the spelling the IRS has on record for this '
+    + 'entity. Do not translate it, and do not romanize it yourself if the '
+    + 'letter shows something different.'
   );
 };
 

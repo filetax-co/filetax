@@ -31,6 +31,112 @@ export const PRICE_CLASSIFICATION_CHANGE = 50;
 /** Number of subsequent filings guaranteed at the same base price. */
 export const RENEWAL_GUARANTEE_FILINGS = 2;
 
+/* ─── What can actually be bought ──────────────────────────────────────────
+ *
+ * Availability used to be asserted page by page, in prose, and it was wrong in
+ * both directions four separate times in two days: IRS fax was described as
+ * unbuilt on four pages for weeks after it shipped, and Form 8832 was sold with
+ * a "Start Filing" button into a portal that cannot do it. Each fix touched one
+ * page and left the others, because there was no one place to change.
+ *
+ * Every surface that states whether something can be bought must read this map.
+ * Shipping or unshipping a service is then one edit to one flag, and it cannot
+ * be half done.
+ *
+ * `available` means a filer can get this TODAY, through the product, not that
+ * the code exists. Form 7004 is the distinction: it generates, it ships inside
+ * the package, so it is available even though it is not sold separately.
+ */
+
+export type ServiceId =
+  | 'filing'
+  | 'rcl'
+  | 'additional_party'
+  | 'fax'
+  | 'form7004'
+  | 'classification_change'
+  | 'fbar';
+
+export interface Service {
+  /** One canonical customer-facing name per service, used on every surface. */
+  label: string;
+  /** Standalone price, or null when the service carries no price of its own. */
+  price: number | null;
+  /** How that price is charged. Empty when there is no price. */
+  priceNote: string;
+  /** Can a filer get this today? */
+  available: boolean;
+  /** Can it be bought ON ITS OWN? A CTA may only be shaped like the start of a
+   *  checkout when this is true, which is the rule item 64 settled. */
+  standalone: boolean;
+}
+
+export const SERVICES: Record<ServiceId, Service> = {
+  filing: {
+    label: 'Form 5472 + pro forma 1120',
+    price: PRICE_PER_YEAR,
+    priceNote: 'per tax year',
+    available: true,
+    standalone: true,
+  },
+  rcl: {
+    label: 'CPA-authored reasonable cause letter',
+    price: PRICE_RCL,
+    priceNote: 'once per job, however many late years',
+    available: true,
+    standalone: false,
+  },
+  additional_party: {
+    label: 'Additional related party',
+    price: PRICE_ADDITIONAL_PARTY,
+    priceNote: 'per party, per year',
+    available: true,
+    standalone: false,
+  },
+  fax: {
+    label: 'IRS fax transmission',
+    price: PRICE_FAX,
+    priceNote: 'once per job, however many years',
+    available: true,
+    standalone: false,
+  },
+  form7004: {
+    // Generated, merged into the combined PDF and separately downloadable
+    // whenever the filing opted into an extension or reported one. Included,
+    // never charged, so it has no price rather than a price of zero.
+    label: 'Form 7004 extension',
+    price: null,
+    priceNote: 'included with your filing',
+    available: true,
+    standalone: false,
+  },
+  classification_change: {
+    // Priced, marketed, and NOT BUILT. Do not flip this without the flow.
+    label: 'LLC tax classification change (Form 8832)',
+    price: PRICE_CLASSIFICATION_CHANGE,
+    priceNote: 'per filing',
+    available: false,
+    standalone: true,
+  },
+  fbar: {
+    label: 'FBAR',
+    price: null,
+    priceNote: '',
+    available: false,
+    standalone: true,
+  },
+};
+
+/** Services a filer cannot get yet. The only honest source for a "coming soon" list. */
+export function unavailableServices(): Service[] {
+  return Object.values(SERVICES).filter((s) => !s.available);
+}
+
+/** "LLC tax classification change (Form 8832), $50" for a coming-soon line. */
+export function serviceWithPrice(s: Service): string {
+  return s.price == null ? s.label : `${s.label}, $${s.price}`;
+}
+
 /** Cost of the additional Form 5472s beyond the first, for a single year. */
 export function additionalPartiesCost(totalForms: number): number {
   const additional = Math.max(0, totalForms - 1);
