@@ -1,5 +1,18 @@
 node_modules/
 dist/
+build/
+.next/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
+# Portal verification and local harness output
+tmp-verify/
+testing/run-*/
+tmp/
+scripts/_sb*.ts
+scripts/_supabaseStub.ts
+.claude/
 
 # Intermediate PDFs from the product repo's `npm run gen:samples`. Only the
 # .webp renders are referenced by /services and only those should ship; the

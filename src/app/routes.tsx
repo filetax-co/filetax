@@ -1,6 +1,8 @@
 import { createBrowserRouter } from 'react-router';
 import { usePageMeta } from './hooks/usePageMeta';
 import { Layout } from './components/Layout';
+import { AppLayout } from './components/AppLayout';
+import { RequireAuth } from './components/RequireAuth';
 import { RouteError } from './components/RouteError';
 import { Home } from './pages/Home';
 import { Pricing } from './pages/Pricing';
@@ -15,6 +17,11 @@ import { Article } from './pages/Article';
 import { FAQ } from './pages/FAQ';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
+import { AuthConfirm } from './pages/AuthConfirm';
+import { Intake } from './pages/Intake';
+import { MultiYearStart } from './pages/MultiYearStart';
+import FilingWizard from './pages/FilingWizard';
+import { ResetPassword } from './pages/ResetPassword';
 import { Waitlist } from './pages/Waitlist';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
@@ -41,6 +48,21 @@ function NotFound() {
 
 export const router = createBrowserRouter([
   {
+    Component: AppLayout,
+    ErrorBoundary: RouteError,
+    children: [
+      {
+        Component: RequireAuth,
+        children: [
+          { path: '/dashboard', Component: Dashboard },
+          { path: '/intake', Component: Intake },
+          { path: '/catch-up', Component: MultiYearStart },
+          { path: '/filing/:id', Component: FilingWizard },
+        ],
+      },
+    ],
+  },
+  {
     path: '/',
     Component: Layout,
     // Without this, a render error anywhere under Layout shows React Router's
@@ -61,7 +83,8 @@ export const router = createBrowserRouter([
       { path: 'resources/:slug', Component: Article },
       { path: 'faq', Component: FAQ },
       { path: 'auth', Component: Auth },
-      { path: 'dashboard', Component: Dashboard },
+      { path: 'auth/confirm', Component: AuthConfirm },
+      { path: 'reset-password', Component: ResetPassword },
       { path: 'waitlist', Component: Waitlist },
       { path: 'terms', Component: Terms },
       { path: 'privacy', Component: Privacy },

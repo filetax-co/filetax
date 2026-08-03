@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
+import { useNavigate } from 'react-router';
+import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
 
 const checklistItems = [
   "Your LLC's EIN (Employer Identification Number)",
@@ -18,61 +20,237 @@ const howItWorksSteps = [
   { step: '4', title: 'Download IRS-ready forms', body: 'Pay once and download your completed Form 5472 and Pro Forma 1120 as a print-ready PDF, ready to mail or fax to the IRS.' },
 ];
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const RESEND_COOLDOWN = 60;
+
+function friendlyError(msg: string): string {
+  if (/security purposes|rate.?limit|too many|after \d+ second/i.test(msg)) {
+    return 'Please wait a moment before requesting another email. Check your inbox (and spam folder) first.';
+  }
+  return msg;
+}
+
+function isDuplicateEmailError(msg: string): boolean {
+  return /already registered|already exists|user_already_exists/i.test(msg);
+}
+
 export function Portal() {
   usePageMeta({
     title: 'Start Your Filing | FileTax.co',
     description: 'Create your free account and begin your Form 5472 + Pro Forma 1120 filing. No payment until you download.',
-    canonical: 'https://filetax.co/portal',
   });
 
-  // Nothing is carried in from the eligibility check, by design. The check runs
-  // entirely in the browser and its answers are never stored or forwarded, which
-  // is what makes the claim on Home.tsx true end to end.
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const newFiling = searchParams.get('new-filing') === '1';
+  const justConfirmed = searchParams.get('confirmed') === '1';
+  const nextParam = searchParams.get('next');
 
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const initialMode = searchParams.get('mode') === 'login' ? 'login' : 'signup';
-  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
+  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>(initialMode);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = () => {
+    setResendCooldown(RESEND_COOLDOWN);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  const dashboardPath = nextParam ?? (newFiling ? '/dashboard?new-filing=1' : '/dashboard');
+
+  // Only `next` survives the email-confirmation round trip now. The eligibility
+  // params it used to carry described a filing configuration that intake never
+  // read.
+  const buildConfirmQuery = () => (nextParam ? `?next=${encodeURIComponent(nextParam)}` : '');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
-    if (!email.trim()) { setError('Please enter your email address.'); return; }
-    if (mode === 'signup' && !name.trim()) { setError('Please enter your full name.'); return; }
-    setSubmitting(true);
+    setSubmitted(false);
 
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: window.location.origin + '/dashboard',
-        data: mode === 'signup' ? { full_name: name.trim() } : {},
-      },
-    });
-
-    if (authError) {
-      setError(authError.message);
+    if (mode === 'forgot') {
+      if (!email.trim()) { setError('Please enter your email address.'); return; }
+      setSubmitting(true);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: window.location.origin + BASE + '/reset-password' },
+      );
       setSubmitting(false);
+      if (resetError) { setError(friendlyError(resetError.message)); return; }
+      setSubmitted(true);
+      startCooldown();
       return;
     }
 
-    await supabase.from('intake_submissions').insert({
-      // signInWithOtp resolves before the magic link is clicked, so there is no
-      // user to link to yet. This was previously written as authData.user.id,
-      // which the types show can only ever be null here.
-      user_id: null,
-      full_name: name.trim() || email.trim(),
+    if (mode === 'signup') {
+      if (!name.trim()) { setError('Please enter your full name.'); return; }
+      if (!email.trim()) { setError('Please enter your email address.'); return; }
+      if (!meetsAllRules(password)) {
+        setError('Please meet all the password requirements shown below the field.');
+        return;
+      }
+
+      setSubmitting(true);
+      const pwCheck = await validatePassword(password);
+      if (!pwCheck.ok) {
+        setError(pwCheck.error);
+        setSubmitting(false);
+        return;
+      }
+
+      const confirmQuery = buildConfirmQuery();
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: { full_name: name.trim() },
+          emailRedirectTo: window.location.origin + BASE + '/auth/confirm' + confirmQuery,
+        },
+      });
+
+      if (signUpError) {
+        if (isDuplicateEmailError(signUpError.message)) {
+          setError('This email is already registered. Please sign in instead.');
+        } else {
+          setError(friendlyError(signUpError.message));
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // Handle both obfuscation shapes Supabase uses for existing accounts:
+      // either identities:[] on a returned user, or user:null with no session at all.
+      if (!signUpData?.user || signUpData?.user?.identities?.length === 0) {
+        setError('This email is already registered. Please sign in instead.');
+        setSubmitting(false);
+        return;
+      }
+
+      setSubmitting(false);
+
+      if (signUpData?.session) {
+        navigate(dashboardPath);
+      } else {
+        setSubmitted(true);
+        startCooldown();
+      }
+      return;
+    }
+
+    if (!email.trim()) { setError('Please enter your email address.'); return; }
+    if (!password) { setError('Please enter your password.'); return; }
+    setSubmitting(true);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
-      status: 'pending',
+      password,
     });
 
     setSubmitting(false);
-    setSubmitted(true);
+    if (signInError) {
+      setError(friendlyError(signInError.message));
+      return;
+    }
+
+    navigate(dashboardPath);
   };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    setResendSuccess(false);
+    setError('');
+
+    if (mode === 'forgot') {
+      const { error: resendError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: window.location.origin + BASE + '/reset-password' },
+      );
+      setResending(false);
+      if (resendError) { setError(friendlyError(resendError.message)); return; }
+    } else {
+      const confirmQuery = buildConfirmQuery();
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin + BASE + '/auth/confirm' + confirmQuery },
+      });
+      setResending(false);
+      if (resendError) { setError(friendlyError(resendError.message)); return; }
+    }
+
+    setResendSuccess(true);
+    startCooldown();
+  };
+    const submittedUI = (
+    <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+      <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>
+        {mode === 'forgot' ? 'Reset link sent' : 'Check your email'}
+      </p>
+      <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
+        {mode === 'forgot'
+          ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>
+          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, then sign in below to reach your filing dashboard.</>}
+      </p>
+
+      {resendSuccess && (
+        <p style={{ color: '#059669', fontSize: '0.8125rem', marginBottom: '0.75rem', fontWeight: 500 }}>
+          Email resent successfully.
+        </p>
+      )}
+      {error && (
+        <p style={{ color: '#DC2626', fontSize: '0.8125rem', marginBottom: '0.75rem' }}>{error}</p>
+      )}
+      <button
+        type="button"
+        onClick={handleResend}
+        disabled={resendCooldown > 0 || resending}
+        style={{
+          background: 'none',
+          border: '1px solid var(--tf-border)',
+          color: resendCooldown > 0 ? 'var(--tf-muted)' : '#0284C7',
+          fontWeight: 600,
+          fontSize: '0.875rem',
+          padding: '0.5rem 1.25rem',
+          borderRadius: '0.5rem',
+          cursor: resendCooldown > 0 || resending ? 'not-allowed' : 'pointer',
+          opacity: resendCooldown > 0 || resending ? 0.6 : 1,
+          minHeight: '40px',
+        }}
+      >
+        {resending
+          ? 'Sending…'
+          : resendCooldown > 0
+          ? `Resend in ${resendCooldown}s`
+          : 'Resend email'}
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -82,19 +260,10 @@ export function Portal() {
             Filing Portal
           </span>
           <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', marginBottom: '0.5rem', lineHeight: 1.2 }}>
-            Create your account and start filing.
+            {newFiling ? 'Sign in to start your new filing.' : 'Create your account and start filing.'}
           </h1>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, maxWidth: '520px' }}>
             Free to start. No payment until you are ready to download your completed forms. Takes about 10 minutes.
-          </p>
-          {/* Says plainly that the two are not linked. The eligibility check is a
-              gate that runs entirely in the browser and stores nothing, so there
-              is nothing to carry across. Do not soften this into a promise that
-              answers are reused, and do not add query params to seed it. */}
-          <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 400, maxWidth: '520px', marginTop: '0.75rem' }}>
-            The eligibility check and your filing are separate. Nothing you answered
-            there is stored or carried over, which is why you enter your filing
-            details here.
           </p>
         </div>
       </section>
@@ -108,7 +277,9 @@ export function Portal() {
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: '52px' }}
             >
               <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--tf-text)' }}>How it works</span>
-              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>{howItWorksOpen ? '−' : '+'}</span>
+              <span style={{ color: '#0284C7', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>
+                {howItWorksOpen ? '−' : '+'}
+              </span>
             </button>
             {howItWorksOpen && (
               <div style={{ borderTop: '1px solid var(--tf-border)', padding: '1.25rem 1.25rem 1.5rem' }}>
@@ -130,46 +301,116 @@ export function Portal() {
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr)', gap: '2rem', alignItems: 'start' }} className="portal-grid">
           <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.75rem', padding: '2rem', boxShadow: '0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)' }}>
-            <div style={{ display: 'flex', background: 'var(--tf-bg)', borderRadius: '0.5rem', padding: '0.25rem', marginBottom: '1.75rem', border: '1px solid var(--tf-border)' }}>
-              {(['signup', 'login'] as const).map((m) => (
-                <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '0.375rem', background: mode === m ? '#0284C7' : 'transparent', color: mode === m ? 'white' : 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', cursor: 'pointer', transition: 'background 0.15s, color 0.15s', minHeight: '36px' }}>
-                  {m === 'signup' ? 'Create Account' : 'Log In'}
-                </button>
-              ))}
-            </div>
 
-            {submitted ? (
-              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📬</div>
-                <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.375rem' }}>Check your email</p>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>
-                  A sign-in link has been sent to <strong>{email}</strong>. Click it to access your filing dashboard.
-                </p>
+            {mode !== 'forgot' && (
+              <div style={{ display: 'flex', background: 'var(--tf-bg)', borderRadius: '0.5rem', padding: '0.25rem', marginBottom: '1.75rem', border: '1px solid var(--tf-border)' }}>
+                {(['signup', 'login'] as const).map((m) => (
+                  <button key={m} onClick={() => { setMode(m); setError(''); setSubmitted(false); }} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '0.375rem', background: mode === m ? '#0284C7' : 'transparent', color: mode === m ? 'white' : 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', cursor: 'pointer', transition: 'background 0.15s, color 0.15s', minHeight: '36px' }}>
+                    {m === 'signup' ? 'Create Account' : 'Log In'}
+                  </button>
+                ))}
               </div>
-            ) : (
+            )}
+
+            {mode === 'forgot' && !submitted && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>Reset your password</h2>
+                <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem' }}>Enter your email and we'll send you a reset link.</p>
+              </div>
+            )}
+
+            {submitted ? submittedUI : (
               <form onSubmit={handleSubmit} noValidate>
+
+                {justConfirmed && mode === 'login' && (
+                  <p style={{ color: '#059669', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.875rem', fontWeight: 500, marginBottom: '1.125rem' }}>
+                    Your email is confirmed. Please sign in with your password to continue.
+                  </p>
+                )}
+
                 {mode === 'signup' && (
                   <div style={{ marginBottom: '1.125rem' }}>
                     <label htmlFor="portal-name" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Full name</label>
                     <input id="portal-name" type="text" autoComplete="name" placeholder="Your full legal name" value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
                   </div>
                 )}
-                <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
+
+                <div style={{ marginBottom: '1.125rem' }}>
                   <label htmlFor="portal-email" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Email address</label>
                   <input id="portal-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
                 </div>
-                {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
+
+                {mode !== 'forgot' && (
+                  <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.375rem' }}>
+                      <label htmlFor="portal-password" style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--tf-text)' }}>Password</label>
+                      {mode === 'login' && (
+                        <button type="button" onClick={() => { setMode('forgot'); setError(''); setSubmitted(false); }} style={{ background: 'none', border: 'none', color: '#0284C7', fontSize: '0.8125rem', fontWeight: 500, cursor: 'pointer', padding: 0 }}>
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
+                    <input id="portal-password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Create a strong password' : 'Your password'} value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
+                    {mode === 'signup' && (() => {
+                      const status = ruleStatus(password);
+                      return (
+                        <ul style={{ listStyle: 'none', margin: '0.625rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          {PASSWORD_RULES.map((r) => {
+                            const met = status[r.key];
+                            return (
+                              <li key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: met ? '#059669' : 'var(--tf-muted)' }}>
+                                <span aria-hidden="true" style={{ fontWeight: 700, width: '0.9rem', display: 'inline-block' }}>{met ? '✓' : '○'}</span>
+                                {r.label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {mode === 'forgot' && <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }} />}
+
+                {error && (
+                  <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>
+                    {error}
+                    {error.includes('already registered') && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => { setMode('login'); setError(''); }}
+                          style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                        >
+                          Sign in instead
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
+
                 <button type="submit" disabled={submitting} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', minHeight: '44px', marginBottom: '0.875rem', opacity: submitting ? 0.7 : 1 }}>
-                  {submitting ? 'Sending…' : mode === 'signup' ? 'Create Free Account' : 'Send Sign-In Link'}
+                  {submitting
+                    ? (mode === 'forgot' ? 'Sending…' : mode === 'signup' ? 'Creating account…' : 'Signing in…')
+                    : (mode === 'forgot' ? 'Send Reset Link' : mode === 'signup' ? 'Create Free Account' : 'Sign In')}
                 </button>
-                <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, textAlign: 'center', lineHeight: 1.5 }}>
-                  {mode === 'signup' ? 'No password needed. We email you a secure sign-in link.' : 'New here? Switch to Create Account above.'}
-                </p>
+
+                {mode === 'forgot' && (
+                  <button type="button" onClick={() => { setMode('login'); setError(''); }} style={{ width: '100%', background: 'none', border: '1px solid var(--tf-border)', color: 'var(--tf-muted)', fontWeight: 600, fontSize: '0.9375rem', padding: '0.625rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '44px' }}>
+                    ← Back to Log In
+                  </button>
+                )}
+
+                {mode === 'signup' && (
+                  <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, textAlign: 'center', lineHeight: 1.5 }}>
+                    We'll send a confirmation email. Click the link to activate your account.
+                  </p>
+                )}
               </form>
             )}
 
             <div style={{ borderTop: '1px solid var(--tf-border)', marginTop: '1.5rem', paddingTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#059669', fontSize: '0.875rem' }}>&#128274;</span>
               <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400 }}>Secure portal. Data encrypted and stored on Supabase.</p>
             </div>
           </div>

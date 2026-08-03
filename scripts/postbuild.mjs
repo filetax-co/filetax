@@ -19,7 +19,7 @@
 // deploys, which is exactly what best-effort is protecting against.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,7 +34,15 @@ const DIST = resolve(ROOT, 'dist');
 // copy of the unrendered shell so the SPA boots and the router takes over,
 // exactly as it did before prerendering existed. Without these, adding 404.html
 // makes Cloudflare answer them with a 404 status.
-const PRIVATE_ROUTES = ['portal', 'auth', 'dashboard'];
+const PRIVATE_ROUTES = [
+  'portal',
+  'auth',
+  'auth/confirm',
+  'reset-password',
+  'dashboard',
+  'intake',
+  'catch-up',
+];
 
 // Always invoke through `node <script>` rather than npx. npx resolves to a .cmd
 // shim on Windows, which Node refuses to spawn without shell:true (EINVAL), and
@@ -93,7 +101,9 @@ try {
   console.log('postbuild: dist/404.html written from the unrendered shell, noindex');
 
   for (const route of PRIVATE_ROUTES) {
-    writeFileSync(resolve(DIST, `${route}.html`), shellHtml, 'utf8');
+    const output = resolve(DIST, `${route}.html`);
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, shellHtml, 'utf8');
     console.log(`postbuild: dist/${route}.html written (unrendered shell, 200)`);
   }
 
