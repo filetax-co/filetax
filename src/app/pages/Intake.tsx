@@ -627,7 +627,8 @@ function AddressFields({
   const regionRequired = isUS;
 
   // Two-column rows: row 1 = street (full width), row 2 = city + postal code,
-  // row 3 = state/region + country.
+  // row 3 = country + state/region. Country comes first because it determines
+  // whether the region is a required US state or an optional foreign region.
   const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' };
 
   return (
@@ -647,26 +648,12 @@ function AddressFields({
         </Field>
       </div>
 
-      {/* Row 3, state/region + country */}
+      {/* Row 3, country + state/region */}
       <div style={rows}>
-        <Field
-          label={isUS ? 'State' : 'State or region'}
-          required={regionRequired}
-          status={regionRequired ? undefined : 'optional'}
-        >
-          {isUS ? (
-            <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
-              <option value="">Select state</option>
-              {US_STATES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-          ) : (
-            <input placeholder="Leave blank if your country has none" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
-          )}
-        </Field>
         {forceUS ? (
-          <div />
+          <Field label="Country" required>
+            <input value="United States" disabled />
+          </Field>
         ) : (
           <Field label="Country" required>
             <select
@@ -685,6 +672,22 @@ function AddressFields({
             </select>
           </Field>
         )}
+        <Field
+          label={isUS ? 'State' : 'State or region'}
+          required={regionRequired}
+          status={regionRequired ? undefined : 'optional'}
+        >
+          {isUS ? (
+            <select value={value.region ?? ''} onChange={(e) => set('region', e.target.value)}>
+              <option value="">Select state</option>
+              {US_STATES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input placeholder="Leave blank if your country has none" value={value.region ?? ''} onChange={(e) => set('region', e.target.value)} />
+          )}
+        </Field>
       </div>
     </div>
   );
