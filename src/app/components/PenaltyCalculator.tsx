@@ -233,10 +233,9 @@ export function PenaltyCalculator() {
           marker sat at a true 50% for $75,000 and read as visibly left of the
           "$75,000" label.
           Both are now absolutely positioned with the same expression against
-          the same padded track. The GUTTER is half the widest label, so the
-          end labels can centre on the bar's ends without being clipped.
-          If you change the label text or font size, check the gutter still
-          clears half the widest label. */}
+          the same track, so they cannot disagree again. The transform is a
+          percentage of each element's OWN width, which is what lets the bar run
+          full width while the first and last labels sit flush to its ends. */}
       <div style={{ marginBottom: "1.75rem" }}>
         <div style={{ position: "relative" }}>
           <div

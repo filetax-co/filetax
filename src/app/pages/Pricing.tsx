@@ -9,8 +9,9 @@ const CHECK_URL = "/check";
 // The Form 8832 classification change is PRICED BUT NOT BUILT, so it collects
 // interest rather than starting a filing. A priced card with a confident CTA
 // is a promise, and "Start Filing" on something that does not exist is the
-// worst version of that. Swap this for the real link, drop the "(at launch)"
-// title marker and the "not yet available" copy, in the commit that ships it.
+// worst version of that. Swap this for the real link and drop the "Not yet
+// available" opener in the commit that ships it. That opener is load-bearing:
+// it is what the Offer catalog below keys `PreOrder` off.
 //
 // IRS FAX IS LIVE as of 3 Aug 2026, per the owner. It carried "not yet
 // available" copy and a waitlist CTA across four pages long after that stopped
@@ -149,7 +150,7 @@ const ADD_ONS: PricingCard[] = [
     ctaLink: CHECK_URL,
   },
   {
-    title: "LLC Tax Classification Change (at launch)",
+    title: "LLC Tax Classification Change",
     price: "$50",
     priceNote: "per filing",
     description: "Not yet available. A standalone Form 8832, to be taxed as a C-Corporation.",
@@ -202,9 +203,12 @@ export function Pricing() {
         url: "https://filetax.co/pricing",
         // Fax and the Form 8832 classification change are priced but not
         // built, so they stay pre-order while everything else is purchasable.
-        // Keyed off the same "(at launch)" marker the titles carry, so adding
-        // a third unbuilt service cannot forget to update this. Item 1.
-        availability: card.title.includes("(at launch)")
+        // Keyed off the "Not yet available" opener, which is now the only
+        // signal on the card that a service cannot be bought: the owner
+        // removed the "(at launch)" title marker on 3 Aug 2026. If you reword
+        // that opener, reword this test in the same edit, or an unbuilt
+        // service silently starts advertising itself as InStock. Item 51.
+        availability: card.description.startsWith("Not yet available")
           ? "https://schema.org/PreOrder"
           : "https://schema.org/InStock",
       })),

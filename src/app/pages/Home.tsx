@@ -103,11 +103,18 @@ export function Home() {
           <h2 id="why-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "1rem" }}>
             Why this keeps happening
           </h2>
-          <p style={{ color: "var(--tf-text)", fontSize: "1rem", lineHeight: 1.7, marginBottom: "1.25rem" }}>
-            LLC formation services rarely mention Form 5472 to non-U.S. founders. Most owners only discover the requirement when a U.S. bank, a visa preparer, or an acquirer asks for prior tax filings. By that point the penalty clock has been running, often for two or three years. The good news: the IRS allows voluntary catch-up filings with a reasonable cause statement, and self-correcting before the IRS contacts you significantly improves the outcome.
+          {/* fontWeight 400 explicitly: `body` is 500, so a paragraph that does
+              not override it renders as semi-bold running text.
+              Shortened 3 Aug 2026, then partly restored. "Reasonable cause
+              statement" and the non-U.S. single-member-LLC audience line are
+              load-bearing and must survive any future trim: the first names the
+              $199 product and is a real search term, the second is the whole
+              positioning. Cut around them, not through them. */}
+          <p style={{ color: "var(--tf-text)", fontSize: "1rem", fontWeight: 400, lineHeight: 1.7, marginBottom: "1.25rem" }}>
+            Formation services rarely mention Form 5472 to non-U.S. founders. Most owners find out years later, when a bank, a visa preparer or an acquirer asks for prior filings and the penalty clock has already been running. The IRS allows voluntary catch-up with a reasonable cause statement, and self-correcting before they contact you is a far stronger position than answering a notice.
           </p>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
-            Prepared per the IRS Instructions for Form 5472, on the form revision the IRS had in force for the tax year you are filing. Designed specifically for non-U.S. founders with U.S. single-member LLCs.
+            Prepared to the IRS Instructions for Form 5472, on the revision in force for your tax year. Built for non-U.S. founders with U.S. single-member LLCs.
           </p>
         </div>
       </section>
@@ -260,10 +267,53 @@ export function Home() {
               >
                 Recommended for Late Filers
               </span>
-              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Past Year Filing + Reasonable Cause Letter</h3>
-              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>from ${PRICE_PER_YEAR + PRICE_RCL}</p>
-              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Catch up on a missed year. Filed correctly the first time.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>${PRICE_PER_YEAR} per year, plus one ${PRICE_RCL} reasonable cause letter covering every year. Three missed years is ${3 * PRICE_PER_YEAR + PRICE_RCL} in total, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}. The letter is never charged twice.</p>
+              {/* THE FILING. One card for the year, whether it is the current
+                  one or a missed one, because it is one product at one price
+                  with one output. This card and the next used to be "Past Year
+                  Filing + Reasonable Cause Letter" and "Form 5472 + Pro Forma
+                  1120 Filing", which sold the same $99 filing twice and hid the
+                  letter inside one of them. The letter is now its own card, the
+                  same split /pricing uses. Keep them in step. */}
+              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120</h3>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>${PRICE_PER_YEAR}</p>
+              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Per tax year. Two forms, one price.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>The current year or any missed year back to 2019, at the same price, each rendered on the IRS form revision in force for it. Catching up on several years is one job, not one purchase at a time. Your next two filings are guaranteed at ${PRICE_PER_YEAR}.</p>
+              <Link
+                to="/check"
+                style={{
+                  background: "var(--tf-accent)",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "0.9375rem",
+                  padding: "0.625rem 1.25rem",
+                  borderRadius: "0.5rem",
+                  textDecoration: "none",
+                  display: "block",
+                  textAlign: "center",
+                  minHeight: "44px",
+                  lineHeight: "1.8",
+                }}
+              >
+                Start My Filing
+              </Link>
+            </div>
+
+            {/* The reasonable cause letter, its own card */}
+            <div
+              style={{
+                background: "var(--tf-surface)",
+                border: "1px solid var(--tf-border)",
+                borderRadius: "0.75rem",
+                padding: "2rem",
+                boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>CPA-Authored Reasonable Cause Letter</h3>
+              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>+${PRICE_RCL}</p>
+              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Added to a late filing. Charged once, never per year.</p>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>Asks the IRS to waive the automatic $25,000 penalty. One letter names every late year in the job, so three missed years is ${3 * PRICE_PER_YEAR + PRICE_RCL} in total, not ${3 * (PRICE_PER_YEAR + PRICE_RCL)}.</p>
               <Link
                 to="/past-filings"
                 style={{
@@ -284,82 +334,10 @@ export function Home() {
               </Link>
             </div>
 
-            {/* Current year card */}
-            <div
-              style={{
-                background: "var(--tf-surface)",
-                border: "1px solid var(--tf-border)",
-                borderRadius: "0.75rem",
-                padding: "2rem",
-                boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <h3 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>Form 5472 + Pro Forma 1120 Filing</h3>
-              <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.75rem", marginBottom: "0.25rem" }}>${PRICE_PER_YEAR}</p>
-              <p style={{ color: "var(--tf-text)", fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.5rem" }}>Current-year filing. Two forms, one price.</p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem", flex: 1 }}>For LLCs filing on time or within the October 15 extension window. Your next two filings are guaranteed at ${PRICE_PER_YEAR}.</p>
-              <Link
-                to="/check"
-                style={{
-                  background: "var(--tf-accent)",
-                  color: "white",
-                  fontWeight: 600,
-                  fontSize: "0.9375rem",
-                  padding: "0.625rem 1.25rem",
-                  borderRadius: "0.5rem",
-                  textDecoration: "none",
-                  display: "block",
-                  textAlign: "center",
-                  minHeight: "44px",
-                  lineHeight: "1.8",
-                }}
-              >
-                Check Eligibility
-              </Link>
-            </div>
-
-            {/* Small cards column */}
+            {/* Small cards column. IRS fax first because it is a service you
+                can actually buy today; the Form 8832 classification change is
+                not built yet and sits below it. */}
             <div className="flex flex-col gap-5">
-              <div
-                style={{
-                  background: "var(--tf-surface)",
-                  border: "1px solid var(--tf-border)",
-                  borderRadius: "0.75rem",
-                  padding: "1.5rem",
-                  boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
-                  display: "flex",
-                  flexDirection: "column",
-                  flex: 1,
-                }}
-              >
-                {/* Not built. Said "Start Filing" into the portal until 3 Aug
-                    2026, for a service that does not exist. Same treatment as
-                    the fax card below. See handoff item 1. */}
-                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change (at launch)</h3>
-                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>Not yet available. At launch: Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
-                <Link
-                  to="/waitlist?service=llc-classification"
-                  style={{
-                    color: "var(--tf-accent)",
-                    fontWeight: 600,
-                    fontSize: "0.875rem",
-                    textDecoration: "none",
-                    border: "1px solid var(--tf-accent)",
-                    padding: "0.5rem 1rem",
-                    borderRadius: "0.5rem",
-                    display: "block",
-                    textAlign: "center",
-                    minHeight: "44px",
-                    lineHeight: "1.8",
-                  }}
-                >
-                  Notify Me When This Launches
-                </Link>
-              </div>
-
               <div
                 style={{
                   background: "var(--tf-surface)",
@@ -392,6 +370,46 @@ export function Home() {
                   }}
                 >
                   Check My Eligibility
+                </Link>
+              </div>
+
+              <div
+                style={{
+                  background: "var(--tf-surface)",
+                  border: "1px solid var(--tf-border)",
+                  borderRadius: "0.75rem",
+                  padding: "1.5rem",
+                  boxShadow: "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                }}
+              >
+                {/* Not built. Carried a "Start Filing" button into the portal
+                    until 3 Aug 2026, for a service that does not exist. The
+                    "(at launch)" title marker is gone at the owner's request,
+                    so the body copy is now the ONLY thing saying this cannot be
+                    bought. Do not soften it. See handoff item 51. */}
+                <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
+                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}><strong style={{ color: "var(--tf-text)" }}>Not yet available.</strong> Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
+                <Link
+                  to="/waitlist?service=llc-classification"
+                  style={{
+                    color: "var(--tf-accent)",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                    textDecoration: "none",
+                    border: "1px solid var(--tf-accent)",
+                    padding: "0.5rem 1rem",
+                    borderRadius: "0.5rem",
+                    display: "block",
+                    textAlign: "center",
+                    minHeight: "44px",
+                    lineHeight: "1.8",
+                  }}
+                >
+                  Notify Me When This Launches
                 </Link>
               </div>
             </div>
