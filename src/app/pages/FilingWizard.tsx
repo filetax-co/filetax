@@ -618,8 +618,13 @@ export default function FilingWizard() {
               borderTop: '1px solid var(--tf-border)',
             }}>
               <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
-                Sign your filing (optional)
+                Sign this download (optional)
               </h3>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', lineHeight: 1.5, marginBottom: '0.75rem' }}>
+                A PDF you already downloaded cannot be changed. Clear or redraw below, then generate
+                again to create a new package with the new signature. Your locked signer identity
+                remains unchanged.
+              </p>
               <SignaturePad
                 onChange={setDrawnSignature}
                 signerName={filing?.owner_full_name ?? null}
