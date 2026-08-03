@@ -1,18 +1,25 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
+import { waitlistServices } from "../../lib/pricing";
 
 const FORMSPREE_ENDPOINT = "https://formspree.io/f/mlgzrgnd";
 
-const SERVICES = [
-  { id: "5472", label: "Form 5472 + Pro Forma 1120 Filing" },
-  { id: "past-filing", label: "Past Year Filing + CPA-Authored Reasonable Cause Letter" },
-  { id: "llc-classification", label: "LLC Tax Classification Change" },
-  { id: "irs-fax", label: "IRS Fax Transmission" },
-  { id: "form-7004", label: "Form 7004 - Automatic 6-Month Extension" },
-  { id: "fbar", label: "FBAR / FinCEN 114 Reporting" },
-  { id: "wyoming-annual", label: "Annual Report - Wyoming" },
-];
+/*
+ * Derived, not written out. The hand-written list this replaced offered four
+ * services that had already shipped: the 5472 filing itself, past-year filing
+ * with the reasonable cause letter, IRS fax and Form 7004. A filer who came to
+ * this page could put their email down and wait for something they could have
+ * bought in the next two minutes.
+ *
+ * The ids are now the ServiceId keys, so ?service= values changed. An old link
+ * carrying ?service=form-7004 simply fails to preselect, which is the right
+ * outcome, since Form 7004 is no longer something to wait for.
+ */
+const SERVICES = waitlistServices().map(({ id, service }) => ({
+  id: id as string,
+  label: service.label,
+}));
 
 type Status = "idle" | "submitting" | "success" | "error";
 

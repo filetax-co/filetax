@@ -1,17 +1,18 @@
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, SERVICES, waitlistServices } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
 // The Form 8832 classification change is PRICED BUT NOT BUILT, so its section
 // collects interest rather than starting a filing. It carried a confident
 // "Start Filing" button into the portal until 3 Aug 2026, for a service that
-// does not exist. Swap this for the real link and drop the "not yet available"
-// copy in the commit that ships it.
+// does not exist. Swap this for the real link and flip `available` in SERVICES
+// in the commit that ships it; the "Not yet available" opener is derived from
+// that flag now and needs no separate edit.
 //
 // IRS FAX IS LIVE as of 3 Aug 2026, per the owner. Older notes calling it
 // unbuilt are the stale ones.
-const CLASSIFICATION_URL = "/waitlist?service=llc-classification";
+const CLASSIFICATION_URL = "/waitlist?service=classification_change";
 
 export function Services() {
   usePageMeta({
@@ -193,7 +194,11 @@ export function Services() {
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
-            <strong>Not yet available.</strong> At launch this will prepare a standalone Form 8832, the entity classification election, for an LLC that wants to be taxed as a C-Corporation instead of the default disregarded entity. It is a standalone filing and must be mailed, and the IRS fax add-on will not cover it.
+            {/* Read from SERVICES rather than asserted here. Availability was
+                wrong in both directions four times in two days while every page
+                carried its own sentence about it. */}
+            {!SERVICES.classification_change.available && <strong>Not yet available. </strong>}
+            This prepares a standalone Form 8832, the entity classification election, for an LLC that wants to be taxed as a C-Corporation instead of the default disregarded entity. It is a standalone filing and must be mailed, and the IRS fax add-on will not cover it.
           </p>
           {/* The four-sentence Form 2553 explanation moved to the FAQ on
               3 Aug 2026. It answered a question nobody browsing a services page
@@ -248,24 +253,29 @@ export function Services() {
           </p>
           <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1.5rem" }}>
             {/*
-              Removed two entries that don't represent real obligations for foreign-owned LLCs:
-                - "Annual report for Delaware" (id: "delaware-annual"): Delaware LLCs do not file
-                  annual reports; they pay a $300 annual franchise tax instead.
-                - "Annual reports for Wyoming and New Mexico" (id: "wy-nm-annual"): split, only
-                  Wyoming kept; New Mexico LLCs have no annual or biennial report requirement.
+              Derived from SERVICES, not written out. The hand-written version
+              led with Form 7004, which generates, merges into the combined PDF
+              and downloads separately, so this page was offering to notify a
+              filer about something already inside the package they had paid
+              for. That is item 51 in reverse and the same defect the portal
+              dashboard had.
+
+              Two entries were removed earlier because they are not real
+              obligations for a foreign-owned LLC, and they stay out of the map
+              for the same reason:
+                - Annual report for Delaware: Delaware LLCs do not file one,
+                  they pay a $300 annual franchise tax instead.
+                - Annual report for New Mexico: no annual or biennial report
+                  requirement exists.
             */}
-            {[
-              { label: "Form 7004 (automatic 6-month extension)", id: "form-7004" },
-              { label: "FBAR / FinCEN 114 reporting", id: "fbar" },
-              { label: "Annual report for Wyoming", id: "wyoming-annual" },
-            ].map((item) => (
-              <li key={item.id} style={{ padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)", color: "var(--tf-muted)", fontSize: "0.9375rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+            {waitlistServices().map(({ id, service }) => (
+              <li key={id} style={{ padding: "0.625rem 0", borderBottom: "1px solid var(--tf-border)", color: "var(--tf-muted)", fontSize: "0.9375rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
                 <span style={{ display: "flex", gap: "0.75rem" }}>
                   <span style={{ color: "var(--tf-border)", fontWeight: 700, flexShrink: 0 }}>&#8250;</span>
-                  {item.label}
+                  {service.label}
                 </span>
                 <Link
-                  to={`/waitlist?service=${item.id}`}
+                  to={`/waitlist?service=${id}`}
                   style={{ color: "#0284C7", fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
                 >
                   Notify me

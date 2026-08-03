@@ -3,25 +3,31 @@ import { IRSClock } from "../components/IRSClock";
 import { InfoTip } from "../components/InfoTip";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE, SERVICES } from "../../lib/pricing";
+import type { ServiceId } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
 // The Form 8832 classification change is PRICED BUT NOT BUILT, so it collects
 // interest rather than starting a filing. A priced card with a confident CTA
 // is a promise, and "Start Filing" on something that does not exist is the
-// worst version of that. Swap this for the real link and drop the "Not yet
-// available" opener in the commit that ships it. That opener is load-bearing:
-// it is what the Offer catalog below keys `PreOrder` off.
+// worst version of that. Swap this for the real link in the commit that ships
+// it, and flip `available` in SERVICES, which is what the Offer catalog below
+// now keys `PreOrder` off. It used to key off the words "Not yet available" at
+// the start of the card description, so rewording one sentence would have
+// quietly advertised an unbuilt service as InStock.
 //
 // IRS FAX IS LIVE as of 3 Aug 2026, per the owner. It carried "not yet
 // available" copy and a waitlist CTA across four pages long after that stopped
 // being true. If you are reading an older note saying fax is unbuilt, that note
 // is the stale one.
-const CLASSIFICATION_URL = "/waitlist?service=llc-classification";
+const CLASSIFICATION_URL = "/waitlist?service=classification_change";
 
 interface PricingCard {
   title: string;
   price: string;
+  /** Which entry in SERVICES this card sells. Drives the Offer availability
+   *  below, so a card cannot claim to be buyable when the map says it is not. */
+  serviceId: ServiceId;
   priceNote?: string;
   description: string;
   microcopy?: string;
@@ -59,6 +65,7 @@ interface PricingCard {
 const PRIMARY: PricingCard[] = [
   {
     title: "Filing one tax year",
+    serviceId: "filing",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",
     // KEEP CARDS SHORT. The detail goes in the tooltip, not the body. These
@@ -80,6 +87,7 @@ const PRIMARY: PricingCard[] = [
   },
   {
     title: "Catching up on multiple missed years",
+    serviceId: "filing",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",
     description: "Every unfiled year back to 2019, filed as one job rather than one purchase at a time.",
@@ -103,6 +111,7 @@ const PRIMARY: PricingCard[] = [
 const ADD_ONS: PricingCard[] = [
   {
     title: "Add-On: CPA-Authored Reasonable Cause Letter",
+    serviceId: "rcl",
     price: `+$${PRICE_RCL}`,
     priceNote: "one letter, covers every year",
     badge: "Recommended for Late Filers",
@@ -124,6 +133,7 @@ const ADD_ONS: PricingCard[] = [
   },
   {
     title: "Add-On: Additional Related Party (Form 5472)",
+    serviceId: "additional_party",
     price: `+$${PRICE_ADDITIONAL_PARTY}`,
     priceNote: "per party, per year",
     description: "A separate Form 5472 for each foreign related party, for each year you file.",
@@ -135,6 +145,7 @@ const ADD_ONS: PricingCard[] = [
   },
   {
     title: "Add-On: IRS Fax Transmission",
+    serviceId: "fax",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
     description: "We fax the completed package to the IRS for you, so you never need a printer.",
@@ -151,9 +162,10 @@ const ADD_ONS: PricingCard[] = [
   },
   {
     title: "LLC Tax Classification Change",
+    serviceId: "classification_change",
     price: `$${PRICE_CLASSIFICATION_CHANGE}`,
     priceNote: "per filing",
-    description: "Not yet available. A standalone Form 8832, to be taxed as a C-Corporation.",
+    description: `${SERVICES.classification_change.available ? "" : "Not yet available. "}A standalone Form 8832, to be taxed as a C-Corporation.`,
     microcopy: "Must be mailed. The fax add-on will not cover it.",
     tooltip:
       "Form 8832 elects C-Corporation treatment instead of the default disregarded entity status. It is separate from Form 5472, and making the election does not remove the Form 5472 obligation.",
@@ -201,16 +213,15 @@ export function Pricing() {
         price: card.price.replace(/[^0-9.]/g, ""),
         priceCurrency: "USD",
         url: "https://filetax.co/pricing",
-        // Fax and the Form 8832 classification change are priced but not
-        // built, so they stay pre-order while everything else is purchasable.
-        // Keyed off the "Not yet available" opener, which is now the only
-        // signal on the card that a service cannot be bought: the owner
-        // removed the "(at launch)" title marker on 3 Aug 2026. If you reword
-        // that opener, reword this test in the same edit, or an unbuilt
-        // service silently starts advertising itself as InStock. Item 51.
-        availability: card.description.startsWith("Not yet available")
-          ? "https://schema.org/PreOrder"
-          : "https://schema.org/InStock",
+        // Read off SERVICES, so structured data and page copy cannot disagree.
+        // This used to test `card.description.startsWith("Not yet available")`,
+        // which made one sentence of marketing copy load-bearing for schema:
+        // rewording it would have advertised an unbuilt service as InStock,
+        // and the comment warning about that was the only thing stopping it.
+        // Item 51.
+        availability: SERVICES[card.serviceId].available
+          ? "https://schema.org/InStock"
+          : "https://schema.org/PreOrder",
       })),
   });
 

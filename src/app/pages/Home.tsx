@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { usePageMeta } from "../hooks/usePageMeta";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE, SERVICES, waitlistServices } from "../../lib/pricing";
 
 export function Home() {
   usePageMeta({
@@ -402,13 +402,14 @@ export function Home() {
                 {/* Not built. Carried a "Start Filing" button into the portal
                     until 3 Aug 2026, for a service that does not exist. The
                     "(at launch)" title marker is gone at the owner's request,
-                    so the body copy is now the ONLY thing saying this cannot be
-                    bought. Do not soften it. See handoff item 51. */}
+                    so the body copy is the ONLY thing saying this cannot be
+                    bought, and it now reads that off SERVICES rather than
+                    stating it here. See handoff item 51. */}
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
                 <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>${PRICE_CLASSIFICATION_CHANGE}</p>
-                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}><strong style={{ color: "var(--tf-text)" }}>Not yet available.</strong> Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
+                <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}>{!SERVICES.classification_change.available && <strong style={{ color: "var(--tf-text)" }}>Not yet available. </strong>}Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
                 <Link
-                  to="/waitlist?service=llc-classification"
+                  to="/waitlist?service=classification_change"
                   style={{
                     color: "var(--tf-accent)",
                     fontWeight: 600,
@@ -438,7 +439,12 @@ export function Home() {
             More services on the way
           </h2>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.6, marginBottom: "1.5rem", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
-            Form 7004 extensions, FBAR reporting, and Wyoming annual reports are launching soon. Join the waitlist to get notified when each one is ready.
+            {/* Named Form 7004 until 4 Aug 2026, which generates, merges into
+                the combined PDF and downloads separately, so this sentence was
+                offering to notify a filer about something already inside the
+                package. Derived from SERVICES now, so it cannot say that
+                again. */}
+            {waitlistServices().map(({ service }) => service.label).join(', ')} are launching soon. Join the waitlist to get notified when each one is ready.
           </p>
           <Link
             to="/waitlist"

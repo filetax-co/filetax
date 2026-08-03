@@ -55,7 +55,8 @@ export type ServiceId =
   | 'fax'
   | 'form7004'
   | 'classification_change'
-  | 'fbar';
+  | 'fbar'
+  | 'wyoming_annual';
 
 export interface Service {
   /** One canonical customer-facing name per service, used on every surface. */
@@ -125,7 +126,30 @@ export const SERVICES: Record<ServiceId, Service> = {
     available: false,
     standalone: true,
   },
+  wyoming_annual: {
+    // Marketed on Home and Services as coming soon since before this map
+    // existed, and it was the one service named on a page with no entry here.
+    // Delaware and New Mexico were deliberately dropped from that list: a
+    // Delaware LLC pays a $300 franchise tax rather than filing a report, and
+    // New Mexico has no annual or biennial report at all.
+    label: 'Annual report for Wyoming',
+    price: null,
+    priceNote: '',
+    available: false,
+    standalone: true,
+  },
 };
+
+/**
+ * The waitlist only makes sense for things a filer cannot get yet. Collecting
+ * an email address for a service that is already buyable tells that filer to
+ * wait for something sitting behind the button they just walked past.
+ */
+export function waitlistServices(): { id: ServiceId; service: Service }[] {
+  return (Object.keys(SERVICES) as ServiceId[])
+    .filter((id) => !SERVICES[id].available)
+    .map((id) => ({ id, service: SERVICES[id] }));
+}
 
 /** Services a filer cannot get yet. The only honest source for a "coming soon" list. */
 export function unavailableServices(): Service[] {
