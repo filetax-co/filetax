@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "The single filing behind the /guide screenshots on the marketing site.",
+    "",
+    "It is the SAME fictional filer as the sample output on /services: Test LLC,",
+    "Test Owner, EIN 00-1234567, tax year 2025, the same three transactions. One",
+    "fictional filer across the whole site, so /services and /guide never tell two",
+    "different stories. Do not invent a second fixture, and do not edit this one",
+    "without editing scripts/genSamplePreview.mjs in the same commit.",
+    "",
+    "The EIN prefix 00 is not issued by the IRS, so it cannot collide with a real",
+    "employer identification number. 'Test LLC' and 'Test Owner' read as fictional",
+    "on purpose: nobody should mistake a screenshot for a real filer's return.",
+    "",
+    "include_reasonable_cause and include_rcl are BOTH true, unlike the /services",
+    "sample, so the generate step's What's Included list names the letter. That is",
+    "the $199 line item and the screen where a filer decides to pay for it."
+  ],
+  "scenarios": [
+    {
+      "scenario_id": "guide",
+      "title": "Guide screenshots: a straightforward single year",
+      "filing": {
+        "llc_name": "Test LLC",
+        "ein": "00-1234567",
+        "state_of_formation": "DE",
+        "tax_year": 2025,
+        "total_assets": 48250,
+        "date_of_incorporation": "2021-03-15",
+        "entity_principal_country": "US",
+        "mailing_address": {
+          "street": "1209 Orange Street, Suite 200",
+          "city": "Wilmington",
+          "state": "DE",
+          "zip": "19801",
+          "country": "US"
+        },
+        "naics_code": "541511",
+        "naics_description": "Custom Computer Programming Services",
+        "final_return": false,
+        "is_fiscal_year": false,
+        "extension_filed": false,
+        "include_reasonable_cause": true,
+        "include_rcl": true,
+        "reasonable_cause_reasons": ["unaware_of_requirement"]
+      },
+      "owner": {
+        "owner_full_name": "Test Owner",
+        "owner_primary_country": "NG",
+        "owner_country_residence": "NG",
+        "owner_country_citizenship": "NG",
+        "owner_us_tin": "",
+        "owner_foreign_tax_id": "TIN-4471902",
+        "owner_address": {
+          "street": "14 Adeola Odeku Street",
+          "city": "Victoria Island, Lagos",
+          "state": "",
+          "zip": "101241",
+          "country": "NG"
+        },
+        "signer_title": "Owner",
+        "signature_date": "2026-03-12"
+      },
+      "related_parties": [],
+      "no_transactions_confirmed": false,
+      "part_vi_managerial": true,
+      "transactions": [
+        {
+          "related_party_index": 0,
+          "transaction_type": "capital_contribution",
+          "direction": "received",
+          "amount_usd": "25000",
+          "loan_begin_usd": "",
+          "description": "Owner funding",
+          "transaction_date": "2025-01-22"
+        },
+        {
+          "related_party_index": 0,
+          "transaction_type": "distribution",
+          "direction": "paid",
+          "amount_usd": "12000",
+          "loan_begin_usd": "",
+          "description": "Owner distribution",
+          "transaction_date": "2025-08-05"
+        },
+        {
+          "related_party_index": 0,
+          "transaction_type": "services_provided",
+          "direction": "received",
+          "amount_usd": "6500",
+          "loan_begin_usd": "",
+          "description": "Development services billed to related party",
+          "transaction_date": "2025-11-18"
+        }
+      ]
+    }
+  ]
+}

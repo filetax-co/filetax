@@ -14,7 +14,12 @@ const navLinks = [
   { to: "/past-filings", label: "Past Filings" },
   { to: "/resources", label: "Resources" },
   { to: "/faq", label: "FAQ" },
-  { to: "/waitlist", label: "Waitlist" },
+  // NO WAITLIST ENTRY. The marketing site was un-waitlisted on 3 Aug 2026 and
+  // its own Nav.tsx never had one, so this repo's copy was showing a seventh
+  // item that does not exist on filetax.co. It also reached the published
+  // /guide screenshots, which are captured from THIS app, so the walkthrough
+  // advertised a nav the live site does not have. The /waitlist ROUTE stays:
+  // IRS fax and the Coming Soon list still link to it directly.
 ];
 
 // --- helpers for the user chip ---------------------------------------------

@@ -5,14 +5,36 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Sun, Moon, LifeBuoy, ExternalLink } from 'lucide-react';
 
-// Two wordmarks, not one. "file" is white in the original, which is invisible
-// against the light-theme header (--tf-surface is #FFFFFF), leaving only "tax"
-// legible. The -light variants are the same artwork with the white ink recut to
-// --tf-text (#0F172A); "tax" stays #0584C7 in both.
-const logoBase = (theme: string) =>
-  `${import.meta.env.BASE_URL}header${theme === 'dark' ? '' : '-light'}`;
-const headerLogoSrcSet = (theme: string) => {
-  const b = logoBase(theme);
+/**
+ * THE PORTAL HEADER IS ALWAYS DARK NAVY, in both themes, and it is the same
+ * #0F172A the marketing site's Nav.tsx uses. A filer crossing from filetax.co
+ * into the portal should not watch the masthead change colour under them: that
+ * reads as having landed on a different site, at exactly the moment they are
+ * deciding whether to trust this one with an EIN and a year of transactions.
+ *
+ * Two consequences, and they are why these are named constants rather than
+ * literals sprinkled through the file:
+ *
+ *   - THE LOGO IS ALWAYS THE WHITE-INK VARIANT (`header`), never `header-light`.
+ *     There are two wordmarks because "file" is white in the original and was
+ *     invisible on the old white masthead, so -light recut that ink to #0F172A.
+ *     With the masthead now permanently navy, -light is the one that would
+ *     disappear. The variant can no longer be chosen from the theme, because the
+ *     background no longer follows the theme.
+ *   - NOTHING IN THIS HEADER MAY USE var(--tf-text) OR var(--tf-muted). Both go
+ *     dark in light mode and would vanish against the navy. On-navy values below.
+ *
+ * The theme toggle still works and still themes the page beneath. Only the
+ * masthead is pinned.
+ */
+const HEADER_BG = '#0F172A';
+const ON_HEADER = '#F8FAFC';
+const ON_HEADER_MUTED = 'rgba(248, 250, 252, 0.72)';
+const ON_HEADER_BORDER = 'rgba(248, 250, 252, 0.12)';
+
+const logoBase = () => `${import.meta.env.BASE_URL}header`;
+const headerLogoSrcSet = () => {
+  const b = logoBase();
   return `${b}.png 1x, ${b}@2x.png 2x, ${b}@3x.png 3x`;
 };
 
@@ -80,7 +102,7 @@ export function AppNav() {
     background: 'transparent',
     border: 'none',
     borderRadius: '0.5rem',
-    color: 'var(--tf-muted)',
+    color: ON_HEADER_MUTED,
     cursor: 'pointer',
     padding: 0,
   };
@@ -88,8 +110,8 @@ export function AppNav() {
   return (
     <header
       style={{
-        background: 'var(--tf-surface)',
-        borderBottom: '1px solid var(--tf-border)',
+        background: HEADER_BG,
+        borderBottom: `1px solid ${ON_HEADER_BORDER}`,
         position: 'sticky',
         top: 0,
         zIndex: 100,
@@ -113,8 +135,8 @@ export function AppNav() {
           style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
         >
           <img
-            src={`${logoBase(theme)}.png`}
-            srcSet={headerLogoSrcSet(theme)}
+            src={`${logoBase()}.png`}
+            srcSet={headerLogoSrcSet()}
             alt="FileTax.co"
             width={79}
             height={36}
@@ -129,7 +151,7 @@ export function AppNav() {
             <Link
               to="/dashboard"
               style={{
-                color: 'var(--tf-text)',
+                color: ON_HEADER,
                 textDecoration: 'none',
                 fontWeight: 600,
                 fontSize: '0.9rem',
@@ -153,7 +175,7 @@ export function AppNav() {
             rel="noopener noreferrer"
             aria-label="Guides and answers (opens in a new tab)"
             style={{
-              color: 'var(--tf-text)',
+              color: ON_HEADER,
               textDecoration: 'none',
               fontWeight: 600,
               fontSize: '0.9rem',

@@ -21,7 +21,9 @@
     "seed": "esbuild scripts/seedScenarios.mjs --bundle --platform=node --format=esm --packages=external --outfile=tmp-verify/seed.mjs --log-level=error && node tmp-verify/seed.mjs",
     "gen:scenarios": "node scripts/genScenarios.mjs",
     "gen:scenarios3": "node scripts/genScenarios3.mjs ../../Testing/filetax_test_scenarios_v3.json",
-    "gen:scenarios100": "npm run gen:scenarios3 && node scripts/mergeScenarios.mjs"
+    "gen:scenarios100": "npm run gen:scenarios3 && node scripts/mergeScenarios.mjs",
+    "seed:guide": "esbuild scripts/seedGuideFixture.mjs --bundle --platform=node --format=esm --packages=external --outfile=tmp-verify/seedGuide.mjs --log-level=error && node tmp-verify/seedGuide.mjs",
+    "shots:guide": "node scripts/captureGuideShots.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -98,6 +100,7 @@
     "@types/zxcvbn": "^4.4.5",
     "@vitejs/plugin-react": "4.7.0",
     "pdfjs-dist": "^6.2.108",
+    "playwright": "^1.62.1",
     "tailwindcss": "4.1.12",
     "typescript": "~5.8.3",
     "vite": "^6.4.2"
