@@ -234,7 +234,7 @@ $$;
 
 create or replace function public.filings_freeze_when_paid()
 returns trigger language plpgsql security definer as $$
-declare identity_changed boolean; correctable_changed boolean;
+declare identity_changed boolean;
 begin
   if auth.role() = 'service_role' then return new; end if;
   if tg_op='UPDATE' and old.status in ('paid','completed') then
@@ -250,27 +250,6 @@ begin
     end if;
     if public.jsonb_arr_len(new.related_parties) < public.jsonb_arr_len(old.related_parties) then
       raise exception 'A related party that was already filed cannot be removed after payment.' using errcode='42501';
-    end if;
-    correctable_changed :=
-         new.state_of_formation is distinct from old.state_of_formation
-      or new.total_assets is distinct from old.total_assets
-      or new.mailing_address is distinct from old.mailing_address
-      or new.naics_code is distinct from old.naics_code
-      or new.naics_description is distinct from old.naics_description
-      or new.owner_us_tin is distinct from old.owner_us_tin
-      or new.owner_reference_id is distinct from old.owner_reference_id
-      or new.owner_country is distinct from old.owner_country
-      or new.owner_primary_country is distinct from old.owner_primary_country
-      or new.owner_country_residence is distinct from old.owner_country_residence
-      or new.owner_country_citizenship is distinct from old.owner_country_citizenship
-      or new.owner_address is distinct from old.owner_address
-      or new.final_return is distinct from old.final_return
-      or new.is_fiscal_year is distinct from old.is_fiscal_year
-      or new.tax_period_begin is distinct from old.tax_period_begin
-      or new.tax_period_end is distinct from old.tax_period_end
-      or new.part_vi_managerial is distinct from old.part_vi_managerial;
-    if correctable_changed and old.post_payment_edits >= 2 then
-      raise exception 'You have used all available post-payment edits for this filing. Contact support@filetax.co for further changes.' using errcode='42501';
     end if;
   end if;
   return new;
@@ -326,22 +305,9 @@ do $$ begin
   end if;
 end $$;
 
--- Lock transactions once the parent filing's edit budget is spent.
-create or replace function public.txn_block_when_filing_paid()
-returns trigger language plpgsql security definer as $$
-declare v_status text; v_edits int;
-begin
-  if auth.role()='service_role' then return coalesce(new,old); end if;
-  select status, post_payment_edits into v_status, v_edits from public.filings where id = coalesce(new.filing_id, old.filing_id);
-  if v_status in ('paid','completed') and coalesce(v_edits,0) >= 2 then
-    raise exception 'This filing has used all available post-payment edits; its transactions are locked.' using errcode='42501';
-  end if;
-  return coalesce(new,old);
-end;
-$$;
+-- Paid filing transactions remain editable without a numeric correction cap.
 drop trigger if exists txn_block_when_filing_paid on public.reportable_transactions;
-create trigger txn_block_when_filing_paid before insert or update or delete on public.reportable_transactions
-  for each row execute procedure public.txn_block_when_filing_paid();
+drop function if exists public.txn_block_when_filing_paid();
 
 -- ============================================================================
 -- 5. user_profiles - prefill source (year-2+ auto-fill)

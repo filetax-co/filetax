@@ -48,6 +48,8 @@ export default function FilingWizard() {
   const [generating,   setGenerating]   = useState(false);
   const [genErr,       setGenErr]       = useState<string | null>(null);
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   // Generated single-year package: kept as a blob URL so the filer can preview
   // it in the overlay and download the same bytes without regenerating.
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
@@ -58,6 +60,7 @@ export default function FilingWizard() {
   // to the filing record or to storage: see the header of lib/drawnSignature.ts
   // for why that is what keeps the "we never store your documents" claim true.
   const [drawnSignature, setDrawnSignature] = useState<DrawnSignature | null>(null);
+  const isPaid = filing?.status === 'paid' || filing?.status === 'completed';
 
   // Integrity, IRM 10.10.1.3.1. A signature is a statement about a specific
   // document. If the filing changes after it was drawn, what the filer signed no
@@ -99,10 +102,69 @@ export default function FilingWizard() {
     })();
   }, [id]);
 
+  // Dodo appends payment_id and status to the return URL. The values are only
+  // hints: verify-payment fetches the payment directly from Dodo and validates
+  // its metadata and complete product cart before marking the filing paid.
+  useEffect(() => {
+    if (!id) return;
+    const params = new URLSearchParams(window.location.search);
+    const paymentResult = params.get('payment');
+    const paymentId = params.get('payment_id');
+
+    if (paymentResult === 'cancelled') {
+      setPaymentNotice('Checkout was cancelled. Your filing is saved and no payment was taken.');
+      window.history.replaceState({}, '', `/filing/${id}`);
+      return;
+    }
+    if (!paymentId) return;
+
+    setCheckoutBusy(true);
+    setPaymentNotice('Confirming your payment...');
+    (async () => {
+      const { data, error } = await supabase.functions.invoke('verify-payment', {
+        body: { filing_id: id, payment_id: paymentId },
+      });
+      if (error || data?.status !== 'paid') {
+        setPaymentNotice(
+          data?.status === 'processing'
+            ? 'Your payment is still processing. Refresh this page in a moment.'
+            : data?.error || error?.message || 'We could not confirm the payment. Please contact support.',
+        );
+        setCheckoutBusy(false);
+        return;
+      }
+
+      const { data: refreshed } = await supabase
+        .from('filings')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (refreshed) setFiling(refreshed);
+      setPaymentNotice('Payment confirmed. You can now sign and download your filing package.');
+      setCheckoutBusy(false);
+      window.history.replaceState({}, '', `/filing/${id}`);
+    })();
+  }, [id]);
+
+  const handleCheckout = async () => {
+    if (!id || checkoutBusy) return;
+    setCheckoutBusy(true);
+    setPaymentNotice(null);
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: { filing_id: id },
+    });
+    if (error || !data?.url) {
+      setPaymentNotice(data?.error || error?.message || 'Unable to start checkout. Please try again.');
+      setCheckoutBusy(false);
+      return;
+    }
+    window.location.assign(data.url);
+  };
+
   // ── generate PDF ──────────────────────────────────────────────────────────
 
   const handleGenerate = async () => {
-    if (!id || !filing) return;
+    if (!id || !filing || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
     try {
@@ -151,7 +213,7 @@ export default function FilingWizard() {
 
   // Download the already-generated single-year preview without regenerating.
   const downloadPreview = () => {
-    if (!preview) return;
+    if (!preview || !isPaid) return;
     const a = document.createElement('a');
     a.href = preview.url;
     a.download = preview.filename;
@@ -173,7 +235,7 @@ export default function FilingWizard() {
   };
 
   const handleGenerateJob = async (mode: 'bundle' | 'per-year') => {
-    if (!filing?.job_id) return;
+    if (!filing?.job_id || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
     try {
@@ -257,23 +319,6 @@ export default function FilingWizard() {
   // this to include_7004 alone silently hid a 7004 that was already merged into
   // the combined PDF, because nothing in the app ever writes include_7004.
   const has7004 = filing?.include_7004 === true || filing?.extension_filed === true;
-
-  // Standalone Form 7004 download (accompanies an extension filing).
-  const handleDownload7004 = async () => {
-    if (!filing) return;
-    setGenerating(true);
-    setGenErr(null);
-    try {
-      const { generateForm7004 } = await import('../../lib/pdfGenerator');
-      const bytes = await generateForm7004(filing);
-      const slug = (filing.llc_name ?? 'LLC').replace(/[^a-zA-Z0-9]/g, '_');
-      triggerDownload(bytes, `Form-7004-${slug}-${filing.tax_year ?? 'extension'}.pdf`);
-    } catch (err) {
-      setGenErr(err instanceof Error ? err.message : 'Generation failed');
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   return (
     <>
@@ -494,6 +539,53 @@ export default function FilingWizard() {
             {genErr && (
               <div style={{ ...errorBannerStyle, marginBottom: '1rem' }}>{genErr}</div>
             )}
+            {paymentNotice && (
+              <div
+                style={{
+                  marginBottom: '1rem',
+                  padding: '0.875rem 1rem',
+                  borderLeft: `4px solid ${isPaid ? 'var(--tf-banner-green-border)' : 'var(--tf-banner-amber-border)'}`,
+                  borderRadius: '0.375rem',
+                  background: isPaid ? 'var(--tf-banner-green-bg)' : 'var(--tf-banner-amber-bg)',
+                  color: isPaid ? 'var(--tf-banner-green-text)' : 'var(--tf-banner-amber-text)',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                {paymentNotice}
+              </div>
+            )}
+
+            {!isPaid && (
+              <section style={{ ...sectionStyle, marginBottom: '1.5rem' }}>
+                <div style={{
+                  padding: '1.25rem',
+                  border: '1px solid var(--tf-border)',
+                  borderRadius: '0.625rem',
+                  background: 'var(--tf-surface)',
+                }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>
+                    Complete payment to download
+                  </h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.55, marginBottom: '1rem' }}>
+                    Your checkout is calculated from the tax years and optional services in this filing.
+                    Dodo Payments handles the secure payment page and applicable tax.
+                  </p>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={checkoutBusy}
+                    style={{
+                      ...primaryBtnStyle,
+                      opacity: checkoutBusy ? 0.55 : 1,
+                      cursor: checkoutBusy ? 'not-allowed' : 'pointer',
+                    }}
+                    type="button"
+                  >
+                    {checkoutBusy ? 'Opening secure checkout...' : 'Continue to secure checkout'}
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* ── Sign ─────────────────────────────────────────────────────
                 Placed immediately before the generate action, so the signature
@@ -502,7 +594,7 @@ export default function FilingWizard() {
                 since. Optional: leaving it blank falls back to the typed name,
                 which IRM 10.10.1.3.1.1 accepts just as readily.
             */}
-            <div style={{
+            {isPaid && <div style={{
               paddingTop: '1.5rem',
               marginBottom: '1.5rem',
               borderTop: '1px solid var(--tf-border)',
@@ -520,7 +612,7 @@ export default function FilingWizard() {
                 }
                 disabled={generating}
               />
-            </div>
+            </div>}
 
             {/* ── Action buttons ───────────────────────────────────────── */}
             <div style={{
@@ -540,17 +632,7 @@ export default function FilingWizard() {
                 ← Edit Filing
               </button>
 
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                {has7004 && (
-                  <button
-                    onClick={handleDownload7004}
-                    disabled={generating}
-                    style={{ ...secondaryBtnStyle, opacity: generating ? 0.55 : 1, cursor: generating ? 'not-allowed' : 'pointer' }}
-                    type="button"
-                  >
-                    Download Form 7004 (extension)
-                  </button>
-                )}
+              {isPaid && <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 {!filing?.job_id && (
                   <button
                     onClick={handleGenerate}
@@ -565,7 +647,7 @@ export default function FilingWizard() {
                     {generating ? 'Generating…' : preview ? 'Regenerate' : 'Generate & preview'}
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             {/* ── Generated package: open in the preview overlay ──────────────
@@ -615,7 +697,7 @@ export default function FilingWizard() {
             )}
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
-            {filing?.job_id && (
+            {filing?.job_id && isPaid && (
               <div style={{
                 marginTop: '1.5rem', padding: '1.25rem',
                 border: '1px solid var(--tf-border)', borderRadius: '0.625rem',

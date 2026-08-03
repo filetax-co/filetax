@@ -135,7 +135,7 @@ export const drawSignatureInBox = (
  * Fields whose change must invalidate a previously collected signature.
  *
  * This is the integrity requirement of IRM 10.10.1.3.1, and it collides with
- * the two post-payment edits allowed by 20260702_lock_paid_filings: a filer who
+ * the post-payment corrections allowed by the paid-filing lock: a filer who
  * signs, then corrects a figure, has signed a document that no longer exists.
  *
  * Consumed by the UI, which must clear the drawn signature and ask for it again

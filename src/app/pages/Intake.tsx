@@ -975,12 +975,9 @@ export function Intake() {
   // Once a filing has been completed at least once (submitted / paid), every
   // step is freely navigable, from step 1 the user can jump straight to step 5.
   const [completedOnce, setCompletedOnce] = useState(false);
-  // Payment-integrity state: a paid filing locks its identity fields forever
-  // and allows only a capped number of corrections to other fields.
+  // Payment-integrity state: a paid filing locks only the identity fields that
+  // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
-  const [postPaymentEdits, setPostPaymentEdits] = useState(0);
-  const POST_PAYMENT_EDIT_CAP = 2;
-  const editsRemaining = Math.max(0, POST_PAYMENT_EDIT_CAP - postPaymentEdits);
 
   // Foreign tax ID guidance, driven by the country of TAX RESIDENCE (not
   // citizenship). Cheap enough to recompute each render; no memo needed.
@@ -1100,10 +1097,9 @@ export function Intake() {
       // year, owner identity, incorporation date) is permanently frozen so one
       // payment can't be re-skinned into a different company's forms. Genuine
       // corrections to other fields (addresses, transactions) are still allowed,
-      // capped at a small number of edits. We surface that lock in the UI rather
-      // than blocking the whole filing.
+      // while all genuine corrections remain unlimited. Surface the identity
+      // lock in the UI rather than blocking the whole filing.
       setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
-      setPostPaymentEdits((f as any).post_payment_edits ?? 0);
       // A filing that has moved past 'draft' has been through every step once,
       // so allow free step navigation on return visits.
       setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
@@ -2145,16 +2141,10 @@ export function Intake() {
       if (!saved) return;
 
       if (isPaidLocked) {
-        // Paid filing: this submit is a correction round. Increment the edit
-        // counter (DB enforces the cap) and go straight to the download page, // do NOT touch status (it stays paid/completed).
-      if (editsRemaining > 0) {
-        const { error: incErr } = await supabase.rpc('increment_post_payment_edit', {
-        p_filing_id: filingId,
-        });
-        if (incErr) throw incErr;
-        }
+        // Paid filing: save the correction and return to the download page.
+        // Status remains paid/completed and there is no numeric edit limit.
         navigate(`/filing/${filingId}`);
-      return;
+        return;
       }
       
       // Remember entity + owner details so the next year's filing prefills.
@@ -2761,11 +2751,9 @@ export function Intake() {
         <div ref={stepTopRef} aria-hidden="true" />
 
         {isPaidLocked && (
-          <div className={editsRemaining > 0 ? 'cat-banner-amber' : 'cat-banner-red'} style={{ marginBottom: '1.25rem' }}>
+          <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
             <strong>This filing has been paid.</strong> Your company and owner identity (EIN, LLC name, tax year, owner name &amp; tax ID, incorporation date) are locked. To file for a different company or year, start a new filing.{' '}
-            {editsRemaining > 0
-              ? `You can still correct other details (addresses, transactions) and re-download. ${editsRemaining} correction${editsRemaining > 1 ? 's' : ''} remaining.`
-              : 'You have used all available corrections; contact support@filetax.co for further changes. You can still re-download anytime.'}
+            You can correct other details and transactions, then re-download, as often as needed.
           </div>
         )}
 
@@ -4214,7 +4202,7 @@ export function Intake() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || (isPaidLocked && editsRemaining === 0)}>
+              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving}>
                 {saving
                   ? 'Submitting…'
                   : isPaidLocked
