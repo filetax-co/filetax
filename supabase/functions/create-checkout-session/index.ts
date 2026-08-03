@@ -84,15 +84,11 @@ serve(async (req) => {
 
     const { data: anchor, error: anchorErr } = await supabase
       .from('filings')
-      .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties')
+      .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties, paid_related_party_count')
       .eq('id', filing_id)
       .eq('user_id', user.id)
       .single();
     if (anchorErr || !anchor) return json({ error: 'Filing not found' }, 404);
-
-    if (anchor.status === 'paid' || anchor.status === 'completed') {
-      return json({ already_paid: true });
-    }
 
     let filings = [anchor];
     let job: { include_rcl?: boolean; delivery?: string } | null = null;
@@ -102,7 +98,7 @@ serve(async (req) => {
         await Promise.all([
           supabase
             .from('filings')
-            .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties')
+            .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties, paid_related_party_count')
             .eq('job_id', anchor.job_id)
             .eq('user_id', user.id),
           supabase
@@ -117,9 +113,15 @@ serve(async (req) => {
       }
       filings = jobFilings;
       job = jobData;
-      if (filings.some((filing) => filing.status === 'paid' || filing.status === 'completed')) {
-        return json({ error: 'This filing job has already been paid.' }, 409);
-      }
+    }
+
+    const supplemental = filings.every(
+      (filing) => filing.status === 'paid' || filing.status === 'completed',
+    );
+    if (!supplemental && filings.some(
+      (filing) => filing.status === 'paid' || filing.status === 'completed',
+    )) {
+      return json({ error: 'This filing job has mixed payment states.' }, 409);
     }
 
     const includeRcl = job?.include_rcl === true || filings.some((filing) => filing.include_rcl === true);
@@ -128,15 +130,25 @@ serve(async (req) => {
       (total, filing) => total + relatedPartyCount(filing.related_parties),
       0,
     );
+    const paidAdditionalParties = filings.reduce(
+      (total, filing) => total + Number(filing.paid_related_party_count ?? 0),
+      0,
+    );
+    const additionalPartyDelta = Math.max(0, additionalParties - paidAdditionalParties);
 
-    const productCart = [
-      { product_id: PRODUCTS.filing, quantity: filings.length },
-      ...(includeRcl ? [{ product_id: PRODUCTS.reasonableCause, quantity: 1 }] : []),
-      ...(additionalParties > 0
-        ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalParties }]
-        : []),
-      ...(includeFax ? [{ product_id: PRODUCTS.fax, quantity: 1 }] : []),
-    ];
+    const productCart = supplemental
+      ? (additionalPartyDelta > 0
+        ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalPartyDelta }]
+        : [])
+      : [
+          { product_id: PRODUCTS.filing, quantity: filings.length },
+          ...(includeRcl ? [{ product_id: PRODUCTS.reasonableCause, quantity: 1 }] : []),
+          ...(additionalParties > 0
+            ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalParties }]
+            : []),
+          ...(includeFax ? [{ product_id: PRODUCTS.fax, quantity: 1 }] : []),
+        ];
+    if (productCart.length === 0) return json({ already_paid: true });
 
     const response = await fetch(`${dodoBaseUrl()}/checkouts`, {
       method: 'POST',
@@ -156,6 +168,7 @@ serve(async (req) => {
           filing_id,
           filing_job_id: anchor.job_id ?? '',
           user_id: user.id,
+          checkout_type: supplemental ? 'additional_party' : 'initial',
         },
       }),
     });

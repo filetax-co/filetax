@@ -60,7 +60,12 @@ export default function FilingWizard() {
   // to the filing record or to storage: see the header of lib/drawnSignature.ts
   // for why that is what keeps the "we never store your documents" claim true.
   const [drawnSignature, setDrawnSignature] = useState<DrawnSignature | null>(null);
-  const isPaid = filing?.status === 'paid' || filing?.status === 'completed';
+  const relatedPartyCount = Array.isArray(filing?.related_parties) ? filing.related_parties.length : 0;
+  const hasUnpaidRelatedParties =
+    relatedPartyCount > Number(filing?.paid_related_party_count ?? 0);
+  const isPaid =
+    (filing?.status === 'paid' || filing?.status === 'completed') &&
+    !hasUnpaidRelatedParties;
 
   // Integrity, IRM 10.10.1.3.1. A signature is a statement about a specific
   // document. If the filing changes after it was drawn, what the filer signed no
@@ -568,8 +573,9 @@ export default function FilingWizard() {
                     Complete payment to download
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.55, marginBottom: '1rem' }}>
-                    Your checkout is calculated from the tax years and optional services in this filing.
-                    Dodo Payments handles the secure payment page and applicable tax.
+                    {hasUnpaidRelatedParties
+                      ? `${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} additional related ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party requires' : 'parties require'} payment before the updated forms are available.`
+                      : 'Your checkout is calculated from the tax years and optional services in this filing. Dodo Payments handles the secure payment page and applicable tax.'}
                   </p>
                   <button
                     onClick={handleCheckout}
@@ -581,7 +587,11 @@ export default function FilingWizard() {
                     }}
                     type="button"
                   >
-                    {checkoutBusy ? 'Opening secure checkout...' : 'Continue to secure checkout'}
+                    {checkoutBusy
+                      ? 'Opening secure checkout...'
+                      : hasUnpaidRelatedParties
+                        ? 'Pay for additional related party'
+                        : 'Continue to secure checkout'}
                   </button>
                 </div>
               </section>

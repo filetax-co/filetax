@@ -155,6 +155,7 @@ export type Filing = {
    * Defaults to naics_description if not set.
    */
   owner_business_activity?: string | null;
+  related_parties?: Array<Record<string, unknown>> | null;
 
   /**
    * Part III 8e, which relationship checkbox to tick.
@@ -197,6 +198,8 @@ export type Filing = {
   paid_at?: string | null;
   payment_id?: string | null;
   payment_amount_cents?: number | null;
+  /** Related parties already covered by verified Dodo payments. */
+  paid_related_party_count?: number | null;
 
   // ── Output ──────────────────────────────────────────────────────────────
   forms_generated_at?: string | null;

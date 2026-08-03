@@ -85,15 +85,11 @@ serve(async (req) => {
 
     const { data: anchor, error: anchorErr } = await supabase
       .from('filings')
-      .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id')
+      .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents')
       .eq('id', filing_id)
       .eq('user_id', user.id)
       .single();
     if (anchorErr || !anchor) return json({ error: 'Filing not found' }, 404);
-
-    if (anchor.status === 'paid' || anchor.status === 'completed') {
-      return json({ status: 'paid', payment_id: anchor.payment_id });
-    }
 
     let filings = [anchor];
     let job: { include_rcl?: boolean; delivery?: string } | null = null;
@@ -102,7 +98,7 @@ serve(async (req) => {
         await Promise.all([
           supabase
             .from('filings')
-            .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id')
+            .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents')
             .eq('job_id', anchor.job_id)
             .eq('user_id', user.id),
           supabase
@@ -145,14 +141,22 @@ serve(async (req) => {
       (total, filing) => total + relatedPartyCount(filing.related_parties),
       0,
     );
-    const expectedCart = [
-      { product_id: PRODUCTS.filing, quantity: filings.length },
-      ...(includeRcl ? [{ product_id: PRODUCTS.reasonableCause, quantity: 1 }] : []),
-      ...(additionalParties > 0
-        ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalParties }]
-        : []),
-      ...(includeFax ? [{ product_id: PRODUCTS.fax, quantity: 1 }] : []),
-    ];
+    const paidAdditionalParties = filings.reduce(
+      (total, filing) => total + Number(filing.paid_related_party_count ?? 0),
+      0,
+    );
+    const supplemental = payment.metadata?.checkout_type === 'additional_party';
+    const additionalPartyDelta = Math.max(0, additionalParties - paidAdditionalParties);
+    const expectedCart = supplemental
+      ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalPartyDelta }]
+      : [
+          { product_id: PRODUCTS.filing, quantity: filings.length },
+          ...(includeRcl ? [{ product_id: PRODUCTS.reasonableCause, quantity: 1 }] : []),
+          ...(additionalParties > 0
+            ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalParties }]
+            : []),
+          ...(includeFax ? [{ product_id: PRODUCTS.fax, quantity: 1 }] : []),
+        ];
 
     if (
       !Array.isArray(payment.product_cart) ||
@@ -162,23 +166,27 @@ serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const filingIds = filings.map((filing) => filing.id);
     const amount =
       payment.settlement_currency === 'USD' && Number.isInteger(payment.settlement_amount)
         ? payment.settlement_amount
         : null;
-    const { error: updateErr } = await supabase
-      .from('filings')
-      .update({
-        status: 'paid',
-        paid_at: now,
-        payment_id: payment.payment_id,
-        payment_amount_cents: amount,
-      })
-      .in('id', filingIds);
-    if (updateErr) {
-      console.error('[verify-payment] update filing', updateErr);
-      return json({ error: 'Payment was verified but the filing could not be updated.' }, 500);
+    for (const filing of filings) {
+      const { error: updateErr } = await supabase
+        .from('filings')
+        .update({
+          status: 'paid',
+          paid_at: filing.status === 'paid' || filing.status === 'completed' ? undefined : now,
+          payment_id: payment.payment_id,
+          payment_amount_cents: amount === null
+            ? filing.payment_amount_cents
+            : Number(filing.payment_amount_cents ?? 0) + amount,
+          paid_related_party_count: relatedPartyCount(filing.related_parties),
+        })
+        .eq('id', filing.id);
+      if (updateErr) {
+        console.error('[verify-payment] update filing', updateErr);
+        return json({ error: 'Payment was verified but the filing could not be updated.' }, 500);
+      }
     }
 
     return json({ status: 'paid', payment_id: payment.payment_id });

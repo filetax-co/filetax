@@ -980,6 +980,7 @@ export function Intake() {
   // Payment-integrity state: a paid filing locks only the identity fields that
   // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
+  const [paidRelatedPartyCount, setPaidRelatedPartyCount] = useState(0);
 
   // Foreign tax ID guidance, driven by the country of TAX RESIDENCE (not
   // citizenship). Cheap enough to recompute each render; no memo needed.
@@ -1102,6 +1103,7 @@ export function Intake() {
       // while all genuine corrections remain unlimited. Surface the identity
       // lock in the UI rather than blocking the whole filing.
       setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
+      setPaidRelatedPartyCount(Number((f as any).paid_related_party_count ?? 0));
       // A filing that has moved past 'draft' has been through every step once,
       // so allow free step navigation on return visits.
       setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
@@ -3590,7 +3592,7 @@ export function Intake() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button type="button" style={secondaryBtnStyle} onClick={() => openRpForm(i)}>Edit</button>
-                        {!isPaidLocked && (
+                        {(!isPaidLocked || i >= paidRelatedPartyCount) && (
                           <button type="button" style={{ ...secondaryBtnStyle, color: 'var(--tf-error-text)', borderColor: 'var(--tf-error-border)' }} onClick={() => removeRp(i)}>Remove</button>
                         )}
                       </div>
@@ -3705,13 +3707,13 @@ export function Intake() {
               </div>
             )}
 
-            {!showRpForm && !isPaidLocked && (
+            {!showRpForm && (
               <button type="button" style={addBtnStyle} onClick={() => openRpForm()}>Add related party</button>
             )}
-            {!showRpForm && isPaidLocked && (
+            {!showRpForm && isPaidLocked && relatedParties.length > paidRelatedPartyCount && (
               <div className="cat-banner-amber" style={{ marginTop: '0.5rem' }}>
-                Adding another related party after payment generates an additional Form 5472 and is a paid add-on. Email{' '}
-                <a href="mailto:support@filetax.co" style={{ color: 'inherit', fontWeight: 700 }}>support@filetax.co</a> to add a party to this filing.
+                The new related party generates another Form 5472. Save your changes, then complete
+                the $25 additional-party payment before downloading the updated package.
               </div>
             )}
 
@@ -4276,7 +4278,9 @@ export function Intake() {
                 {saving
                   ? 'Submitting…'
                   : isPaidLocked
-                    ? 'Save corrections & re-download'
+                    ? (relatedParties.length > paidRelatedPartyCount
+                        ? 'Save & continue to additional-party payment'
+                        : 'Save corrections & re-download')
                     : jobId
                       ? (hasNextDraftYear
                           // Name the year we are about to open. "Save & file next
