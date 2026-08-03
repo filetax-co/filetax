@@ -2,6 +2,8 @@ import { Outlet, useLocation } from "react-router";
 import { useEffect } from "react";
 import { Nav } from "./Nav";
 import { Footer } from "./Footer";
+import { MicrosoftClarity } from "./MicrosoftClarity";
+import { GoogleAnalytics } from "./GoogleAnalytics";
 import { useJsonLd } from "@/app/hooks/useJsonLd";
 
 function ScrollToTop() {
@@ -74,6 +76,8 @@ export function Layout() {
   return (
     <div style={{ background: "var(--tf-bg)", color: "var(--tf-text)", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <ScrollToTop />
+      <MicrosoftClarity />
+      <GoogleAnalytics />
       <CanonicalTag />
       <SiteJsonLd />
       <a href="#main-content" className="skip-link">

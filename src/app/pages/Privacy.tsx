@@ -6,7 +6,7 @@ const COMPANY_NAME = "FileTax.co";
 const COMPANY_LEGAL_NAME = "FileTax.co"; // TODO: replace with registered legal entity once incorporated
 const SUPPORT_EMAIL = "hello@filetax.co";
 const PRIVACY_EMAIL = "hello@filetax.co"; // Same inbox for now; split later if you set up a dedicated address.
-const LAST_UPDATED = "April 29, 2026";
+const LAST_UPDATED = "August 3, 2026";
 
 const styles = {
   h2: {
@@ -29,6 +29,8 @@ const styles = {
     color: "var(--tf-text)",
     marginBottom: "0.875rem",
     paddingLeft: "1.25rem",
+    listStyleType: "disc",
+    listStylePosition: "outside",
   } as React.CSSProperties,
   li: {
     marginBottom: "0.375rem",
@@ -170,8 +172,22 @@ export function Privacy() {
 
           <h2 style={styles.h2}>8. Cookies and Analytics</h2>
           <p style={styles.p}>
-            Cookies are small text files stored on your device. We use cookies to keep you signed in, remember your preferences, and understand how the Service is used. You can disable cookies through your browser settings, but parts of the Service may not function properly without them.
+            Cookies are small text files stored on your device. We use necessary cookies to keep you signed in and operate the Service. On the public marketing website, we also use analytics technologies to understand how visitors find and use the site.
           </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>
+              <strong>Google Analytics.</strong> Google Analytics helps us measure visits, traffic sources, pages viewed, and general technical information such as browser and device type. We do not send the tax information you enter in your account to Google Analytics. You can learn more in the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#0284C7", textDecoration: "none" }}>Google Privacy Policy</a>.
+            </li>
+            <li style={styles.li}>
+              <strong>Microsoft Clarity.</strong> Microsoft Clarity provides aggregated usage insights, heatmaps, and session replays for the public marketing website, including interactions such as clicks, scrolling, and navigation. It is configured to mask text entered into form fields. You can learn more in the <a href="https://privacy.microsoft.com/privacystatement" target="_blank" rel="noopener noreferrer" style={{ color: "#0284C7", textDecoration: "none" }}>Microsoft Privacy Statement</a>.
+            </li>
+            <li style={styles.li}>
+              <strong>Authenticated area excluded.</strong> Google Analytics and Microsoft Clarity do not load while you are signed in or on the filing dashboard. If you sign in during a marketing-site visit, both analytics tools are disabled for the remainder of that browser page. Your filing details, tax information, account activity, and dashboard interactions are not tracked by these tools.
+            </li>
+            <li style={styles.li}>
+              <strong>Your choices.</strong> You can block or delete cookies through your browser settings or use supported browser privacy controls. Blocking necessary cookies may prevent sign-in or other account features from working properly.
+            </li>
+          </ul>
 
           <h2 style={styles.h2}>9. Your Rights</h2>
           <p style={styles.p}>
