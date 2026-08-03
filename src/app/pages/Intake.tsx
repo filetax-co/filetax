@@ -2513,6 +2513,19 @@ export function Intake() {
         [data-theme="dark"] .intake-form select {
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394A3B8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         }
+        /* Chromium keeps the native date-picker icon nearly black unless its
+           color scheme is set explicitly. Match the grey dropdown chevron so
+           the calendar remains visible on the dark input surface. */
+        .intake-form input[type="date"]::-webkit-calendar-picker-indicator {
+          opacity: 0.72;
+        }
+        [data-theme="dark"] .intake-form input[type="date"] {
+          color-scheme: dark;
+        }
+        [data-theme="dark"] .intake-form input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(67%) sepia(8%) saturate(1088%) hue-rotate(176deg) brightness(88%) contrast(86%);
+          opacity: 1;
+        }
         /* Same exclusion as above. This ring is drawn with border-color plus a
            box-shadow, and the checkbox overrides force \`border: none\` and
            \`box-shadow: none\`, so applying it to a checkbox produced no visible
