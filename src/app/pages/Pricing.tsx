@@ -66,10 +66,16 @@ const cards: PricingCard[] = [
     ctaLink: CHECK_URL, // original: "/check"
   },
   {
-    title: "Add-On: IRS Fax Transmission (at launch)",
+    // Fax is LIVE as of 3 Aug 2026, per the owner, so the "(at launch)" marker
+    // and the "not yet available" opener are gone. The CTA stays "Join the
+    // Waitlist" because THIS WHOLE PAGE is in a pre-launch holding state: every
+    // card says it and every offer is PreOrder. Do not un-hold one card on its
+    // own. When the page comes off hold, fax points at /check, and the Form
+    // 8832 card below is the one that has to keep its hold. See item 51.
+    title: "Add-On: IRS Fax Transmission",
     price: `+$${PRICE_FAX}`,
     priceNote: "one fee, however many years",
-    description: "Not yet available. At launch: you sign the completed forms, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
+    description: "You sign the completed forms in your browser, we fax them to the IRS for you so you never need a printer, and a transmission receipt recording the date, time and page count is stored against your filing.",
     note: "A transmission receipt is proof that the IRS received the fax. It is not proof that the IRS has accepted the filing. Not available for Form 8832.",
     cta: "Join the Waitlist",
     ctaLink: PORTAL_URL, // original: "/portal"
