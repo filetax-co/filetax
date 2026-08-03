@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabase';
 import { usePageMeta } from '../hooks/usePageMeta';
+import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
 
 export function ResetPassword() {
   usePageMeta({
@@ -54,9 +55,23 @@ export function ResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    // Same gate as signup, in the same order. This page used to check only
+    // `password.length < 8`, so a filer could set a password on reset that
+    // signup would have rejected, and the server-side policy would then answer
+    // with a raw Supabase message instead of the checklist shown below.
+    if (!meetsAllRules(password)) {
+      setError('Please meet all the password requirements shown below the field.');
+      return;
+    }
     if (password !== confirm) { setError('Passwords do not match.'); return; }
     setSubmitting(true);
+
+    const pwCheck = await validatePassword(password);
+    if (!pwCheck.ok) {
+      setError(pwCheck.error);
+      setSubmitting(false);
+      return;
+    }
 
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setSubmitting(false);
@@ -81,7 +96,7 @@ export function ResetPassword() {
         ) : (
           <>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.375rem' }}>Set a new password</h1>
-            <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.75rem' }}>Choose a password that is at least 8 characters long.</p>
+            <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.75rem' }}>Choose a password that meets the requirements below.</p>
 
             {!sessionReady && !error && (
               <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
@@ -98,7 +113,26 @@ export function ResetPassword() {
             <form onSubmit={handleSubmit} noValidate>
               <div style={{ marginBottom: '1.125rem' }}>
                 <label htmlFor="rp-password" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>New password</label>
-                <input id="rp-password" type="password" autoComplete="new-password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!sessionReady} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px', opacity: sessionReady ? 1 : 0.5 }} />
+                <input id="rp-password" type="password" autoComplete="new-password" placeholder="Create a strong password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!sessionReady} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px', opacity: sessionReady ? 1 : 0.5 }} />
+                {/* Same checklist as signup, driven by the same PASSWORD_RULES.
+                    A reset that enforces the signup rules must also show them,
+                    or the filer is guessing at what the form wants. */}
+                {(() => {
+                  const status = ruleStatus(password);
+                  return (
+                    <ul style={{ listStyle: 'none', margin: '0.625rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {PASSWORD_RULES.map((r) => {
+                        const met = status[r.key];
+                        return (
+                          <li key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: met ? '#059669' : 'var(--tf-muted)' }}>
+                            <span aria-hidden="true" style={{ fontWeight: 700, width: '0.9rem', display: 'inline-block' }}>{met ? '✓' : '○'}</span>
+                            {r.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  );
+                })()}
               </div>
               <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
                 <label htmlFor="rp-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
