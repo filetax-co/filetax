@@ -41,13 +41,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Non-blocking for now: Portal.tsx has one pre-existing error
-      # ("Property 'id' does not exist on type 'never'", line 88) that is being
-      # addressed alongside the portal rework. Flip continue-on-error to false
-      # once that lands so type errors actually gate the build.
+      # The Portal.tsx error this used to tolerate ("Property 'id' does not
+      # exist on type 'never'") went away with the portal merge. `tsc --noEmit`
+      # is clean, so type errors gate the build again.
       - name: Typecheck
         run: npm run typecheck
-        continue-on-error: true
 
       # --with-deps needs apt, which is available here but not in Cloudflare's
       # build sandbox. postbuild's own install then becomes a cached no-op.
@@ -56,10 +54,23 @@ jobs:
 
       # PRERENDER_STRICT makes postbuild.mjs fail loudly instead of degrading to
       # the client-rendered shell, so a prerender regression cannot pass CI.
+      #
+      # The Supabase vars are not optional here. src/lib/supabase.ts THROWS at
+      # module load when they are absent; every prerendered route imports the
+      # router, the router imports Portal, and Portal imports that client. So a
+      # build without them fails at the prerender, not at runtime.
+      #
+      # Both are VITE_ prefixed and therefore compiled into the public bundle,
+      # exactly as they already are on Cloudflare. They are repo secrets here
+      # only because Actions has no other place to put a build-time value, not
+      # because either one is confidential. The anon key is the publishable
+      # `sb_publishable_` format and RLS is what protects the data.
       - name: Build
         run: npm run build
         env:
           PRERENDER_STRICT: '1'
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Verify prerendered output
         run: |
