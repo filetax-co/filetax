@@ -54,6 +54,24 @@ if (!existsSync(shellPath)) {
 // homepage. Everything below reuses this unrendered copy.
 const shellHtml = readFileSync(shellPath, 'utf8');
 
+/**
+ * Turn the generic shell into a not-found shell: noindex, its own title and
+ * description, and no canonical pointing at a page that does not exist.
+ * Kept string-level deliberately, since the shell is Vite's output and parsing
+ * it would couple this script to whatever that output looks like next.
+ */
+function asNotFoundShell(html) {
+  const TITLE = 'Page not found | FileTax.co';
+  const DESC =
+    'This page does not exist. Find Form 5472 filing, pricing and guidance on FileTax.co.';
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${TITLE}</title>`)
+    .replace(/<meta\s+name="description"[^>]*>/i, `<meta name="description" content="${DESC}" />`)
+    .replace(/<link\s+rel="canonical"[^>]*>/i, '')
+    .replace(/<meta\s+property="og:(title|description|url)"[^>]*>/gi, '')
+    .replace(/<\/head>/i, '  <meta name="robots" content="noindex, nofollow" />\n  </head>');
+}
+
 try {
   console.log('postbuild: installing Chromium for prerender...');
   runNode(resolve(ROOT, 'node_modules', 'playwright', 'cli.js'), ['install', 'chromium']);
@@ -65,8 +83,14 @@ try {
   // genuine 404. Shipping 404.html makes Cloudflare answer with a 404 status
   // instead of serving index.html at 200 for any URL, which had made every
   // typo and probe look like a valid page to crawlers.
-  writeFileSync(resolve(DIST, '404.html'), shellHtml, 'utf8');
-  console.log('postbuild: dist/404.html written from the unrendered shell');
+  // The shell carries the HOMEPAGE title, description and canonical, because
+  // that is what index.html ships. Served as 404.html unchanged, every unknown
+  // URL answered with the homepage's metadata and no noindex, so a crawler that
+  // does not run JS saw an endless supply of distinct "pages". NotFound sets
+  // the right meta at runtime, which fixes a browser but not a plain fetch.
+  // Patch the static head so the signal does not depend on JS at all.
+  writeFileSync(resolve(DIST, '404.html'), asNotFoundShell(shellHtml), 'utf8');
+  console.log('postbuild: dist/404.html written from the unrendered shell, noindex');
 
   for (const route of PRIVATE_ROUTES) {
     writeFileSync(resolve(DIST, `${route}.html`), shellHtml, 'utf8');
