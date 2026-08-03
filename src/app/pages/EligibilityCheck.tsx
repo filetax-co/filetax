@@ -336,7 +336,6 @@ export function EligibilityCheck() {
   if (outcome === "pass") {
     const years = yearCount ?? 1;
     const baseTotal = years * PRICE_PER_YEAR;
-    const isMany = years >= 4;
 
     return (
       <section style={{ background: "var(--tf-bg)", minHeight: "80vh", padding: "3rem 1rem" }}>
@@ -396,21 +395,25 @@ export function EligibilityCheck() {
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <PriceRow
-                  label={
-                    isMany
-                      ? `Form 5472 + pro forma 1120, per year`
-                      : `Form 5472 + pro forma 1120${years > 1 ? ` x ${years} years` : ""}`
-                  }
-                  value={isMany ? `$${PRICE_PER_YEAR}` : `$${baseTotal}`}
-                />
-                {!isMany && (
+                {/* A price appears once. This block used to branch on isMany
+                    (four years or more) and got both branches wrong: below
+                    four years the line item carried the total and the total row
+                    repeated it, so a two-year quote printed $198 twice and read
+                    as a $396 subtotal, and at four years and above the total row
+                    did not render at all, so the largest catch-up job saw a
+                    per-year price and no total. The only real distinction is
+                    one year or several, so that is the only branch. */}
+                {years > 1 && (
                   <PriceRow
-                    label={years > 1 ? `Filings for ${years} years` : "Total for the filing"}
-                    value={`$${baseTotal}`}
-                    total
+                    label="Form 5472 + pro forma 1120, per year"
+                    value={`$${PRICE_PER_YEAR}`}
                   />
                 )}
+                <PriceRow
+                  label={years > 1 ? `Filings for ${years} years` : "Form 5472 + pro forma 1120"}
+                  value={`$${baseTotal}`}
+                  total
+                />
               </div>
 
               <div
@@ -533,8 +536,29 @@ export function EligibilityCheck() {
               <p style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.25rem" }}>
                 Speak with a qualified tax professional
               </p>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.6 }}>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.6, marginBottom: "0.875rem" }}>
                 This situation may require forms or tax analysis that fall outside this filing flow. A licensed tax professional can confirm the correct filing path before you continue.
+              </p>
+              {/* This screen used to offer only "go back" and "start over",
+                  which is a dead end on the one path where the visitor has
+                  just been told they need help. These two links are
+                  deliberately generic: the checker refers to a CPA or tax
+                  adviser in general and never into the owner's own practice,
+                  which is a settled decision. Do not turn either into a
+                  referral. */}
+              <p style={{ fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.6 }}>
+                Not sure what applies to you? Read{" "}
+                {/* Link, not a raw href: the product repo's copy of this page
+                    mounts under basename /5472/, and the two files are kept
+                    identical. */}
+                <Link to="/resources" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
+                  our Form 5472 library
+                </Link>
+                , or email{" "}
+                <a href="mailto:hello@filetax.co" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
+                  hello@filetax.co
+                </a>{" "}
+                and we will point you at the right reading. We cannot give you tax advice.
               </p>
             </div>
 

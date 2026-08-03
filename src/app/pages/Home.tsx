@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { IRSClock } from "../components/IRSClock";
 import { usePageMeta } from "../hooks/usePageMeta";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE } from "../../lib/pricing";
 
 export function Home() {
   usePageMeta({
@@ -178,7 +178,7 @@ export function Home() {
 
       {/* How It Works */}
       <section style={{ background: "var(--tf-surface)", padding: "4rem 1rem" }} aria-labelledby="how-heading">
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <h2 id="how-heading" style={{ fontSize: "clamp(1.375rem, 3vw, 1.875rem)", marginBottom: "0.5rem" }}>
             How it works
           </h2>
@@ -405,7 +405,7 @@ export function Home() {
                     so the body copy is now the ONLY thing saying this cannot be
                     bought. Do not soften it. See handoff item 51. */}
                 <h3 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>LLC Tax Classification Change</h3>
-                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>$50</p>
+                <p style={{ color: "var(--tf-accent)", fontWeight: 700, fontSize: "1.375rem", marginBottom: "0.25rem" }}>${PRICE_CLASSIFICATION_CHANGE}</p>
                 <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400, marginBottom: "1rem", flex: 1 }}><strong style={{ color: "var(--tf-text)" }}>Not yet available.</strong> Form 8832, to be taxed as a C-Corporation instead of a disregarded entity. Print-ready PDF, mailed by you.</p>
                 <Link
                   to="/waitlist?service=llc-classification"
@@ -479,7 +479,9 @@ export function Home() {
                   padding: "0.375rem 1rem",
                   fontSize: "0.875rem",
                   fontWeight: 600,
-                  whiteSpace: "nowrap",
+                  maxWidth: "100%",
+                  textAlign: "center",
+                  overflowWrap: "anywhere",
                 }}
               >
                 {item}

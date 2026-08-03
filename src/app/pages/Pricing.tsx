@@ -3,7 +3,7 @@ import { IRSClock } from "../components/IRSClock";
 import { InfoTip } from "../components/InfoTip";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
 // The Form 8832 classification change is PRICED BUT NOT BUILT, so it collects
@@ -151,7 +151,7 @@ const ADD_ONS: PricingCard[] = [
   },
   {
     title: "LLC Tax Classification Change",
-    price: "$50",
+    price: `$${PRICE_CLASSIFICATION_CHANGE}`,
     priceNote: "per filing",
     description: "Not yet available. A standalone Form 8832, to be taxed as a C-Corporation.",
     microcopy: "Must be mailed. The fax add-on will not cover it.",

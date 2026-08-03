@@ -574,9 +574,13 @@ export function Article() {
     description: post
       ? (post.seoDescription ?? post.excerpt ?? "").slice(0, 160)
       : "This article could not be found.",
-    canonical: articleUrl,
+    // A missing slug used to canonical itself, so any /resources/<anything>
+    // was an indexable soft 404. Pass no canonical and let Layout's
+    // CanonicalTag skip it, which it does whenever robots says noindex.
+    canonical: post ? articleUrl : undefined,
     type: post ? "article" : "website",
     image: socialImage,
+    noindex: !loading && !post,
   });
 
   // Article schema. Tax content is YMYL, so publisher, dates and an explicit

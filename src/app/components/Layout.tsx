@@ -15,6 +15,11 @@ function ScrollToTop() {
 function CanonicalTag() {
   const { pathname } = useLocation();
   useEffect(() => {
+    // Writes the canonical for every route unconditionally. A noindex page
+    // must not carry one, but that decision is NOT made here: this component
+    // renders before <Outlet/>, so its effect runs before the page's, and it
+    // would be reading the previous page's robots meta. usePageMeta removes the
+    // tag instead, which always runs after this. Do not add a noindex test here.
     const canonical = `https://filetax.co${pathname}`;
     let tag = document.querySelector("link[rel='canonical']") as HTMLLinkElement | null;
     if (!tag) {
@@ -79,7 +84,6 @@ export function Layout() {
       <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
         {/* Warning marquee */}
         <div
-          aria-label="Warning: IRS penalty notice"
           style={{
             background: "#B31D1D",
             color: "white",
@@ -90,7 +94,17 @@ export function Layout() {
             alignItems: "center",
           }}
         >
+          {/* All COPIES copies exist only to make the scroll seamless, and every
+              one of them was exposed as real content, so a screen reader read
+              the whole $25,000 warning six times before reaching the nav. The
+              sr-only paragraph is now the single accessible copy. Hide the whole
+              animated strip rather than all but the first: a copy index test
+              would break silently the next time COPIES changes. An aria-label on
+              the container was tried and is not enough, a plain div with no role
+              does not reliably carry one. */}
+          <p className="sr-only">IRS warning. {MARQUEE_TEXT}</p>
           <div
+            aria-hidden="true"
             style={{
               display: "inline-flex",
               alignItems: "center",

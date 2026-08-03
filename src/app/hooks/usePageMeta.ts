@@ -82,7 +82,14 @@ export function usePageMeta({
       removeMeta("name", "robots");
     }
 
-    if (canonical) {
+    if (noindex) {
+      // A noindex page that also self-canonicals hands a crawler a canonical
+      // URL for a page that does not exist. Layout's CanonicalTag writes one
+      // for every route and its effect runs before this one, since it renders
+      // above <Outlet/>, so removing it here is what makes the end state right
+      // in both navigation directions.
+      document.querySelector('link[rel="canonical"]')?.remove();
+    } else if (canonical) {
       setCanonical(canonical);
     }
 

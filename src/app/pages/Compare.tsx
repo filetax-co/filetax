@@ -172,7 +172,7 @@ export function Compare() {
   return (
     <>
       <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 2rem" }}>
-        <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.5rem, 4vw, 2.25rem)", marginBottom: "0.75rem", lineHeight: 1.2 }}>
             FileTax, a CPA, or doing it yourself
           </h1>
@@ -189,7 +189,7 @@ export function Compare() {
       </section>
 
       <section style={{ background: "var(--tf-bg)", padding: "0 1rem 2.5rem" }}>
-        <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div style={{ overflowX: "auto", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", background: "var(--tf-surface)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "720px" }}>
               <caption className="sr-only">

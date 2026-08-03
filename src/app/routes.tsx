@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { usePageMeta } from './hooks/usePageMeta';
 import { Layout } from './components/Layout';
 import { RouteError } from './components/RouteError';
 import { Home } from './pages/Home';
@@ -20,6 +21,16 @@ import { Privacy } from './pages/Privacy';
 import { Refunds } from './pages/Refunds';
 
 function NotFound() {
+  // This set no meta at all, so it kept the previous page's title and
+  // description on an SPA navigation and index.html's homepage pair on a direct
+  // hit, while Layout's CanonicalTag pointed a canonical at the missing URL and
+  // nothing said noindex. A crawler could therefore index unlimited nonexistent
+  // URLs as distinct pages. noindex also stops CanonicalTag writing the tag.
+  usePageMeta({
+    title: "Page not found | FileTax.co",
+    description: "This page does not exist. Find Form 5472 filing, pricing and guidance on FileTax.co.",
+    noindex: true,
+  });
   return (
     <section style={{ padding: '5rem 1rem', textAlign: 'center' }}>
       <h1 style={{ marginBottom: '1rem' }}>Page not found</h1>

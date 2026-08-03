@@ -24,7 +24,7 @@ export function Services() {
   return (
     <>
       <section style={{ background: "var(--tf-bg)", padding: "3.5rem 1rem 2rem" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h1 style={{ fontSize: "clamp(1.625rem, 4vw, 2.375rem)", marginBottom: "0.75rem" }}>Services</h1>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6 }}>
             Built specifically for foreign-owned U.S. single-member LLCs. Forms generated strictly to the IRS Instructions for Form 5472, and rendered on the revision of Form 5472 and Form 1120 that the IRS had in force for the tax year you are filing, not on the current year's form for every year.
@@ -33,7 +33,7 @@ export function Services() {
       </section>
 
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s1-heading">
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="s1-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>
             Form 5472 + Pro Forma 1120 Filing
           </h2>
@@ -151,7 +151,7 @@ export function Services() {
           letter is what this section is now about. Do not turn it back into a
           filing service. */}
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s2-heading">
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <span
             style={{
               display: "inline-block",
@@ -190,7 +190,7 @@ export function Services() {
       </section>
 
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s3-heading">
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="s3-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>LLC Tax Classification Change</h2>
           <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1rem" }}>
             <strong>Not yet available.</strong> At launch this will prepare a standalone Form 8832, the entity classification election, for an LLC that wants to be taxed as a C-Corporation instead of the default disregarded entity. It is a standalone filing and must be mailed, and the IRS fax add-on will not cover it.
@@ -217,7 +217,7 @@ export function Services() {
       </section>
 
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="s4-heading">
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="s4-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "1rem" }}>IRS Fax Transmission</h2>
           {/* Cut from four paragraphs to two on 3 Aug 2026. It was explaining
               an add-on's fine print at more length than the $99 product that
@@ -241,7 +241,7 @@ export function Services() {
       </section>
 
       <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="s5-heading">
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 id="s5-heading" style={{ fontSize: "clamp(1.25rem, 3vw, 1.75rem)", marginBottom: "0.5rem" }}>Coming Soon</h2>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, marginBottom: "1.25rem" }}>
             Join the waitlist to get notified when these services launch.
