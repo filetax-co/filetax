@@ -143,19 +143,16 @@ export function Portal() {
         return;
       }
 
-      // Handle both obfuscation shapes Supabase uses for existing accounts:
-      // either identities:[] on a returned user, or user:null with no session at all.
-      if (!signUpData?.user || signUpData?.user?.identities?.length === 0) {
-        setError('This email is already registered. Please sign in instead.');
-        setSubmitting(false);
-        return;
-      }
-
       setSubmitting(false);
 
       if (signUpData?.session) {
         navigate(dashboardPath);
       } else {
+        // With email confirmation enabled, Supabase may deliberately return an
+        // obfuscated user shape. A null user or empty identities array is not
+        // reliable proof that the email already exists. Treat every error-free
+        // response as accepted and use neutral copy so account existence is
+        // not exposed.
         setSubmitted(true);
         startCooldown();
       }
@@ -215,7 +212,7 @@ export function Portal() {
       <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
         {mode === 'forgot'
           ? <>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</>
-          : <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, then sign in below to reach your filing dashboard.</>}
+          : <>If this address can be registered, a confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account. If you already have an account, sign in instead.</>}
       </p>
 
       {resendSuccess && (
