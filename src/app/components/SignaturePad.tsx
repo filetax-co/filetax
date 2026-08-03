@@ -187,7 +187,20 @@ export function SignaturePad({
           height: CANVAS_CSS_HEIGHT,
           border: `1px ${isEmpty ? 'dashed' : 'solid'} var(--tf-border)`,
           borderRadius: '0.5rem',
-          background: 'var(--tf-input-bg, var(--tf-surface))',
+          // PAPER WHITE IN BOTH THEMES. This must not be themed.
+          //
+          // It was var(--tf-input-bg), which is dark in dark mode, while the
+          // stroke is a hardcoded #0F172A. Dark ink on a dark pad: the filer
+          // could not see what they were signing.
+          //
+          // The fix that looks obvious is to lighten the ink in dark mode. DO
+          // NOT DO THAT. The canvas bitmap is transparent and toDataURL sends
+          // it straight into the PDF, which is white paper, so a light stroke
+          // would produce an INVISIBLE SIGNATURE on an IRS filing the filer
+          // believed they had signed, and nothing would fail loudly. The ink
+          // colour is fixed by its destination, not by the theme, so the paper
+          // is what has to stay put.
+          background: '#FFFFFF',
           // Without this, a finger drag scrolls the page instead of drawing.
           touchAction: 'none',
           cursor: disabled ? 'not-allowed' : 'crosshair',
