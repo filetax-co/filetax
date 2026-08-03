@@ -80,6 +80,31 @@ function asNotFoundShell(html) {
     .replace(/<\/head>/i, '  <meta name="robots" content="noindex, nofollow" />\n  </head>');
 }
 
+// Same treatment as the 404 shell, and for the same reason. These files were
+// written as a VERBATIM copy of index.html, so /portal, /auth, /dashboard,
+// /intake, /catch-up and /reset-password each answered 200 carrying the
+// HOMEPAGE's title, description, canonical and og tags, with no noindex. That
+// is precisely the defect the 404 shell was patched to fix, left in place on
+// seven more URLs.
+//
+// robots.txt was not covering it either: it disallows /auth, /dashboard and
+// /portal only, so /intake, /catch-up and /reset-password were freely
+// crawlable duplicates of the homepage. Note that robots.txt and noindex do
+// not stack, a disallowed URL is never fetched, so the noindex on those three
+// is never read. The static tag is what actually works, which is why it goes
+// on all seven rather than growing the Disallow list.
+//
+// Title stays generic rather than per-route: usePageMeta sets the real one at
+// runtime, and the point here is only that seven URLs must not all claim to be
+// the homepage.
+function asPrivateShell(html) {
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, '<title>FileTax.co</title>')
+    .replace(/<link\s+rel="canonical"[^>]*>/i, '')
+    .replace(/<meta\s+property="og:(title|description|url)"[^>]*>/gi, '')
+    .replace(/<\/head>/i, '  <meta name="robots" content="noindex, nofollow" />\n  </head>');
+}
+
 try {
   console.log('postbuild: installing Chromium for prerender...');
   runNode(resolve(ROOT, 'node_modules', 'playwright', 'cli.js'), ['install', 'chromium']);
@@ -103,8 +128,8 @@ try {
   for (const route of PRIVATE_ROUTES) {
     const output = resolve(DIST, `${route}.html`);
     mkdirSync(dirname(output), { recursive: true });
-    writeFileSync(output, shellHtml, 'utf8');
-    console.log(`postbuild: dist/${route}.html written (unrendered shell, 200)`);
+    writeFileSync(output, asPrivateShell(shellHtml), 'utf8');
+    console.log(`postbuild: dist/${route}.html written (unrendered shell, 200, noindex)`);
   }
 
   console.log('postbuild: prerender complete.');

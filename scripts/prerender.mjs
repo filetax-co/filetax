@@ -128,8 +128,21 @@ function routeToOutputPath(route) {
   return join(DIST_DIR, `${route}.html`);
 }
 
+// Below this many characters inside #root, the SPA did not mount and what we
+// captured is the empty shell. 200 is comfortably under the smallest real page
+// and far above an empty div plus whitespace.
+const MIN_ROOT_CHARS = 200;
+
 async function prerenderRoute(page, route) {
   const url = `${BASE_URL}${route}`;
+
+  // Collected so a mount failure names its own cause. The failure this exists
+  // for, missing VITE_SUPABASE_* vars, is a throw at module load, and without
+  // this the build only ever said "empty shell" and left you guessing.
+  const pageErrors = [];
+  const onPageError = (err) => pageErrors.push(err.message);
+  page.on('pageerror', onPageError);
+
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 
   const isArticle = route.startsWith('/resources/') && route !== '/resources';
@@ -146,6 +159,29 @@ async function prerenderRoute(page, route) {
     }
   } else {
     await page.waitForTimeout(500);
+  }
+
+  // THE RATCHET. Without this the prerender happily wrote an unmounted page and
+  // reported success, so PRERENDER_STRICT=1 could not fail the build and the
+  // only thing that ever noticed was one grep in the CI workflow, one step too
+  // late. A build with no Supabase vars shipped a shell homepage and said it
+  // was fine. Same family as verifyPageSize and verifyPdfStructure: a check
+  // that reports no problems has probably not run.
+  const rootChars = await page.evaluate(
+    () => document.getElementById('root')?.innerHTML.trim().length ?? 0,
+  );
+  page.off('pageerror', onPageError);
+
+  if (rootChars < MIN_ROOT_CHARS) {
+    const cause = pageErrors.length
+      ? `\n  The page threw: ${pageErrors.join(' | ')}`
+      : '\n  No page error was raised, so suspect a router or render failure rather than a module-load throw.';
+    throw new Error(
+      `${route} did not mount: #root holds ${rootChars} characters, expected at least ${MIN_ROOT_CHARS}.` +
+        cause +
+        '\n  If it names a missing VITE_SUPABASE_ var, the build environment is short an env var;' +
+        '\n  src/lib/supabase.ts throws at module load and React never mounts.',
+    );
   }
 
   const html = await page.content();
