@@ -379,6 +379,31 @@ export const resolvePeriod = (filing: NormalizedFiling, taxYear: number): Resolv
   };
 };
 
+/**
+ * A timely Form 7004 suppresses a reasonable-cause letter only while its
+ * six-month extension is still open. Once that extended deadline passes, an
+ * opted-in late filer needs the letter even though extension_filed remains true.
+ */
+export const shouldIncludeReasonableCause = (
+  optedIn: boolean,
+  extensionFiled: boolean,
+  periodEndISO: string,
+  todayISO = new Date().toISOString().slice(0, 10),
+): boolean => {
+  if (!optedIn) return false;
+  if (!extensionFiled) return true;
+
+  const [year, month, day] = periodEndISO.split('-').map(Number);
+  if (!year || !month || !day) {
+    throw new Error(`shouldIncludeReasonableCause: bad period end "${periodEndISO}"`);
+  }
+
+  // Form 1120 is due on the 15th day of the fourth month after period end.
+  // Form 7004 extends that deadline by six months.
+  const extended = new Date(Date.UTC(year, month + 9, 15)).toISOString().slice(0, 10);
+  return todayISO > extended;
+};
+
 // ─── transaction aggregation ────────────────────────────────────────────────────────────
 
 export interface AggregatedTransactions {
@@ -2356,11 +2381,15 @@ export const generateFilingPackage = async (
 
   // A reasonable-cause letter is included when the filing opted in, honoring
   // either the canonical include_rcl flag or the older include_reasonable_cause
-  // column, but NOT when a Form 7004 extension was filed on time (then the
-  // year is not late, so no RCL applies).
+  // column. A Form 7004 suppresses the letter only while its extension is
+  // still open. An expired extension is late and may need reasonable cause.
   const optedRCL =
     !!filing.include_rcl || (filing as unknown as Record<string, unknown>)['include_reasonable_cause'] === true;
-  const hasRCL = optedRCL && filing.extension_filed !== true;
+  const hasRCL = shouldIncludeReasonableCause(
+    optedRCL,
+    filing.extension_filed === true,
+    period.endISO,
+  );
   const instructions = await buildInstructionsPage(filing, period, {
     isLate: hasRCL, hasRCL, formCount: yd.formCount,
   });

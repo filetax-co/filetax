@@ -172,6 +172,30 @@ check('fiscal June year-end is due 15 October',
 check('fiscal September year-end crosses into the next calendar year',
   filingDueDates('2025-09-30'), { original: '2026-01-15', extended: '2026-07-15' });
 
+// Cover every possible fiscal year-end month. This table is intentionally
+// explicit so the test does not reproduce the implementation's date arithmetic.
+const ALL_FISCAL_MONTHS = [
+  ['2025-01-31', '2025-05-15', '2025-11-15'],
+  ['2025-02-28', '2025-06-15', '2025-12-15'],
+  ['2025-03-31', '2025-07-15', '2026-01-15'],
+  ['2025-04-30', '2025-08-15', '2026-02-15'],
+  ['2025-05-31', '2025-09-15', '2026-03-15'],
+  ['2025-06-30', '2025-10-15', '2026-04-15'],
+  ['2025-07-31', '2025-11-15', '2026-05-15'],
+  ['2025-08-31', '2025-12-15', '2026-06-15'],
+  ['2025-09-30', '2026-01-15', '2026-07-15'],
+  ['2025-10-31', '2026-02-15', '2026-08-15'],
+  ['2025-11-30', '2026-03-15', '2026-09-15'],
+  ['2025-12-31', '2026-04-15', '2026-10-15'],
+];
+for (const [periodEnd, original, extended] of ALL_FISCAL_MONTHS) {
+  check(
+    `${periodEnd.slice(5, 7)} fiscal month due dates`,
+    filingDueDates(periodEnd),
+    { original, extended },
+  );
+}
+
 // A year beyond the old table must produce real dates rather than being treated
 // as on time for ever, which is what the missing-key branch used to do.
 check('a year past the end of the old table still has a deadline',

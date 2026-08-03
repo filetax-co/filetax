@@ -34,7 +34,10 @@ globalThis.fetch = async (url, init) => {
   return realFetch(url, init);
 };
 
-const { generateFilingPackage } = await import('../src/lib/pdfGenerator.ts');
+const {
+  generateFilingPackage,
+  shouldIncludeReasonableCause,
+} = await import('../src/lib/pdfGenerator.ts');
 const { PDFDocument } = await import('pdf-lib');
 
 let failures = 0;
@@ -95,6 +98,63 @@ console.log('\n— scenarios 12/13/16: extension filed emits Form 7004 —');
     { transaction_type: 'capital_contribution', direction: 'received', amount_usd: 1000 },
   ], 2025);
   check('form7004 absent when no extension', !pkg2.form7004);
+}
+
+console.log('\n- reasonable cause with Form 7004 -');
+{
+  const EXTENDED_DEADLINES = [
+    ['2025-01-31', '2025-11-15'],
+    ['2025-02-28', '2025-12-15'],
+    ['2025-03-31', '2026-01-15'],
+    ['2025-04-30', '2026-02-15'],
+    ['2025-05-31', '2026-03-15'],
+    ['2025-06-30', '2026-04-15'],
+    ['2025-07-31', '2026-05-15'],
+    ['2025-08-31', '2026-06-15'],
+    ['2025-09-30', '2026-07-15'],
+    ['2025-10-31', '2026-08-15'],
+    ['2025-11-30', '2026-09-15'],
+    ['2025-12-31', '2026-10-15'],
+  ];
+  for (const [periodEnd, extended] of EXTENDED_DEADLINES) {
+    check(
+      `${periodEnd.slice(5, 7)} extension is active on its deadline`,
+      !shouldIncludeReasonableCause(true, true, periodEnd, extended),
+    );
+    const dayAfter = new Date(`${extended}T00:00:00Z`);
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+    check(
+      `${periodEnd.slice(5, 7)} extension is late after its deadline`,
+      shouldIncludeReasonableCause(true, true, periodEnd, dayAfter.toISOString().slice(0, 10)),
+    );
+  }
+
+  const activeExtension = await generateFilingPackage(
+    { ...baseFiling, tax_year: 2025, extension_filed: true, include_rcl: true },
+    [],
+    2025,
+  );
+  check(
+    'active 2025 extension suppresses reasonable cause letter',
+    !activeExtension.reasonableCauseLetter,
+  );
+
+  const expiredExtension = await generateFilingPackage(
+    {
+      ...baseFiling,
+      tax_year: 2024,
+      extension_filed: true,
+      include_rcl: true,
+      include_reasonable_cause: true,
+      reasonable_cause_reasons: ['discovered_late'],
+    },
+    [],
+    2024,
+  );
+  check(
+    'expired 2024 extension includes reasonable cause letter',
+    !!expiredExtension.reasonableCauseLetter,
+  );
 }
 
 console.log('\n— scenarios 4/14: no transactions still generates —');
