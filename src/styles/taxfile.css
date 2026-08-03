@@ -5,6 +5,7 @@
   --tf-nav:       #0F172A;
   --tf-text:      #0F172A;
   --tf-muted:     #64748B;
+  --tf-text-muted: var(--tf-muted);
   --tf-accent:    #0284C7;
   --tf-accent-h:  #0369A1;
   --tf-success:   #059669;
@@ -12,6 +13,32 @@
   --tf-error-h:   #931515;
   --tf-cream:     #F4EFE6;
   --tf-border:    #E2E8F0;
+
+  /* Extended semantic tokens used by the portal and intake wizard. */
+  --tf-accent-rgb:    2, 132, 199;
+  --tf-accent-soft:   #93C5FD;
+  --tf-on-accent:     #FFFFFF;
+  --tf-offset:        #F1F5F9;
+  --tf-input-bg:      #FFFFFF;
+
+  --tf-error-rgb:     220, 38, 38;
+  --tf-error-bg:      #FEF2F2;
+  --tf-error-border:  #FECACA;
+  --tf-error-text:    #991B1B;
+
+  --tf-success-rgb:   22, 163, 74;
+  --tf-warn:          #D97706;
+  --tf-warn-rgb:      217, 119, 6;
+
+  --tf-banner-green-bg:     #F0FDF4;
+  --tf-banner-green-border: #86EFAC;
+  --tf-banner-green-text:   #166534;
+  --tf-banner-amber-bg:     #FFFBEB;
+  --tf-banner-amber-border: #FBBF24;
+  --tf-banner-amber-text:   #92400E;
+  --tf-banner-red-bg:       #FEF2F2;
+  --tf-banner-red-border:   #FCA5A5;
+  --tf-banner-red-text:     #991B1B;
 }
 [data-theme="dark"] {
   --tf-bg:        #020617;
@@ -20,6 +47,24 @@
   --tf-muted:     #94A3B8;
   --tf-cream:     #1E1A14;
   --tf-border:    #1E293B;
+
+  --tf-accent-soft:   #1E3A5F;
+  --tf-offset:        #1E293B;
+  --tf-input-bg:      #0B1220;
+
+  --tf-error-bg:      rgba(220, 38, 38, 0.14);
+  --tf-error-border:  rgba(220, 38, 38, 0.40);
+  --tf-error-text:    #FCA5A5;
+
+  --tf-banner-green-bg:     rgba(22, 163, 74, 0.12);
+  --tf-banner-green-border: rgba(134, 239, 172, 0.30);
+  --tf-banner-green-text:   #86EFAC;
+  --tf-banner-amber-bg:     rgba(217, 119, 6, 0.12);
+  --tf-banner-amber-border: rgba(251, 191, 36, 0.30);
+  --tf-banner-amber-text:   #FBBF24;
+  --tf-banner-red-bg:       rgba(220, 38, 38, 0.12);
+  --tf-banner-red-border:   rgba(252, 165, 165, 0.30);
+  --tf-banner-red-text:     #FCA5A5;
 }
 html, body {
   font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -124,6 +169,53 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: no-preference) {
   a, button {
     transition: color 0.15s, background-color 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+}
+/* Selectable portal chips, including the multi-year year picker. */
+.tf-chip {
+  padding: 0.75rem 0.5rem;
+  border-radius: 0.625rem;
+  border: 1.5px solid var(--tf-border);
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 1rem;
+  min-height: 48px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease,
+              box-shadow 0.18s ease, transform 0.18s ease;
+}
+.tf-chip:hover:not(:disabled) {
+  border-color: var(--tf-accent-soft);
+  background: var(--tf-offset);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+}
+.tf-chip:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.tf-chip--on {
+  border-color: var(--tf-accent);
+  background: rgba(var(--tf-accent-rgb), 0.10);
+  color: var(--tf-accent);
+}
+.tf-chip--on:hover:not(:disabled) {
+  border-color: var(--tf-accent);
+  background: rgba(var(--tf-accent-rgb), 0.16);
+}
+.tf-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-chip {
+    transition: none;
+  }
+  .tf-chip:hover:not(:disabled) {
+    transform: none;
+    box-shadow: none;
   }
 }
 /* Short answer box for articles */
