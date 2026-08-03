@@ -987,7 +987,6 @@ export function Intake() {
   const ownerTaxIdInfo = taxIdInfoFor(ownerCountryRes);
   const ownerTaxIdWarning = taxIdWarning(ownerCountryRes, ownerForeignTaxId);
   const rpTaxIdInfo = taxIdInfoFor(rpDraft.country_residence);
-  const rpTaxIdWarning = taxIdWarning(rpDraft.country_residence, rpDraft.foreign_tax_id);
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
@@ -3657,11 +3656,6 @@ export function Intake() {
                       required
                     >
                       <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder={taxIdPlaceholder(rpDraft.country_residence)} />
-                      {rpTaxIdWarning && (
-                        <div style={{ marginTop: '0.4rem', fontSize: '0.8125rem', color: 'var(--tf-warn)' }}>
-                          {rpTaxIdWarning} This format check is guidance only and will not stop you from continuing.
-                        </div>
-                      )}
                     </Field>
                     <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
