@@ -785,7 +785,7 @@ export const TX_CATEGORIES: {
     // Without this, a filer with a cost sharing arrangement picks "Other" and
     // files exactly the return the removed cards used to produce: line 21 or 35
     // with Part VII question 39 answered No and no Part VIII attached.
-    note: 'Cost sharing arrangements and platform contribution transactions are not filed here. They have to be reported in Part VIII of Form 5472, which needs a professional to prepare. Email hello@filetax.co if you have one, and do not record it as "Other".',
+    note: 'Cost sharing arrangements and platform contribution transactions are not filed here. They have to be reported in Part VIII of Form 5472, which needs a professional to prepare. Email support@filetax.co if you have one, and do not record it as "Other".',
   },
   {
     key: 'structural',

@@ -1053,7 +1053,7 @@ function SavedCompanies({
                     <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>
                       Correcting an EIN here does not change a filing you have already made. If a
                       return went to the IRS with the wrong EIN, email{' '}
-                      <a href="mailto:hello@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>.
+                      <a href="mailto:support@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>support@filetax.co</a>.
                     </p>
                     {rowError && (
                       <p style={{ color: 'var(--tf-error-text)', fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.55 }}>{rowError}</p>

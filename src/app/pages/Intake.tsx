@@ -38,7 +38,7 @@ import {
   taxIdTooltip,
   taxIdWarning,
 } from './intake/countryTaxIds';
-import { PRICE_PER_YEAR, PRICE_RCL } from '../../lib/pricing';
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -962,6 +962,21 @@ export function Intake() {
   // break every save on the page rather than losing one answer. The loaded row
   // is the probe: select('*') returns the key when the column exists.
   const [supportsEarlierReturns, setSupportsEarlierReturns] = useState(false);
+  /**
+   * IRS fax delivery, the $9 add-on.
+   *
+   * `include_irs_fax` has existed on `filings` since the schema was written, and
+   * BOTH edge functions already read it: `create-checkout-session` adds the fee
+   * and `verify-payment` re-derives the same total. The generator has supported
+   * it just as long, through `generateFilingPackage(..., { fax: true })`. The
+   * only missing link was intake, which never set the column, so the flag was
+   * false on every filing ever made and the add-on could not be bought.
+   *
+   * Charged ONCE PER JOB, not per year, which is why the label says so on a
+   * catch-up: the fee covers the transmission, and a catch-up is transmitted
+   * together.
+   */
+  const [includeIrsFax, setIncludeIrsFax] = useState(false);
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
   // Date the LLC was dissolved with its state of formation. This is what ends
@@ -1286,6 +1301,7 @@ export function Intake() {
         ((f as any).include_reasonable_cause ?? (f as any).include_rcl) === true,
       );
       setReasonableCauseReasons((f as any).reasonable_cause_reasons ?? []);
+      setIncludeIrsFax((f as any).include_irs_fax === true);
       setOwnerName(f.owner_full_name ?? '');
       setOwnerCountry((f as any).owner_country ?? f.owner_primary_country ?? '');
       setOwnerCountryRes(f.owner_country_residence ?? '');
@@ -1551,6 +1567,9 @@ export function Intake() {
       include_reasonable_cause: rclApplies,
       reasonable_cause_reasons: rclApplies ? reasonableCauseReasons : [],
       include_rcl: rclApplies,
+      // Step 5, delivery. Read by create-checkout-session and re-derived by
+      // verify-payment, so this one boolean is what the filer is charged for.
+      include_irs_fax: includeIrsFax,
       // Step 2, owner
       owner_full_name: ownerName.trim() || null,
       owner_country: ownerCountry.trim() || null,
@@ -1902,7 +1921,7 @@ export function Intake() {
           `${where} is a loan between the LLC and ${label}, who is not the owner. A loan with anyone `
           + `other than the owner has to be answered in Part VII of Form 5472, which we do not prepare, `
           + `and that stays true even if no interest was charged. Reassign it to ${allPartyLabels[0]} if `
-          + `the money actually moved between the LLC and its owner, or email hello@filetax.co.`,
+          + `the money actually moved between the LLC and its owner, or email support@filetax.co.`,
         );
       }
 
@@ -4664,6 +4683,57 @@ export function Intake() {
               <div style={reviewGridStyle}>
                 <SummaryRow label="Standard owner-services statement included" value={partViManagerial ? 'Yes' : 'No'} />
               </div>
+            </section>
+
+            {/* ── Delivery ──────────────────────────────────────────────────
+                In REVIEW rather than step 1b, because this is not a fact about
+                the tax year, it is a choice about what happens to the finished
+                package. It sits with the other things being bought, next to the
+                price the filer is about to pay.
+
+                Locked after payment along with everything else: `isPaidLocked`
+                hides the control and leaves the answer visible, because
+                transmission is what the $9 bought and re-deciding it afterwards
+                would mean either an unpaid fax or a second charge. */}
+            <section style={sectionStyle}>
+              <h3 style={sectionLabelStyle}>Delivery</h3>
+              {isPaidLocked ? (
+                <div style={reviewGridStyle}>
+                  <SummaryRow label="IRS fax transmission" value={includeIrsFax ? 'Yes' : 'No, download and send it yourself'} />
+                </div>
+              ) : (
+                <>
+                  <label className="confirm-check-row" style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeIrsFax}
+                      onChange={(e) => setIncludeIrsFax(e.target.checked)}
+                    />
+                    <span>
+                      <span style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: '0.9375rem' }}>
+                        Fax my completed forms to the IRS for me (+${PRICE_FAX})
+                      </span>
+                      <span style={{ display: 'block', color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.6, marginTop: '0.25rem' }}>
+                        {/* Says what they get and what is still theirs to do.
+                            These forms cannot be e-filed, so without this the
+                            filer prints and mails to Ogden themselves, and the
+                            page should say so rather than implying fax is the
+                            only route. */}
+                        We transmit the package and send you the confirmation. Charged once
+                        {jobId ? ' for the whole catch-up, however many years it covers' : ' per filing'}.
+                        Without it you download the forms and mail them yourself; either way these
+                        forms cannot be filed electronically.
+                      </span>
+                    </span>
+                  </label>
+                  {includeIrsFax && (
+                    <div style={infoBoxStyle}>
+                      We fax after your forms are generated, and you keep the transmission
+                      confirmation as your proof of filing.
+                    </div>
+                  )}
+                </>
+              )}
             </section>
 
             {noTransactionsConfirmed && (

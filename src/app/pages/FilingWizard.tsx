@@ -506,6 +506,17 @@ export default function FilingWizard() {
                       desc="CPA-authored statement asking the IRS to abate the late-filing penalty, one letter covering every late year"
                     />
                   )}
+                  {/* Same rule as the letter above, and the same defect avoided:
+                      the filer is charged for this, so it is named on the screen
+                      where they pay. It is a service rather than a document, so
+                      it sits last, after the things that end up in the PDF. */}
+                  {filing?.include_irs_fax && (
+                    <IncludedItem
+                      icon=""
+                      label="IRS Fax Transmission"
+                      desc="We fax the completed package to the IRS and send you the confirmation, charged once however many years it covers"
+                    />
+                  )}
                 </ul>
                 <p style={{
                   marginTop: '1rem',
