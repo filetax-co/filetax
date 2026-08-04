@@ -247,8 +247,22 @@ function taxPeriodWindow(
 
 /**
  * The period the entity actually existed within the nominal calendar/fiscal
- * window. This mirrors pdfGenerator.resolvePeriod so dates shown during intake
- * are the dates that will be printed on the forms.
+ * window, so the dates shown during intake are the dates that get printed.
+ *
+ * This has to agree with pdfGenerator.resolvePeriod EXACTLY, including the
+ * comparison operators. Both ends are gated the same way there:
+ *
+ *   begin  short-year start for an initial return, gated on the same
+ *          isInitialReturn() this page persists as initial_return, and taken
+ *          only when the formation date is strictly LATER than the nominal
+ *          start (resolvePeriod uses `incorpISO > nominalBegin`)
+ *   end    short-year end for a final return, taken only when the dissolution
+ *          date falls strictly inside the period (`> begin && < nominalEnd`),
+ *          so a closure on the first or last day leaves the period unchanged
+ *          rather than printing a one-day year
+ *
+ * There is no initial-return checkbox: it is derived from the formation date,
+ * which is why begin needs no user answer.
  */
 function effectiveTaxPeriodWindow(
   taxYear: string,
@@ -259,17 +273,16 @@ function effectiveTaxPeriodWindow(
   dissolutionDate: string,
 ): { begin: string; end: string } {
   const nominal = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
+  const initial = isInitialReturn(incorporationDate, taxYear, isFiscalYear ? fiscalEndMonth : '');
   const begin =
-    incorporationDate
-    && incorporationDate >= nominal.begin
-    && incorporationDate <= nominal.end
+    initial && incorporationDate && incorporationDate > nominal.begin
       ? incorporationDate
       : nominal.begin;
   const end =
     finalReturn
     && dissolutionDate
-    && dissolutionDate >= begin
-    && dissolutionDate <= nominal.end
+    && dissolutionDate > begin
+    && dissolutionDate < nominal.end
       ? dissolutionDate
       : nominal.end;
   return { begin, end };
@@ -441,8 +454,15 @@ function getStepOrder(show1b: boolean): IntakeStep[] {
 /**
  * Risk tier for a transaction type against a particular counterparty.
  *
- * Owner dealings can be routine bookkeeping entries while the same transaction
- * with another related party can need closer professional review.
+ * The tier is not a property of the type alone. A domestic disregarded entity
+ * and its sole owner are the same taxpayer: their dealings are not recognised
+ * for income tax and are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
+ * makes the LLC a corporation for section 6038A. So an owner loan is a
+ * bookkeeping entry, while the identical type against a non-owner related
+ * party is a real loan carrying interest and sourcing consequences. Tiering by
+ * type alone over-warns the common case and under-warns the dangerous one.
+ *
+ * `isOwner` is true for related party index 0, which is always the filer.
  */
 function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null {
   const found = TX_TYPES.find((t) => t.value === txType);
@@ -664,7 +684,12 @@ function AddressFields({
   // Two-column rows: row 1 = street (full width), row 2 = city + postal code,
   // row 3 = country + state/region. Country comes first because it determines
   // whether the region is a required US state or an optional foreign region.
-  const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' };
+  //
+  // minmax(0, 1fr), not 1fr. A grid track's automatic minimum is its content's
+  // min-content size, and for a <select> that is its LONGEST OPTION: the
+  // country list contains names long enough to blow past half a 390px phone,
+  // so `1fr 1fr` here was what pushed the whole intake page sideways.
+  const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '1.25rem' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -928,6 +953,16 @@ export function Intake() {
     finalReturn && dateOfClosure && entityDOI && dateOfClosure < entityDOI
       ? `The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) cannot be before the LLC was formed (${formatDateMMDDYYYY(entityDOI)}).`
       : null;
+  // Floor for the dissolution picker: the formation date when the LLC was
+  // formed part way through this period, otherwise the period start. Clamped
+  // to the period end so a formation date entered outside this year (a common
+  // catch-up typo) cannot produce min > max, which leaves the whole picker
+  // unusable with nothing on screen to explain why. Validation still catches
+  // the bad formation date on submit.
+  const dissolutionMin =
+    entityDOI && entityDOI > nominalTaxPeriod.begin && entityDOI <= nominalTaxPeriod.end
+      ? entityDOI
+      : nominalTaxPeriod.begin;
 
   // Lateness is measured against THIS filing's period end, so it has to be
   // derived after the fiscal-year answers above rather than beside taxYear.
@@ -1026,6 +1061,11 @@ export function Intake() {
   // Once a filing has been completed at least once (submitted / paid), every
   // step is freely navigable, from step 1 the user can jump straight to step 5.
   const [completedOnce, setCompletedOnce] = useState(false);
+  // Has the filer passed through Related Parties? An empty list is valid, so
+  // this is the only way to tell "nothing to add" apart from "not looked at
+  // yet". Seeded true for a filing already saved past step 3, so reopening a
+  // finished filing does not show that section as unreviewed.
+  const [relatedPartiesReviewed, setRelatedPartiesReviewed] = useState(false);
   // Payment-integrity state: a paid filing locks only the identity fields that
   // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
@@ -1161,6 +1201,11 @@ export function Intake() {
       // A filing that has moved past 'draft' has been through every step once,
       // so allow free step navigation on return visits.
       setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
+      // Anything saved past step 3, or any filing that has already been through
+      // the whole wizard, has had Related Parties in front of the filer.
+      setRelatedPartiesReviewed(
+        f.status !== 'draft' || Number((f as any).current_step ?? 0) > 3,
+      );
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -1526,13 +1571,14 @@ export function Intake() {
       errs = showRpForm ? ['open'] : validateStep3();
       // An empty related-party list is valid because the foreign owner is
       // already the first related party on Form 5472. It is not, however,
-      // evidence that the user has reviewed this optional section. Keep the
-      // dot neutral until they continue past it.
-      if (
-        errs.length === 0
-        && relatedParties.length === 0
-        && stepOrder.indexOf(step) <= stepOrder.indexOf(3)
-      ) {
+      // evidence that the user has reviewed this optional section, so the dot
+      // stays neutral until they continue past it.
+      //
+      // "Reviewed" is sticky, not a comparison against the current step. Keyed
+      // on `step` it flipped back to incomplete every time the filer scrolled
+      // up, and a finished filing reopened from the dashboard (which starts at
+      // step 1) showed this section as incomplete.
+      if (errs.length === 0 && relatedParties.length === 0 && !relatedPartiesReviewed) {
         errs = ['not reviewed'];
       }
     }
@@ -1621,8 +1667,11 @@ export function Intake() {
           errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the ${taxYear} tax period begins (${periodLabel}). An LLC cannot be dissolved before the period it is filing for. Check the date, or file the final return for the year the LLC actually closed.`);
         } else if (dateOfClosure > end) {
           errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return, file the final return for the later year instead.`);
-        } else if (entityDOI && dateOfClosure < entityDOI) {
-          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the LLC was formed (${formatDateMMDDYYYY(entityDOI)}). Check both dates.`);
+        } else if (dissolutionDateError) {
+          // One wording, from one place. The field renders this same string
+          // inline as the filer types; pushing a differently-worded version of
+          // the same complaint into the summary read as two separate problems.
+          errs.push(dissolutionDateError);
         }
       }
     }
@@ -2050,6 +2099,7 @@ export function Intake() {
     else if (s === 4) errs = showRpForm ? ['Finish or cancel the related party form before continuing.'] : validateStep4();
     setStepErrors(errs);
     if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (s === 3) setRelatedPartiesReviewed(true);
     if (!saving && (filingId || llcName.trim())) await saveAll();
     const idx = stepOrder.indexOf(s);
     const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
@@ -2264,6 +2314,10 @@ export function Intake() {
       // from the database product cart and therefore from the invoice.
       const savedFilingId = await saveAll();
       if (!savedFilingId) return;
+      // saveAll runs persistPatch, whose finally clears `saving`. The submit
+      // button is disabled on that flag, so without this it went live again
+      // mid-submit and a second tap ran the whole thing twice.
+      setSaving(true);
 
       // Save transactions before navigating.
       const saved = await saveTransactions(filingId);
@@ -2517,7 +2571,13 @@ export function Intake() {
     setNoTransactionsConfirmed(Boolean(s.no_transactions_confirmed ?? yearOne?.no_transactions_confirmed ?? false));
     setPartViManagerial(s.part_vi_managerial ?? true);
 
-    // Clear anything left over from a previous scenario.
+    // Clear anything left over from a previous scenario. cat3Acknowledged
+    // belongs here: left in place, a scenario written to exercise the tier-3
+    // gate passed on an acknowledgment ticked by the PREVIOUS scenario.
+    setCat3Acknowledged(false);
+    // A scenario is a fully-populated filing, so its related-party section
+    // counts as reviewed, empty or not.
+    setRelatedPartiesReviewed(true);
     setStepErrors([]);
     setRpErrors([]);
     setTxErrors([]);
@@ -2571,6 +2631,12 @@ export function Intake() {
           color: var(--tf-text, #111);
           outline: none;
           box-sizing: border-box;
+          /* A field never widens its column. width: 100% is not enough inside
+             a grid or flex parent, where the automatic minimum size is the
+             control's min-content: for a select that is its longest option,
+             and for a date input it is the browser's fixed picker width. */
+          min-width: 0;
+          max-width: 100%;
           transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
         /* Custom dropdown chevron. The inset matches the field's 0.75rem left
@@ -3300,15 +3366,14 @@ export function Intake() {
                         type="date"
                         value={dateOfClosure}
                         onChange={(e) => setDateOfClosure(e.target.value)}
-                        min={
-                          entityDOI && entityDOI > nominalTaxPeriod.begin
-                            ? entityDOI
-                            : nominalTaxPeriod.begin
-                        }
+                        min={dissolutionMin}
                         max={nominalTaxPeriod.end}
                         aria-invalid={dissolutionDateError ? 'true' : undefined}
                       />
-                      {dissolutionDateError && (
+                      {/* Hidden while the summary above is already carrying
+                          this exact message, so a failed submit shows it once,
+                          not twice. */}
+                      {dissolutionDateError && !stepErrors.includes(dissolutionDateError) && (
                         <span className="field-error" role="alert">{dissolutionDateError}</span>
                       )}
                     </Field>
@@ -3535,15 +3600,20 @@ export function Intake() {
                     value={ownerCountry}
                     onChange={(e) => {
                       const nextCountry = e.target.value;
-                      const previousCountry = ownerCountry;
                       setOwnerCountry(nextCountry);
-                      // On the first selection, use the same country for all
-                      // three answers. If the user later customises either one,
-                      // changing the business country must preserve that choice.
-                      setOwnerCountryRes((current) =>
-                        !current || current === previousCountry ? nextCountry : current);
-                      setOwnerCountryCitizenship((current) =>
-                        !current || current === previousCountry ? nextCountry : current);
+                      // Prefill the other two country answers ONLY while they
+                      // are still blank. For most owners all three are the same
+                      // country, so filling them saves two lookups through a
+                      // 200-item list.
+                      //
+                      // It is deliberately not a live mirror: once a value is
+                      // there, whether the filer typed it or it came from their
+                      // saved profile, changing the business country leaves it
+                      // alone. Residence and citizenship print on Form 5472 and
+                      // decide which foreign tax ID is asked for, so they are
+                      // not ours to rewrite behind the filer's back.
+                      setOwnerCountryRes((current) => current || nextCountry);
+                      setOwnerCountryCitizenship((current) => current || nextCountry);
                     }}
                   >
                     <option value="">Select country</option>
@@ -3866,6 +3936,9 @@ export function Intake() {
                   value={txRelatedPartyIdx}
                   onChange={(e) => {
                     setTxRelatedPartyIdx(Number(e.target.value));
+                    // The tier is resolved against the counterparty, so changing
+                    // it can move this transaction from tier 1 to tier 3. Drop
+                    // any acknowledgment given for the previous pairing.
                     setCat3Acknowledged(false);
                   }}
                 >
@@ -4045,6 +4118,13 @@ export function Intake() {
                   </div>
                 )}
 
+                {/* Tier note, revealed only AFTER a transaction type is picked, so we
+                    never pre-signal complexity in the picker. Driven by
+                    TX_TYPES.category: tier 1 (routine) shows no banner, tier 2 gets
+                    an advisory note with no gate, tier 3 gets a warning AND blocks
+                    the add until acknowledged. The tier is resolved against the
+                    chosen counterparty, so the same type can sit in a different
+                    tier for the owner than for a non-owner related party. */}
                 {txCategory === 2 && (
                   <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
                     <strong>Worth a second look.</strong> We can prepare this from your answers, but this type is one where the tax treatment depends on the details. If you are unsure how it should be described, a CPA or tax adviser can confirm it before you file.

@@ -40,7 +40,25 @@ function humanDate(iso: string): string {
 
 type DueState = { label: string; tone: 'ok' | 'warn' | 'late'; due: string } | null;
 
-/** Compute the deadline state, using the extension date only for a filed 7004. */
+/**
+ * Does this filing have an extension behind it?
+ *
+ * extension_filed is the owner's own answer in intake step 1b. include_7004 is
+ * a legacy column nothing in the app writes any more, but older rows carry it
+ * and FilingWizard still puts a 7004 in the package for them, so the deadline
+ * shown here has to agree with the package the same filing hands over.
+ */
+function hasExtension(f: Filing): boolean {
+  return f.extension_filed === true || f.include_7004 === true;
+}
+
+/**
+ * Compute the deadline state, using the extension date only for a filed 7004.
+ *
+ * Without a 7004 the extended date is not this filer's deadline at all, so
+ * showing "Extension due 15 October" to someone who never filed one told them
+ * they had six months they did not have.
+ */
 function dueState(
   taxYear: string | null | undefined,
   extensionFiled: boolean,
@@ -136,7 +154,13 @@ function Pill({
         lineHeight: 1,
         letterSpacing: uppercase ? '0.04em' : '0.01em',
         textTransform: uppercase ? 'uppercase' : 'none',
-        whiteSpace: 'nowrap',
+        // A pill never widens the page. "Extension due October 15, 2026" is
+        // wider than the text column on a 390px phone; nowrap plus no cap let
+        // it run under the action button and made the whole document scroll
+        // sideways. It wraps rather than truncates: a half-shown deadline is
+        // worse than a two-line pill.
+        maxWidth: '100%',
+        whiteSpace: 'normal',
       }}
     >
       {children}
@@ -380,7 +404,7 @@ export function Dashboard() {
               // marketing clock, which had this bug in its own form.
               const pending = filings
                 .filter((f) => BUCKET_OF[f.status] !== 'done')
-                .map((f) => dueState(f.tax_year, f.extension_filed === true))
+                .map((f) => dueState(f.tax_year, hasExtension(f)))
                 .filter((d): d is NonNullable<DueState> => !!d)
                 .sort((a, b) => a.due.localeCompare(b.due));
               const overdue = pending.filter((d) => d.tone === 'late')[0];
@@ -634,7 +658,7 @@ function DeleteCardButton({
 function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted')
-    ? dueState(f.tax_year, f.extension_filed === true)
+    ? dueState(f.tax_year, hasExtension(f))
     : null;
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
@@ -654,7 +678,11 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
         flexWrap: 'wrap',
       }}
     >
-      <div style={{ minWidth: 0, flex: 1 }}>
+      {/* 1 1 220px, not flex: 1. With flex: 1 the text column shrank to nothing
+          rather than letting the card wrap, so on a phone the status and due
+          pills were squeezed under the action button instead of the button
+          dropping to its own line. */}
+      <div style={{ minWidth: 0, flex: '1 1 220px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}

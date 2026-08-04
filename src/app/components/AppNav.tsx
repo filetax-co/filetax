@@ -152,7 +152,7 @@ export function AppNav() {
           {/* Only shown when it is somewhere to go. */}
           {!onDashboard && (
             <Link
-              className="app-nav__text-link"
+              className="app-nav__text-link app-nav__text-link--dashboard"
               to="/dashboard"
               style={{
                 color: ON_HEADER,

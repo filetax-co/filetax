@@ -74,10 +74,36 @@ html, body {
 }
 
 /*
- * The portal masthead has more controls than fit at their desktop spacing on
- * a phone. If its flex row becomes wider than the viewport, iOS Safari makes
- * the entire document horizontally scrollable, which leaves every wizard card
- * looking cropped after even a small sideways swipe.
+ * NOTHING WIDENS THE DOCUMENT.
+ *
+ * A single element wider than the viewport makes the whole page scroll
+ * sideways on a phone, and because the masthead is sticky at 100% of the
+ * viewport it stays put while the content slides out from under it. The result
+ * is a wizard card that looks cropped after an accidental swipe, with no way
+ * for the filer to tell what they are missing.
+ *
+ * This is a floor, not a fix: the offenders are corrected where they live
+ * (the address grid, the dashboard pills). It is here so the next wide element
+ * added anywhere in the portal degrades into a clipped edge rather than a page
+ * that slides around.
+ */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/*
+ * The portal masthead carries five controls at desktop spacing. On a 390px
+ * phone they no longer fit, so the row is tightened rather than thinned out:
+ *
+ *   - the 44x44 icon targets are KEPT. They are the minimum comfortable touch
+ *     size, and the audience is largely phone-only
+ *   - Help is KEPT. AppNav's own reasoning is that help must be visible rather
+ *     than buried, and that panel is the only place carrying "your progress is
+ *     saved" and the support address at the moment a filer panics
+ *   - the "Dashboard" TEXT link is what goes, and only here. The logo beside
+ *     it already goes to the dashboard and is a bigger target, so this is the
+ *     one control on the row that is genuinely redundant
  */
 @media (max-width: 480px) {
   .app-nav__inner {
@@ -95,17 +121,12 @@ html, body {
     font-size: 0.8125rem !important;
   }
 
-  .app-nav__icon-button {
-    width: 40px !important;
-  }
-
   .app-nav__account {
     padding-inline: 0.125rem !important;
   }
 
-  /* Help remains available from support links in the page/footer. Keeping all
-     five masthead actions is what forces a 390px phone into horizontal scroll. */
-  .app-nav__help {
+  /* Duplicated by the logo, which sits 8px to its left. */
+  .app-nav__text-link--dashboard {
     display: none;
   }
 }
