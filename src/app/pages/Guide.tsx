@@ -128,9 +128,10 @@ const STAGES: Stage[] = [
       { slug: "form-5472-filing-checklist", label: "What you need before you start" },
     ],
     note:
-      "Your answers here are never stored and never carried into the portal. That is why the " +
-      "intake asks for your LLC details again rather than pre-filling them, and it is a " +
-      "deliberate trade: nothing to leak from a screen you may have only been browsing.",
+      "Your answers here are never stored and never carried into the portal, so there is " +
+      "nothing to leak from a screen you may have only been browsing. Your first intake asks " +
+      "for your LLC details from scratch. After that we pre-fill them from your last filing " +
+      "for you to review.",
   },
   {
     id: "account",
