@@ -245,12 +245,54 @@ function taxPeriodWindow(
   return { begin: `${taxYear}-01-01`, end: `${taxYear}-12-31` };
 }
 
+/**
+ * The period the entity actually existed within the nominal calendar/fiscal
+ * window. This mirrors pdfGenerator.resolvePeriod so dates shown during intake
+ * are the dates that will be printed on the forms.
+ */
+function effectiveTaxPeriodWindow(
+  taxYear: string,
+  isFiscalYear: boolean,
+  fiscalEndMonth: number | '',
+  incorporationDate: string,
+  finalReturn: boolean,
+  dissolutionDate: string,
+): { begin: string; end: string } {
+  const nominal = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
+  const begin =
+    incorporationDate
+    && incorporationDate >= nominal.begin
+    && incorporationDate <= nominal.end
+      ? incorporationDate
+      : nominal.begin;
+  const end =
+    finalReturn
+    && dissolutionDate
+    && dissolutionDate >= begin
+    && dissolutionDate <= nominal.end
+      ? dissolutionDate
+      : nominal.end;
+  return { begin, end };
+}
+
 /** Display an ISO date (YYYY-MM-DD) as MM/DD/YYYY. */
 function formatDateMMDDYYYY(iso: string): string {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
   if (!y || !m || !d) return iso;
   return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+}
+
+/** Unambiguous date for an international audience: "March 01, 2025". */
+function formatDateLong(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${months[m - 1]} ${String(d).padStart(2, '0')}, ${y}`;
 }
 
 /** Format a numeric string with thousands separators for display. */
@@ -399,15 +441,8 @@ function getStepOrder(show1b: boolean): IntakeStep[] {
 /**
  * Risk tier for a transaction type against a particular counterparty.
  *
- * The tier is not a property of the type alone. A domestic disregarded entity
- * and its sole owner are the same taxpayer: their dealings are not recognised
- * for income tax and are reportable only because 26 CFR 301.7701-2(c)(2)(vi)
- * makes the LLC a corporation for section 6038A. So an owner loan is a
- * bookkeeping entry, while the identical type against a non-owner related
- * party is a real loan carrying interest and sourcing consequences. Tiering by
- * type alone over-warns the common case and under-warns the dangerous one.
- *
- * `isOwner` is true for related party index 0, which is always the filer.
+ * Owner dealings can be routine bookkeeping entries while the same transaction
+ * with another related party can need closer professional review.
  */
 function getCategoryForTxType(txType: string, isOwner = false): 1 | 2 | 3 | null {
   const found = TX_TYPES.find((t) => t.value === txType);
@@ -837,6 +872,7 @@ export function Intake() {
   // user is never left guessing why the form did not advance.
   const stepTopRef = useRef<HTMLDivElement | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement | null>(null);
+  const transactionDetailsRef = useRef<HTMLElement | null>(null);
   // Per-accordion-section anchors, keyed by step ('1','1b','2','3','4','5'),
   // so "Save & continue" can scroll to the next section.
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -879,13 +915,26 @@ export function Intake() {
   // The period is then derived deterministically from the tax year, so the user
   // can no longer pick a year that conflicts with the filing year.
   const [fiscalEndMonth, setFiscalEndMonth] = useState<number | ''>('');
+  const nominalTaxPeriod = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
+  const effectiveTaxPeriod = effectiveTaxPeriodWindow(
+    taxYear,
+    isFiscalYear,
+    fiscalEndMonth,
+    entityDOI,
+    finalReturn,
+    dateOfClosure,
+  );
+  const dissolutionDateError =
+    finalReturn && dateOfClosure && entityDOI && dateOfClosure < entityDOI
+      ? `The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) cannot be before the LLC was formed (${formatDateMMDDYYYY(entityDOI)}).`
+      : null;
 
   // Lateness is measured against THIS filing's period end, so it has to be
   // derived after the fiscal-year answers above rather than beside taxYear.
   // show1b gates the whole reasonable-cause step, so a wrong period end here
   // silently removes the filer's only route to a penalty defence.
   const filingTiming = getFilingTimingStatus(
-    taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).end,
+    effectiveTaxPeriod.end,
     today,
   );
   const show1b = filingTiming.originalPassed;
@@ -1026,6 +1075,11 @@ export function Intake() {
     return i >= 0 ? `${i + 1}. ` : '';
   };
   // Index 0 is always the filer, so a transaction against it is owner-to-DE.
+  const scrollToTransactionDetails = () => {
+    requestAnimationFrame(() => {
+      transactionDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
   const txCategory = getCategoryForTxType(txType, txRelatedPartyIdx === 0);
   const txMeta = TX_TYPES.find((t) => t.value === txType);
   // Live money summary (reconciles with the generator's 1f/1h gross).
@@ -1468,7 +1522,20 @@ export function Intake() {
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
     else if (s === 2) errs = validateStep2();
-    else if (s === 3) errs = showRpForm ? ['open'] : validateStep3();
+    else if (s === 3) {
+      errs = showRpForm ? ['open'] : validateStep3();
+      // An empty related-party list is valid because the foreign owner is
+      // already the first related party on Form 5472. It is not, however,
+      // evidence that the user has reviewed this optional section. Keep the
+      // dot neutral until they continue past it.
+      if (
+        errs.length === 0
+        && relatedParties.length === 0
+        && stepOrder.indexOf(step) <= stepOrder.indexOf(3)
+      ) {
+        errs = ['not reviewed'];
+      }
+    }
     else if (s === 4) errs = validateStep4();
     return errs.length === 0 ? 'complete' : 'incomplete';
   }
@@ -2191,7 +2258,14 @@ export function Intake() {
     setSaving(true);
     setError(null);
     try {
-      // Save transactions before navigating
+      // Persist every intake choice before navigating to checkout. Previously
+      // only transactions were guaranteed to save here, so an RCL selected in
+      // the open filing-status section could be visible in Review but absent
+      // from the database product cart and therefore from the invoice.
+      const savedFilingId = await saveAll();
+      if (!savedFilingId) return;
+
+      // Save transactions before navigating.
       const saved = await saveTransactions(filingId);
       if (!saved) return;
 
@@ -2355,7 +2429,9 @@ export function Intake() {
     setTxDate(t.transaction_date ?? '');
     setTxSearch('');
     setShowDetailedTx(false);
+    setCat3Acknowledged(false);
     setTxErrors([]);
+    scrollToTransactionDetails();
   };
 
   const removeTransaction = (i: number) => {
@@ -2440,7 +2516,6 @@ export function Intake() {
     })));
     setNoTransactionsConfirmed(Boolean(s.no_transactions_confirmed ?? yearOne?.no_transactions_confirmed ?? false));
     setPartViManagerial(s.part_vi_managerial ?? true);
-    setCat3Acknowledged(Boolean(s.cat3_acknowledged ?? false));
 
     // Clear anything left over from a previous scenario.
     setStepErrors([]);
@@ -2756,7 +2831,6 @@ export function Intake() {
         .cat-banner-red .select-card { background: var(--tf-surface); }
         .cat3-ack-row { display: flex; gap: 0.75rem; align-items: flex-start; margin-top: 0.75rem; }
         .cat3-ack-row input[type="checkbox"] { width: 1.1rem !important; height: 1.1rem !important; flex-shrink: 0; margin-top: 0.1rem; accent-color: var(--tf-error); padding: 0 !important; border: none !important; box-shadow: none !important; }
-
       `}</style>
 
       <div className="intake-form" style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'inherit' }}>
@@ -3163,8 +3237,8 @@ export function Intake() {
                 <input type="checkbox" checked={isFiscalYear} onChange={(e) => setIsFiscalYear(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
-                    My LLC uses a fiscal year (not January–December)
-                    <InfoTooltip text="Most LLCs use the calendar year (Jan 1 – Dec 31). Only tick this if your LLC was set up with a different tax year-end. If you're not sure, leave it unticked." label="About fiscal year" />
+                    My LLC uses a fiscal year (not January to December)
+                    <InfoTooltip text="Most LLCs use the calendar year (Jan 1 to Dec 31). Only tick this if your LLC was set up with a different tax year-end. If you're not sure, leave it unticked." label="About fiscal year" />
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
                     Leave unticked for the normal calendar year.
@@ -3186,7 +3260,7 @@ export function Intake() {
                   {fiscalEndMonth !== '' && (
                     <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
                       <strong>Fiscal-year filing.</strong> For tax year {taxYear}, your period runs{' '}
-                      {(() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} through ${formatDateMMDDYYYY(p.end)}`; })()}.
+                      {formatDateLong(effectiveTaxPeriod.begin)} to {formatDateLong(effectiveTaxPeriod.end)}.
                       Double-check your filing due date before submitting.
                     </div>
                   )}
@@ -3226,14 +3300,22 @@ export function Intake() {
                         type="date"
                         value={dateOfClosure}
                         onChange={(e) => setDateOfClosure(e.target.value)}
-                        min={taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).begin}
-                        max={taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth).end}
+                        min={
+                          entityDOI && entityDOI > nominalTaxPeriod.begin
+                            ? entityDOI
+                            : nominalTaxPeriod.begin
+                        }
+                        max={nominalTaxPeriod.end}
+                        aria-invalid={dissolutionDateError ? 'true' : undefined}
                       />
+                      {dissolutionDateError && (
+                        <span className="field-error" role="alert">{dissolutionDateError}</span>
+                      )}
                     </Field>
                   </div>
                   <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--tf-muted)' }}>
                     Must fall inside the period you're filing for{' '}
-                    ({(() => { const p = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })()}).
+                    ({formatDateLong(effectiveTaxPeriod.begin)} to {formatDateLong(nominalTaxPeriod.end)}).
                     Your tax period ends on this date rather than on the normal year-end,
                     because the LLC no longer existed after it. Both forms will show the
                     shorter period.
@@ -3449,7 +3531,21 @@ export function Intake() {
                   />
                 </Field>
                 <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">
-                  <select value={ownerCountry} onChange={(e) => setOwnerCountry(e.target.value)}>
+                  <select
+                    value={ownerCountry}
+                    onChange={(e) => {
+                      const nextCountry = e.target.value;
+                      const previousCountry = ownerCountry;
+                      setOwnerCountry(nextCountry);
+                      // On the first selection, use the same country for all
+                      // three answers. If the user later customises either one,
+                      // changing the business country must preserve that choice.
+                      setOwnerCountryRes((current) =>
+                        !current || current === previousCountry ? nextCountry : current);
+                      setOwnerCountryCitizenship((current) =>
+                        !current || current === previousCountry ? nextCountry : current);
+                    }}
+                  >
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
@@ -3770,9 +3866,6 @@ export function Intake() {
                   value={txRelatedPartyIdx}
                   onChange={(e) => {
                     setTxRelatedPartyIdx(Number(e.target.value));
-                    // The tier is resolved against the counterparty, so changing
-                    // it can move this transaction from tier 1 to tier 3. Drop
-                    // any acknowledgment given for the previous pairing.
                     setCat3Acknowledged(false);
                   }}
                 >
@@ -3791,6 +3884,8 @@ export function Intake() {
                   else if (!DIRECTION_TYPES.has(q.value)) setTxDir('received');
                   setShowDetailedTx(false);
                   setTxErrors([]);
+                  setCat3Acknowledged(false);
+                  scrollToTransactionDetails();
                 };
                 const partyWord = isOwnerParty ? 'you' : (allPartyLabels[txRelatedPartyIdx] || 'the related party');
                 // Combo-box search across every transaction type (label + plain
@@ -3806,6 +3901,8 @@ export function Intake() {
                   setTxType(value);
                   setTxErrors([]);
                   if (!DIRECTION_TYPES.has(value)) setTxDir('received');
+                  setCat3Acknowledged(false);
+                  scrollToTransactionDetails();
                 };
                 return (
                   <>
@@ -3911,6 +4008,8 @@ export function Intake() {
                                         setTxType(item.value);
                                         setTxErrors([]);
                                         if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
+                                        setCat3Acknowledged(false);
+                                        scrollToTransactionDetails();
                                       }}
                                     >
                                       <span className="tx-type-label">{item.label}</span>
@@ -3932,7 +4031,10 @@ export function Intake() {
             </section>
 
             {txType && (
-              <section style={{ ...sectionStyle, background: 'var(--tf-offset, #f8fafc)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem', marginTop: '0.75rem' }}>
+              <section
+                ref={transactionDetailsRef}
+                style={{ ...sectionStyle, background: 'var(--tf-offset, #f8fafc)', border: '1px solid var(--tf-border, #e5e7eb)', borderRadius: '0.625rem', padding: '1.25rem', marginTop: '0.75rem', scrollMarginTop: '5.5rem' }}
+              >
                 <h3 style={{ ...sectionLabelStyle, marginBottom: '0.75rem' }}>Transaction details</h3>
 
                 {txErrors.length > 0 && (
@@ -3943,25 +4045,15 @@ export function Intake() {
                   </div>
                 )}
 
-                {/* Tier note, revealed only AFTER a transaction type is picked, so we
-                    never pre-signal complexity in the picker. Driven by TX_TYPES.category:
-                      1 → routine, nothing extra needed (green)
-                      2 → reportable but straightforward, we handle it (amber/blue)
-                      3 → complex, CPA review recommended + acknowledgment (red) */}
-                {/* Tier 1 (routine) shows no banner. Tier 2 gets an advisory
-                    note with no gate. Tier 3 gets a warning AND blocks the add
-                    until acknowledged. The tier is resolved against the chosen
-                    counterparty, so the same type can sit in a different tier
-                    for the owner than for a non-owner related party. */}
-                {txType && txCategory === 2 && (
+                {txCategory === 2 && (
                   <div className="cat-banner-amber" style={{ marginBottom: '1rem' }}>
                     <strong>Worth a second look.</strong> We can prepare this from your answers, but this type is one where the tax treatment depends on the details. If you are unsure how it should be described, a CPA or tax adviser can confirm it before you file.
                   </div>
                 )}
-                {txType && txCategory === 3 && (
+                {txCategory === 3 && (
                   <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>
                     <strong>This one’s more involved.</strong> This type of transaction can get complex. We’ll fill in everything we can from your answers, but we recommend a quick CPA review before you submit.
-                    <div className="cat3-ack-row" style={{ marginTop: '0.625rem' }}>
+                    <div className="cat3-ack-row">
                       <input type="checkbox" checked={cat3Acknowledged} onChange={(e) => setCat3Acknowledged(e.target.checked)} id="cat3ack" />
                       <label htmlFor="cat3ack" style={{ fontSize: '0.8125rem', cursor: 'pointer' }}>I understand, proceed anyway</label>
                     </div>
@@ -4067,14 +4159,17 @@ export function Intake() {
                     const meta = TX_TYPES.find((x) => x.value === t.transaction_type);
                     const partyLabel = allPartyLabels[t.related_party_index] || 'Unknown party';
                     const isEditing = editingTxIdx === i;
+                    const amount = t.amount_usd && Number(t.amount_usd) > 0
+                      ? `USD ${Number(t.amount_usd).toLocaleString()}`
+                      : '';
+                    const sentence = DIRECTION_TYPES.has(t.transaction_type)
+                      ? `The LLC ${t.direction === 'received' ? 'received' : 'paid'}${amount ? ` ${amount}` : ' money'} ${t.direction === 'received' ? 'from' : 'to'} ${partyLabel} for this transaction: ${meta?.label ?? humanizeTxType(t.transaction_type)}.`
+                      : `${(meta?.sentence ?? humanizeTxType(t.transaction_type)).replace('{party}', partyLabel)}${amount ? ` The reported amount was ${amount}.` : '.'}`;
                     return (
                       <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{meta?.label ?? humanizeTxType(t.transaction_type)}</div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
-                            {partyLabel}
-                            {t.amount_usd && Number(t.amount_usd) > 0 ? ` · USD ${Number(t.amount_usd).toLocaleString()}` : ''}
-                            {DIRECTION_TYPES.has(t.transaction_type) ? ` · ${t.direction}` : ''}
+                          <div style={{ fontSize: '0.84rem', color: 'var(--tf-text)', lineHeight: 1.5 }}>
+                            {sentence}
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
@@ -4128,7 +4223,14 @@ export function Intake() {
         </AccordionSection>
 
         {/* ── Step 5: Review ── */}
-        <AccordionSection numberLabel={stepNumber(5)} label={STEP_LABELS['5']} open={openSections.has('5')} complete onToggle={() => toggleSection('5')} anchorRef={(el) => { sectionRefs.current['5'] = el; }}>
+        <AccordionSection
+          numberLabel={stepNumber(5)}
+          label={STEP_LABELS['5']}
+          open={openSections.has('5')}
+          complete={step === 5 && validateForSubmit().length === 0}
+          onToggle={() => toggleSection('5')}
+          anchorRef={(el) => { sectionRefs.current['5'] = el; }}
+        >
           <div>
             <h2 style={stepHeadingStyle}>Review & submit</h2>
             <p style={stepSubheadStyle}>Check everything below before we start preparing your forms.</p>
@@ -4157,7 +4259,7 @@ export function Intake() {
                 {nameChange && <SummaryRow label="Name change" value="Yes" />}
                 {addressChange && <SummaryRow label="Address change" value="Yes" />}
                 <SummaryRow label="Accounting period" value={isFiscalYear ? 'Fiscal year' : 'Calendar year'} />
-                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? (() => { const p = deriveFiscalPeriod(taxYear, fiscalEndMonth); return `${formatDateMMDDYYYY(p.begin)} to ${formatDateMMDDYYYY(p.end)}`; })() : 'Not provided'} />}
+                {isFiscalYear && <SummaryRow label="Fiscal year" value={fiscalEndMonth !== '' ? `${formatDateLong(effectiveTaxPeriod.begin)} to ${formatDateLong(effectiveTaxPeriod.end)}` : 'Not provided'} />}
                 {earlierReturnsFiled !== null && (
                   <SummaryRow label="Earlier years already filed" value={earlierReturnsFiled ? 'Yes' : 'No'} />
                 )}

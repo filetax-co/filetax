@@ -465,8 +465,7 @@ export const TX_TYPES: {
 // TX_TYPES value, so nothing downstream changes.
 //
 // DETAILED_TX_GROUPS: everything else (the less-common Part IV / V / VI types),
-// revealed only when the user opens "Record a different transaction". Grouped
-// lightly and flagged where a CPA review is advisable.
+// revealed only when the user opens "Record a different transaction".
 //
 // Wording here is intentionally our own plain-English voice.
 
@@ -519,8 +518,7 @@ export const DETAILED_TX_GROUPS: DetailedTxGroup[] = [
   },
   {
     key: 'complex',
-    label: 'Complex dealings',
-    note: 'we suggest a quick CPA review',
+    label: 'IP, insurance and other dealings',
     values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi', 'other'],
   },
   {
@@ -610,7 +608,7 @@ export const TX_CATEGORIES: {
   {
     key: 'complex',
     label: 'IP, insurance & other',
-    description: 'Intellectual property transfers, insurance, cost-sharing, and other complex items, CPA review recommended',
+    description: 'Intellectual property transfers, insurance, cost-sharing, and other items',
     parts: ['IV'],
     values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'other'],
   },

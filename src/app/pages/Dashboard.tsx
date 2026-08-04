@@ -40,8 +40,11 @@ function humanDate(iso: string): string {
 
 type DueState = { label: string; tone: 'ok' | 'warn' | 'late'; due: string } | null;
 
-/** Compute the IRS on-time / extended / late state for a filing's tax year. */
-function dueState(taxYear: string | null | undefined): DueState {
+/** Compute the deadline state, using the extension date only for a filed 7004. */
+function dueState(
+  taxYear: string | null | undefined,
+  extensionFiled: boolean,
+): DueState {
   if (!taxYear) return null;
   const dates = FILING_DUE_DATES[Number(taxYear)];
   if (!dates) return null;
@@ -49,8 +52,14 @@ function dueState(taxYear: string | null | undefined): DueState {
   const original = new Date(dates.original);
   const extended = new Date(dates.extended);
   if (today <= original) return { label: `Due ${humanDate(dates.original)}`, tone: 'ok', due: dates.original };
-  if (today <= extended) return { label: `Extension due ${humanDate(dates.extended)}`, tone: 'warn', due: dates.extended };
-  return { label: 'Past due, file ASAP', tone: 'late', due: dates.extended };
+  if (extensionFiled && today <= extended) {
+    return { label: `Extension due ${humanDate(dates.extended)}`, tone: 'warn', due: dates.extended };
+  }
+  return {
+    label: 'Past due, file ASAP',
+    tone: 'late',
+    due: extensionFiled ? dates.extended : dates.original,
+  };
 }
 
 const SERVICE_LABEL: Record<ServiceType, string> = {
@@ -371,7 +380,7 @@ export function Dashboard() {
               // marketing clock, which had this bug in its own form.
               const pending = filings
                 .filter((f) => BUCKET_OF[f.status] !== 'done')
-                .map((f) => dueState(f.tax_year))
+                .map((f) => dueState(f.tax_year, f.extension_filed === true))
                 .filter((d): d is NonNullable<DueState> => !!d)
                 .sort((a, b) => a.due.localeCompare(b.due));
               const overdue = pending.filter((d) => d.tone === 'late')[0];
@@ -624,7 +633,9 @@ function DeleteCardButton({
 
 function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
-  const due = (f.status !== 'completed' && f.status !== 'submitted') ? dueState(f.tax_year) : null;
+  const due = (f.status !== 'completed' && f.status !== 'submitted')
+    ? dueState(f.tax_year, f.extension_filed === true)
+    : null;
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
   const deletable = f.status === 'draft' || f.status === 'in_progress';

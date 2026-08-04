@@ -109,6 +109,7 @@ export function AppNav() {
 
   return (
     <header
+      className="app-nav"
       style={{
         background: HEADER_BG,
         borderBottom: `1px solid ${ON_HEADER_BORDER}`,
@@ -118,6 +119,7 @@ export function AppNav() {
       }}
     >
       <div
+        className="app-nav__inner"
         style={{
           maxWidth: '1200px',
           margin: '0 auto',
@@ -130,6 +132,7 @@ export function AppNav() {
       >
         {/* Logo goes to the dashboard, not the marketing home. */}
         <Link
+          className="app-nav__logo"
           to="/dashboard"
           aria-label="Go to your dashboard"
           style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
@@ -145,10 +148,11 @@ export function AppNav() {
           />
         </Link>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        <div className="app-nav__actions" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           {/* Only shown when it is somewhere to go. */}
           {!onDashboard && (
             <Link
+              className="app-nav__text-link"
               to="/dashboard"
               style={{
                 color: ON_HEADER,
@@ -170,6 +174,7 @@ export function AppNav() {
           {/* New tab, deliberately: reading an explanation must not cost the
               filing in progress. */}
           <a
+            className="app-nav__text-link"
             href={`${import.meta.env.BASE_URL}resources`}
             target="_blank"
             rel="noopener noreferrer"
@@ -192,8 +197,9 @@ export function AppNav() {
             <ExternalLink size={13} aria-hidden="true" />
           </a>
 
-          <div style={{ position: 'relative' }}>
+          <div className="app-nav__help" style={{ position: 'relative' }}>
             <button
+              className="app-nav__icon-button"
               type="button"
               onClick={() => setHelpOpen((v) => !v)}
               aria-expanded={helpOpen}
@@ -247,6 +253,7 @@ export function AppNav() {
           </div>
 
           <button
+            className="app-nav__icon-button"
             type="button"
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -258,6 +265,7 @@ export function AppNav() {
 
           {user && (
             <Link
+              className="app-nav__account"
               to="/dashboard"
               aria-label={`Signed in as ${name}`}
               title={`Signed in as ${name}`}

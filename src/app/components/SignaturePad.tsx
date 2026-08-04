@@ -185,6 +185,7 @@ export function SignaturePad({
         style={{
           width: '100%',
           height: CANVAS_CSS_HEIGHT,
+          boxSizing: 'border-box',
           border: `1px ${isEmpty ? 'dashed' : 'solid'} var(--tf-border)`,
           borderRadius: '0.5rem',
           // PAPER WHITE IN BOTH THEMES. This must not be themed.

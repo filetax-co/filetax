@@ -72,6 +72,54 @@ html, body {
   background: var(--tf-bg);
   color: var(--tf-text);
 }
+
+/*
+ * The portal masthead has more controls than fit at their desktop spacing on
+ * a phone. If its flex row becomes wider than the viewport, iOS Safari makes
+ * the entire document horizontally scrollable, which leaves every wizard card
+ * looking cropped after even a small sideways swipe.
+ */
+@media (max-width: 480px) {
+  .app-nav__inner {
+    padding-inline: 0.5rem !important;
+    gap: 0.25rem !important;
+  }
+
+  .app-nav__actions {
+    gap: 0 !important;
+    min-width: 0;
+  }
+
+  .app-nav__text-link {
+    padding-inline: 0.375rem !important;
+    font-size: 0.8125rem !important;
+  }
+
+  .app-nav__icon-button {
+    width: 40px !important;
+  }
+
+  .app-nav__account {
+    padding-inline: 0.125rem !important;
+  }
+
+  /* Help remains available from support links in the page/footer. Keeping all
+     five masthead actions is what forces a 390px phone into horizontal scroll. */
+  .app-nav__help {
+    display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .app-nav__logo img {
+    height: 32px !important;
+  }
+
+  .app-nav__text-link {
+    padding-inline: 0.25rem !important;
+    font-size: 0.75rem !important;
+  }
+}
 h1, h2, h3 {
   font-weight: 700 !important;
   color: var(--tf-text);
