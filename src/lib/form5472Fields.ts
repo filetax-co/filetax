@@ -101,7 +101,16 @@ const F5472_LATEST = {
   PART_IV_ESTIMATES:              'Estimates',             // checkbox
 
   // Received
-  LINE_9_SALES_RECEIVED:          'StockPurchase',         // sales received
+  // 'StockSales' and 'StockPurchase' READ BACKWARDS, and were mapped that way
+  // for it. The IRS named these fields from the RELATED PARTY's side of the
+  // deal: line 9 is what the reporting corporation SOLD, which is a purchase by
+  // the other party, so the widget on line 9 is 'StockSales' and the one on
+  // line 23 is 'StockPurchase'. Verified by widget geometry, not by the names:
+  // 'StockSales' sits at y=564, the first row of Part IV, and 'StockPurchase'
+  // at y=384, directly below the line 22 total. Every neighbouring pair follows
+  // the plain-English convention (TangPropSales on 10, TangPropPurchase on 24),
+  // which is exactly why this one pair went unnoticed.
+  LINE_9_SALES_RECEIVED:          'StockSales',            // sales received
   LINE_10_TANGIBLE_PROP_RECEIVED: 'TangPropSales',         // tangible prop received
   LINE_11_PCT_PAYMENTS_RECEIVED:  'PlatformContReceived',  // platform contrib received
   LINE_12_CST_PAYMENTS_RECEIVED:  'CostSharingReceived',   // cost sharing received
@@ -119,7 +128,7 @@ const F5472_LATEST = {
   LINE_22_TOTAL_RECEIVED:         'TotalReceived',
 
   // Paid
-  LINE_23_SALES_PAID:             'StockSales',
+  LINE_23_SALES_PAID:             'StockPurchase',   // see the note on line 9
   LINE_24_TANGIBLE_PROP_PAID:     'TangPropPurchase',
   LINE_25_PCT_PAYMENTS_PAID:      'PlatformContPaid',
   LINE_26_CST_PAYMENTS_PAID:      'CostSharTransPaid',
