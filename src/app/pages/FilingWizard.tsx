@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
+import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { SignaturePad } from '../components/SignaturePad';
 import type { DrawnSignature } from '../../lib/drawnSignature';
 
@@ -309,10 +310,14 @@ export default function FilingWizard() {
 
   // ── render ────────────────────────────────────────────────────────────────
 
-  // Determine which parts will be generated (mirrors pdfGenerator.ts logic)
-  const hasPartV = transactions.some(t =>
-    ['distribution', 'dividend', 'capital_contribution', 'formation_costs'].includes(t.transaction_type)
-  );
+  // Which parts the package will actually contain.
+  //
+  // The Part V set is imported rather than restated. It used to be a literal
+  // array here and a second literal in pdfGenerator.ts, which is two places to
+  // change and one screen that would have gone on promising a statement the
+  // package no longer produced. filingMapping owns it now; pdfGenerator cannot
+  // be imported here without pulling pdf-lib into the main bundle.
+  const hasPartV = transactions.some((t) => PART_V_TX_TYPES.has(t.transaction_type));
   // Part VI is always generated, hardcoded true in pdfGenerator.ts
   // Form 7004 belongs in the package whenever the filing opted into an extension
   // (include_7004) OR the owner reported one was already filed (extension_filed),
@@ -433,14 +438,14 @@ export default function FilingWizard() {
                 padding: '1.125rem 1.25rem',
               }}>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <IncludedItem icon="" label="Pro Forma 1120" desc="US corporation income tax return" always />
-                  <IncludedItem icon="" label="Form 5472" desc="Information return for 25%-foreign-owned US corporations" always />
+                  <IncludedItem icon="" label="Pro Forma 1120" desc="US corporation income tax return" />
+                  <IncludedItem icon="" label="Form 5472" desc="Information return for 25%-foreign-owned US corporations" />
                   {hasPartV && (
-                    <IncludedItem icon="" label="Part V Statement" desc="Monetary transactions: distributions, dividends, capital contributions, formation costs" always={false} />
+                    <IncludedItem icon="" label="Part V Statement" desc="Monetary transactions: distributions, dividends, capital contributions, formation costs" />
                   )}
-                  <IncludedItem icon="" label="Part VI Statement" desc="Nonmonetary / less-than-FMV transactions, always included" always />
+                  <IncludedItem icon="" label="Part VI Statement" desc="Nonmonetary / less-than-FMV transactions" />
                   {has7004 && (
-                    <IncludedItem icon="" label="Form 7004" desc="6-month extension to file, included with your package" always />
+                    <IncludedItem icon="" label="Form 7004" desc="6-month extension to file, included with your package" />
                   )}
                   {/* The reasonable cause letter was missing from this list until
                       3 Aug 2026, on the one screen where the customer pays. It is
@@ -455,12 +460,6 @@ export default function FilingWizard() {
                       icon=""
                       label="Reasonable Cause Letter"
                       desc="CPA-authored statement asking the IRS to abate the late-filing penalty, one letter covering every late year"
-                      // Not "if applicable". This row renders only when the letter
-                      // IS in the package, so hedging next to the $199 line item
-                      // would read as doubt about the thing they are paying most
-                      // for. (Part V above has the same shape and still carries
-                      // the badge; left alone rather than widened into a refactor.)
-                      always
                     />
                   )}
                 </ul>
@@ -769,13 +768,15 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
   );
 }
 
+// Every row in this list is a document the package will contain. There is no
+// "if applicable" badge: a row that might not apply is a row that should not be
+// rendered, and each caller is already gated on the condition that decides it.
 function IncludedItem({
-  icon, label, desc, always,
+  icon, label, desc,
 }: {
   icon: string;
   label: string;
   desc: string;
-  always: boolean;
 }) {
   return (
     <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
@@ -784,21 +785,6 @@ function IncludedItem({
         <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--tf-text)' }}>
           {label}
         </span>
-        {!always && (
-          <span style={{
-            marginLeft: '0.4rem',
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            color: 'var(--tf-accent)',
-            background: 'color-mix(in srgb, var(--tf-accent) 12%, transparent)',
-            padding: '0.1rem 0.4rem',
-            borderRadius: '0.25rem',
-          }}>
-            if applicable
-          </span>
-        )}
         <p style={{
           margin: '0.15rem 0 0',
           fontSize: '0.8125rem',

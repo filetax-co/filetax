@@ -152,6 +152,27 @@ const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
   'property_transfer', 'nonmonetary_other',
 ]);
 
+/**
+ * The canonical transaction types that produce a Part V statement.
+ *
+ * Lives here rather than in pdfGenerator.ts because two places need it and only
+ * one of them may load the generator: pdfGenerator pulls in pdf-lib and is
+ * deliberately behind a dynamic import, so a screen that merely wants to say
+ * whether Part V will exist cannot import from it without dragging the whole PDF
+ * chunk into the main bundle. This module is the vocabulary layer and is
+ * type-only at runtime, so it is the right home.
+ *
+ * Both `hasPartV` in FilingWizard and `PART_V_TYPES` in the generator read this,
+ * so what the card promises and what the package contains cannot drift.
+ *
+ * Note these are CANONICAL codes. Intake's wider vocabulary reaches them through
+ * toCanonicalTxType (formation_tx, acquisition_tx and other_part_v all land on
+ * capital_contribution), and only canonical codes are ever persisted.
+ */
+export const PART_V_TX_TYPES = new Set<CanonicalTxType>([
+  'distribution', 'dividend', 'capital_contribution', 'formation_costs',
+]);
+
 export interface TxMoneySummary {
   /** Sum of every reportable amount entered (any type). */
   totalEntered: number;

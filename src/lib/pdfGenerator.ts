@@ -26,6 +26,7 @@ import {
   normalizeFiling,
   NormalizedFiling,
   NormalizedParty,
+  PART_V_TX_TYPES,
 } from './filingMapping';
 import {
   DrawnSignature,
@@ -779,9 +780,11 @@ const drawStatementHeader = (
 // NOTE: property_transfer and nonmonetary_other are Part VI disclosures ONLY.
 // They are NOT included in this Part V statement.
 
-const PART_V_TYPES = new Set([
-  'distribution', 'dividend', 'capital_contribution', 'formation_costs',
-]);
+// PART_V_TX_TYPES, imported from filingMapping, is the one set. This file had
+// TWO copies of it, this one and another beside PART_VI_TX_TYPES about 1400
+// lines down, and FilingWizard restated it a third time as a literal array. All
+// four codes happened to agree, which is what made it survive: nothing broke, it
+// was simply three places to edit and two chances to forget.
 
 const PART_V_TYPE_LABELS: Record<string, string> = {
   distribution:         'Distribution / Withdrawal by Owner',
@@ -793,7 +796,7 @@ const PART_V_TYPE_LABELS: Record<string, string> = {
 /**
  * A readable description for a transaction type that has no entry above.
  *
- * PART_V_TYPES and PART_V_TYPE_LABELS currently hold the same four codes, so
+ * PART_V_TX_TYPES and PART_V_TYPE_LABELS currently hold the same four codes, so
  * this is unreachable today. It exists because the previous fallback printed
  * `tx.transaction_type` itself, meaning the day someone adds a fifth Part V
  * code and forgets the label, an internal identifier like `capital_contribution`
@@ -809,7 +812,7 @@ export const buildPartVStatement = async (
   txns: Transaction[],
   period: ResolvedPeriod,
 ): Promise<PDFDocument> => {
-  const partVTxns = txns.filter(tx => PART_V_TYPES.has(tx.transaction_type));
+  const partVTxns = txns.filter(tx => PART_V_TX_TYPES.has(tx.transaction_type));
 
   const doc   = await PDFDocument.create();
   const bold  = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -2250,9 +2253,6 @@ const grossForTransactions = (txns: Transaction[], isOwner: boolean): number => 
   return grossPaymentsForLines1f1h(agg, isOwner);
 };
 
-const PART_V_TX_TYPES = new Set<Transaction['transaction_type']>([
-  'distribution', 'dividend', 'capital_contribution', 'formation_costs',
-]);
 const PART_VI_TX_TYPES = new Set<Transaction['transaction_type']>([
   'property_transfer', 'nonmonetary_other',
 ]);
