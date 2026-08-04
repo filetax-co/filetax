@@ -117,6 +117,18 @@ export function MultiYearStart() {
         reasonable_cause_reasons: includeRcl ? rclReasons : [],
       }).eq('id', editJobId);
 
+      // The same choice has to reach the YEAR ROWS, not just the job. A
+      // single-year package is generated from filing.include_rcl, while the
+      // job bundle reads filing_jobs.include_rcl, so a job edited to add the
+      // letter left every year row already created still saying no: the bundle
+      // carried the letter and the individual year's download did not. Only
+      // draft rows are touched, never a paid one.
+      await supabase.from('filings').update({
+        include_rcl: includeRcl,
+        include_reasonable_cause: includeRcl,
+        reasonable_cause_reasons: includeRcl ? rclReasons : [],
+      }).eq('job_id', editJobId).eq('status', 'draft');
+
       // Existing (draft) year rows for this job.
       const { data: existing } = await supabase
         .from('filings')
@@ -147,6 +159,8 @@ export function MultiYearStart() {
           current_step: 1,
           tax_year: String(y),
           include_rcl: includeRcl,
+          include_reasonable_cause: includeRcl,
+          reasonable_cause_reasons: includeRcl ? rclReasons : [],
         }));
         await supabase.from('filings').insert(rows);
       }
@@ -235,7 +249,13 @@ export function MultiYearStart() {
         status: 'draft',
         current_step: 1,
         tax_year: String(y),
+        // Both columns, deliberately. include_rcl is what the generator reads;
+        // include_reasonable_cause is what intake reads and writes. A row with
+        // only one of them set opens in intake showing the opposite of what the
+        // filer chose here.
         include_rcl: includeRcl,
+        include_reasonable_cause: includeRcl,
+        reasonable_cause_reasons: includeRcl ? rclReasons : [],
       }));
       const { data: created, error: insErr } = await supabase
         .from('filings')

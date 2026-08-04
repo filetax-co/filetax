@@ -1240,7 +1240,14 @@ export function Intake() {
       setEntityBizActivity((f as any).entity_business_activity ?? (f as any).naics_description ?? '');
       setEntityBizCode((f as any).entity_business_code ?? '');
       setExtensionFiled((f as any).extension_filed ?? null);
-      setIncludeReasonableCause((f as any).include_reasonable_cause ?? false);
+      // Read BOTH columns. include_reasonable_cause is what intake writes;
+      // include_rcl is what the multi-year setup writes when a catch-up job is
+      // created, and it is the column the generator reads. Reading only the
+      // first meant a job created WITH the letter opened here with the box
+      // unticked, and the next save wrote that back over the filer's choice.
+      setIncludeReasonableCause(
+        ((f as any).include_reasonable_cause ?? (f as any).include_rcl) === true,
+      );
       setReasonableCauseReasons((f as any).reasonable_cause_reasons ?? []);
       setOwnerName(f.owner_full_name ?? '');
       setOwnerCountry((f as any).owner_country ?? f.owner_primary_country ?? '');
@@ -1891,6 +1898,14 @@ export function Intake() {
       const amt = (t.amount_usd ?? '').trim();
       if (monetary && amt === '') {
         errs.push(`${where} needs an amount in US dollars.`);
+      } else if (monetary && Number(amt) === 0) {
+        // Zero is what saveTransactions drops. It used to pass validation, so a
+        // filer could enter 0, watch the row sit in the list through review, and
+        // have it silently discarded on the way to the database: the row was
+        // never on the return and nothing said so. Refuse it here instead, where
+        // it can still be corrected. A genuinely zero transaction has nothing to
+        // report on Form 5472 anyway.
+        errs.push(`${where} has an amount of 0. Form 5472 reports what actually passed between the LLC and the related party, so enter the real amount, or remove the transaction if nothing did.`);
       } else {
         const a = amountProblem(amt, `${where}: the amount`);
         if (a) {
