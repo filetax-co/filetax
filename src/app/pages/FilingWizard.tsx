@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { PdfPreviewModal } from '../../components/PdfPreviewModal';
+import { startCheckout } from '../../lib/checkout';
 import { SignaturePad } from '../components/SignaturePad';
 import type { DrawnSignature } from '../../lib/drawnSignature';
 
@@ -155,23 +156,13 @@ export default function FilingWizard() {
     if (!id || checkoutBusy) return;
     setCheckoutBusy(true);
     setPaymentNotice(null);
-    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-      body: { filing_id: id },
-    });
-    if (error || !data?.url) {
-      let functionMessage = data?.error;
-      const context = (error as { context?: Response } | null)?.context;
-      if (!functionMessage && context) {
-        try {
-          const body = await context.clone().json();
-          functionMessage = body?.error;
-        } catch { /* retain the safe fallback below */ }
-      }
-      setPaymentNotice(functionMessage || error?.message || 'Unable to start checkout. Please try again.');
+    // Shared with the end of intake, which is where most filers now reach
+    // checkout from. See lib/checkout.ts.
+    const failure = await startCheckout(id);
+    if (failure) {
+      setPaymentNotice(failure);
       setCheckoutBusy(false);
-      return;
     }
-    window.location.assign(data.url);
   };
 
   // ── generate PDF ──────────────────────────────────────────────────────────

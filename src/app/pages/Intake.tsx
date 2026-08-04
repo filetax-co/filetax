@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
 import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
+import { startCheckout } from '../../lib/checkout';
 import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
 import {
   BIZ_ACTIVITIES,
@@ -446,6 +447,16 @@ function isAddressComplete(address: Address, forceUS?: boolean): boolean {
   return true;
 }
 
+
+/**
+ * The number written to filings.current_step for a step.
+ *
+ * 1b is part of step 1 as far as the column is concerned: it is an extra
+ * section, not a sixth step, and the dashboard counts "of 5".
+ */
+function stepNumberOf(s: IntakeStep): number {
+  return s === '1b' ? 1 : Number(s);
+}
 
 function getStepOrder(show1b: boolean): IntakeStep[] {
   if (show1b) return [1, '1b', 2, 3, 4, 5];
@@ -1067,6 +1078,10 @@ export function Intake() {
   // yet". Seeded true for a filing already saved past step 3, so reopening a
   // finished filing does not show that section as unreviewed.
   const [relatedPartiesReviewed, setRelatedPartiesReviewed] = useState(false);
+  // Furthest step this filing has been saved at, mirroring filings.current_step
+  // so progress survives a reload. It only ever moves forward: editing step 1
+  // on a filing that reached review does not un-progress it.
+  const [furthestStep, setFurthestStep] = useState(1);
   // Payment-integrity state: a paid filing locks only the identity fields that
   // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
@@ -1210,9 +1225,9 @@ export function Intake() {
       setCompletedOnce(f.status === 'in_progress' || f.status === 'paid' || f.status === 'completed');
       // Anything saved past step 3, or any filing that has already been through
       // the whole wizard, has had Related Parties in front of the filer.
-      setRelatedPartiesReviewed(
-        f.status !== 'draft' || Number((f as any).current_step ?? 0) > 3,
-      );
+      const savedStep = Number((f as any).current_step ?? 1) || 1;
+      setFurthestStep(savedStep);
+      setRelatedPartiesReviewed(f.status !== 'draft' || savedStep > 3);
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -2052,7 +2067,31 @@ export function Intake() {
 
   // Whole-form save for the accordion: persists every field and propagates the
   // shared company/owner fields to the job's other years.
-  const saveAll = (): Promise<string | null> => persistPatch(patchAll(), jobId != null);
+  const saveAll = (extra?: Record<string, unknown>): Promise<string | null> =>
+    persistPatch({ ...patchAll(), ...extra }, jobId != null);
+
+  /**
+   * Persist EVERYTHING the filer has entered: the filing row and the
+   * transaction rows.
+   *
+   * Transactions live in their own table, so patchAll cannot carry them. Every
+   * "Save & continue" saved the filing and left the transactions in component
+   * state only, which meant a filer who added a transaction, continued, and
+   * came back later found it gone. Nothing had removed it; it was never
+   * written. The same hole swallowed transactions when a section was collapsed
+   * and when a catch-up job switched year.
+   *
+   * Guarded on loadingFiling because saveTransactions reconciles by DELETING
+   * rows absent from the current set: called while the list is still empty
+   * because the load has not finished, it would clear the filing's saved
+   * transactions.
+   */
+  const saveDraft = async (extra?: Record<string, unknown>): Promise<string | null> => {
+    const id = await saveAll(extra);
+    if (!id) return null;
+    if (loadingFiling) return id;
+    return (await saveTransactions(id)) ? id : null;
+  };
 
   // Expand/collapse an accordion section. Collapsing persists the whole form so
   // the draft is saved as the filer moves through the page (unless paid-locked
@@ -2070,23 +2109,27 @@ export function Intake() {
       navigate(`?${nextParams.toString()}`, { replace: true });
       return;
     }
+    const collapsing = openSections.has(key);
     setOpenSections((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-        if (!saving && (filingId || llcName.trim())) void saveAll();
-      } else {
-        next.add(key);
-      }
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+    // Collapsing is a save point, and the filer may have added a transaction
+    // inside the section being closed. Kept OUT of the state updater: React
+    // may call an updater more than once, and a save is not something to run
+    // an unpredictable number of times.
+    if (collapsing && !saving && (filingId || llcName.trim())) void saveDraft();
   };
 
   // Switch to another year in the catch-up job: save the current year first,
   // then load that sibling filing (the load effect re-hydrates every field).
   const switchYear = async (siblingId: string) => {
     if (saving || siblingId === filingId) return;
-    if (filingId || llcName.trim()) await saveAll();
+    // The load effect replaces every field with the sibling year's data, so
+    // anything unsaved here is gone the moment we navigate.
+    if (filingId || llcName.trim()) await saveDraft();
     const newParams = new URLSearchParams(params.toString());
     newParams.set('filing_id', siblingId);
     setLocalFilingId(siblingId);
@@ -2107,9 +2150,18 @@ export function Intake() {
     setStepErrors(errs);
     if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (s === 3) setRelatedPartiesReviewed(true);
-    if (!saving && (filingId || llcName.trim())) await saveAll();
     const idx = stepOrder.indexOf(s);
     const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
+    // How far this filing has been taken, persisted so it survives a reload.
+    // Nothing had written current_step since the wizard became an accordion, so
+    // it sat at its seeded value forever: the dashboard's "Step X of 5" was
+    // wrong on every draft, and Related Parties forgot it had been reviewed
+    // every time the page was reopened.
+    const reached = Math.max(furthestStep, stepNumberOf(nextKey ? stepOrder[idx + 1] : 5));
+    if (!saving && (filingId || llcName.trim())) {
+      if (!(await saveDraft({ current_step: reached }))) return;
+      setFurthestStep(reached);
+    }
     setOpenSections((prev) => {
       const next = new Set(prev);
       next.delete(key);
@@ -2329,8 +2381,7 @@ export function Intake() {
     setPreviewBusy(true);
     setPreviewErr(null);
     try {
-      if (!(await saveAll())) return;
-      if (!(await saveTransactions(filingId))) return;
+      if (!(await saveDraft())) return;
 
       const { data: fi, error: fiErr } = await supabase
         .from('filings').select('*').eq('id', filingId).single();
@@ -2351,6 +2402,12 @@ export function Intake() {
         { key: '5472', label: 'Form 5472', bytes: pkg.form5472 },
         { key: '1120', label: 'Pro forma 1120', bytes: pkg.form1120 },
       ];
+      // Shown when the package carries one: an extension the filer told us
+      // about, or one we are preparing. It is a short form with nothing to
+      // withhold, so it is shown complete like the others.
+      if (pkg.form7004) {
+        docs.push({ key: '7004', label: 'Form 7004', bytes: pkg.form7004 });
+      }
       if (pkg.reasonableCauseLetter) {
         docs.push({
           key: 'rcl',
@@ -2384,16 +2441,15 @@ export function Intake() {
       // only transactions were guaranteed to save here, so an RCL selected in
       // the open filing-status section could be visible in Review but absent
       // from the database product cart and therefore from the invoice.
-      const savedFilingId = await saveAll();
+      // Persists the filing row AND the transactions, and marks the filing as
+      // having reached review.
+      const savedFilingId = await saveDraft({ current_step: 5 });
       if (!savedFilingId) return;
-      // saveAll runs persistPatch, whose finally clears `saving`. The submit
+      setFurthestStep(5);
+      // saveDraft runs persistPatch, whose finally clears `saving`. The submit
       // button is disabled on that flag, so without this it went live again
       // mid-submit and a second tap ran the whole thing twice.
       setSaving(true);
-
-      // Save transactions before navigating.
-      const saved = await saveTransactions(filingId);
-      if (!saved) return;
 
       if (isPaidLocked) {
         // Paid filing: save the correction and return to the download page.
@@ -2456,7 +2512,20 @@ export function Intake() {
         }
       }
 
-      navigate(`/filing/${filingId}`);
+      // Straight to payment. There used to be a "Review and Payment" screen in
+      // between, which restated the filing and offered one button; intake's own
+      // review section already shows all of that, and the filer has just read
+      // it, so the extra stop was a page whose only content was a delay.
+      //
+      // The filing page is still there. It is where a paid filing signs and
+      // downloads, and it is the fallback below if checkout will not start, so
+      // a payment provider having a bad day never leaves anyone stranded with
+      // no way to pay.
+      const failure = await startCheckout(filingId);
+      if (failure) {
+        setError(`${failure} Your filing is saved. Open it from your dashboard to try the payment again.`);
+        navigate(`/filing/${filingId}`);
+      }
     } catch (e: unknown) {
       console.error(e);
       setError(`Your filing could not be submitted: ${describeError(e)} Your answers are still saved, try again, and if it keeps happening send that message to support@filetax.co.`);
