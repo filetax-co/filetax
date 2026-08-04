@@ -23,6 +23,7 @@ export interface FilingProfile {
   mailing_address?: Record<string, unknown> | null;
   entity_business_activity?: string | null;
   entity_business_code?: string | null;
+  entity_principal_country?: string | null;
   naics_code?: string | null;
   naics_description?: string | null;
   // Owner
@@ -43,11 +44,23 @@ export interface FilingProfile {
   related_parties?: unknown[] | null;
 }
 
+/**
+ * Columns added after the profile table shipped, whose migration may not have
+ * been run yet on a given database.
+ *
+ * Migrations here are applied by hand, so the deployed app can be ahead of the
+ * schema. PostgREST rejects a SELECT naming an unknown column outright, and
+ * loadProfile treats any error as "no profile", so one missing column would
+ * silently turn off ALL prefill rather than that one field. loadProfile retries
+ * without these when the first attempt fails.
+ */
+const RECENT_PROFILE_COLUMNS = ['entity_principal_country'] as const;
+
 /** The columns we read/write for prefill. Kept in one place to avoid drift. */
 const PROFILE_COLUMNS = [
   'llc_name', 'ein', 'state_of_formation', 'date_of_incorporation',
   'mailing_address', 'entity_business_activity', 'entity_business_code',
-  'naics_code', 'naics_description',
+  'entity_principal_country', 'naics_code', 'naics_description',
   'owner_full_name', 'owner_country', 'owner_primary_country',
   'owner_country_residence', 'owner_country_citizenship',
   'owner_foreign_tax_id', 'owner_us_tin', 'owner_reference_id', 'owner_ref_number',
@@ -58,11 +71,22 @@ const PROFILE_COLUMNS = [
 /** Load the signed-in user's saved profile, or null if none / not signed in. */
 export async function loadProfile(userId: string | null | undefined): Promise<FilingProfile | null> {
   if (!userId) return null;
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select(PROFILE_COLUMNS.join(','))
-    .eq('user_id', userId)
-    .maybeSingle();
+  const read = async (columns: readonly string[]) =>
+    supabase
+      .from('user_profiles')
+      .select(columns.join(','))
+      .eq('user_id', userId)
+      .maybeSingle();
+
+  let { data, error } = await read(PROFILE_COLUMNS);
+  if (error) {
+    // See RECENT_PROFILE_COLUMNS: losing one field is a much smaller failure
+    // than losing every prefilled field.
+    const older = PROFILE_COLUMNS.filter(
+      (c) => !(RECENT_PROFILE_COLUMNS as readonly string[]).includes(c),
+    );
+    ({ data, error } = await read(older));
+  }
   if (error || !data) return null;
   return data as unknown as FilingProfile;
 }
@@ -83,6 +107,12 @@ export async function saveProfileFromFiling(
     if (v !== undefined && v !== null && v !== '') patch[col] = v;
   }
   // Nothing meaningful to save beyond the key.
+  if (Object.keys(patch).length <= 1) return;
+  const { error } = await supabase.from('user_profiles').upsert(patch, { onConflict: 'user_id' });
+  if (!error) return;
+  // Same reasoning as loadProfile: a column whose migration has not been run
+  // must not take the whole profile write down with it.
+  for (const col of RECENT_PROFILE_COLUMNS) delete patch[col];
   if (Object.keys(patch).length <= 1) return;
   await supabase.from('user_profiles').upsert(patch, { onConflict: 'user_id' });
 }

@@ -929,6 +929,14 @@ export function Intake() {
   // null = not answered, true = already filed (no nudge), false = not filed
   // (offer multi-year).
   const [earlierReturnsFiled, setEarlierReturnsFiled] = useState<boolean | null>(null);
+  // Does this database have the earlier_returns_filed column yet?
+  //
+  // Migrations here are applied by hand, so the deployed app can be ahead of
+  // the schema for a while. PostgREST rejects an UPDATE naming a column that
+  // does not exist, and it rejects the WHOLE patch, so sending it blindly would
+  // break every save on the page rather than losing one answer. The loaded row
+  // is the probe: select('*') returns the key when the column exists.
+  const [supportsEarlierReturns, setSupportsEarlierReturns] = useState(false);
   // Final return + fiscal-year (non-calendar) filing
   const [finalReturn, setFinalReturn] = useState(false);
   // Date the LLC was dissolved with its state of formation. This is what ends
@@ -1120,7 +1128,6 @@ export function Intake() {
   ];
 
   const selectedTxMeta = TX_TYPES.find((t) => t.value === txType);
-  const currentStepIdx = stepOrder.indexOf(step);
 
   /**
    * The display number for a section, taken from its position in `stepOrder`.
@@ -1146,17 +1153,6 @@ export function Intake() {
   const txMeta = TX_TYPES.find((t) => t.value === txType);
   // Live money summary (reconciles with the generator's 1f/1h gross).
   const txSummary = summarizeTransactions(transactions);
-
-  const goToStepByIndex = (idx: number, nextFilingId?: string) => {
-    const target = stepOrder[idx];
-    if (target === undefined) return;
-    setStep(target);
-    const resolvedFilingId = nextFilingId ?? localFilingId ?? params.get('filing_id');
-    const newParams = new URLSearchParams(params.toString());
-    newParams.set('step', String(target));
-    if (resolvedFilingId) newParams.set('filing_id', resolvedFilingId);
-    navigate(`?${newParams.toString()}`, { replace: true });
-  };
 
   useEffect(() => {
     if (step === '1b' && !show1b) setStep(1);
@@ -1239,6 +1235,8 @@ export function Intake() {
       setMailing((f.mailing_address as Address) ?? { country: 'US' });
       setEntityBizActivity((f as any).entity_business_activity ?? (f as any).naics_description ?? '');
       setEntityBizCode((f as any).entity_business_code ?? '');
+      setSupportsEarlierReturns(Object.prototype.hasOwnProperty.call(f, 'earlier_returns_filed'));
+      setEarlierReturnsFiled((f as any).earlier_returns_filed ?? null);
       setExtensionFiled((f as any).extension_filed ?? null);
       // Read BOTH columns. include_reasonable_cause is what intake writes;
       // include_rcl is what the multi-year setup writes when a catch-up job is
@@ -1354,6 +1352,7 @@ export function Intake() {
           bf(profile.date_of_incorporation)(setEntityDOI);
           bf(profile.entity_business_activity ?? profile.naics_description)(setEntityBizActivity);
           bf(profile.entity_business_code ?? profile.naics_code)(setEntityBizCode);
+          bf(profile.entity_principal_country)(setEntityPrincipalCountry);
         }
       } catch { /* profile backfill is best-effort */ }
 
@@ -1391,6 +1390,7 @@ export function Intake() {
       setEntityDOI((c) => fill(c, profile.date_of_incorporation));
       setEntityBizActivity((c) => fill(c, profile.entity_business_activity ?? profile.naics_description));
       setEntityBizCode((c) => fill(c, profile.entity_business_code ?? profile.naics_code));
+      setEntityPrincipalCountry((c) => fill(c, profile.entity_principal_country));
       setMailing((c) => (c && c.line1 ? c : ((profile.mailing_address as Address) ?? { country: 'US' })));
 
       setOwnerName((c) => fill(c, profile.owner_full_name));
@@ -1446,84 +1446,9 @@ export function Intake() {
     );
   }
 
-  function patchFromCurrentStep(): Partial<Filing> & Record<string, unknown> {
-    if (step === 1) return {
-      llc_name: llcName.trim() || null,
-      ein: ein.trim() || null,
-      state_of_formation: stateOfFormation.trim() || null,
-      tax_year: taxYear,
-      // Attested per tax year, so YEAR_SPECIFIC_FIELDS keeps these off sibling
-      // year rows in a multi-year job: each year is confirmed on its own facts.
-      eligibility_confirmed: eligibilityConfirmed,
-      has_us_activity: hasUsActivity,
-      total_assets: totalAssets ? Number(totalAssets) : null,
-      // Wizard columns (kept for resume/load compatibility)
-      entity_date_of_incorporation: entityDOI.trim() || null,
-      entity_principal_country: entityPrincipalCountry.trim() || null,
-      mailing_address: mailing,
-      entity_business_activity: entityBizActivity.trim() || null,
-      entity_business_code: entityBizCode.trim() || null,
-      // Canonical columns read directly by the PDF generator
-      date_of_incorporation: entityDOI.trim() || null,
-      naics_code: entityBizCode.trim() || null,
-      naics_description: entityBizActivity.trim() || null,
-      // Initial return: the LLC was formed within the filing period (calendar or fiscal).
-      initial_return: isInitialReturn(entityDOI, taxYear, isFiscalYear ? fiscalEndMonth : ''),
-      // Final return + fiscal-year (non-calendar) period.
-      final_return: finalReturn,
-      date_of_closure: finalReturn ? (dateOfClosure.trim() || null) : null,
-      name_change: nameChange,
-      address_change: addressChange,
-      is_fiscal_year: isFiscalYear,
-      tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
-      tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
-    };
-    if (step === '1b') {
-      // A reasonable-cause letter only applies to a genuinely late filing. The
-      // filing is late once the applicable deadline has passed, the ORIGINAL
-      // deadline with no extension, or the EXTENDED deadline for a 7004 filer.
-      // If the 7004 extension is still valid the filing is on time, so no RCL.
-      const rclApplies = includeReasonableCause && isLateForRcl;
-      return {
-        extension_filed: extensionFiled,
-        include_reasonable_cause: rclApplies,
-        reasonable_cause_reasons: rclApplies ? reasonableCauseReasons : [],
-        // Canonical flag the PDF generator reads.
-        include_rcl: rclApplies,
-      };
-    }
-    if (step === 2) return {
-      owner_full_name: ownerName.trim() || null,
-      // Wizard columns (kept for resume/load compatibility)
-      owner_country: ownerCountry.trim() || null,
-      owner_country_residence: ownerCountryRes.trim() || null,
-      owner_ssn: ownerSSN.trim() || null,
-      owner_foreign_tax_id: ownerForeignTaxId.trim() || null,
-      owner_ref_number: ownerRefNumber.trim() || null,
-      owner_address: ownerAddress,
-      owner_business_activity: ownerBizActivity.trim() || null,
-      owner_business_code: ownerBizCode.trim() || null,
-      // Canonical columns read directly by the PDF generator
-      owner_primary_country: ownerCountry.trim() || null,   // "country where you do business"
-      owner_country_citizenship: ownerCountryCitizenship.trim() || null,
-      owner_us_tin: ownerSSN.trim() || null,
-      owner_reference_id: ownerRefNumber.trim() || null,
-      owner_naics_code: ownerBizCode.trim() || null,
-      signer_title: signerTitle.trim() || null,
-      signature_date: signatureDate || null,
-    };
-    if (step === 3) return { related_parties: relatedParties };
-    if (step === 4) return {
-      no_transactions_confirmed: noTransactionsConfirmed,
-      part_vi_managerial: partViManagerial,
-    };
-    return {};
-  }
-
   // The whole-form patch, the union of every step's fields. In the accordion
   // model all field state is in memory at once, so we persist everything on
-  // section-collapse and at submit instead of one step at a time. Built by
-  // temporarily reading each step's subset via patchFromCurrentStep.
+  // section-collapse and at submit instead of one step at a time.
   function patchAll(): Partial<Filing> & Record<string, unknown> {
     const rclApplies = includeReasonableCause && isLateForRcl;
     return {
@@ -1560,6 +1485,9 @@ export function Intake() {
       is_fiscal_year: isFiscalYear,
       tax_period_begin: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).begin : null,
       tax_period_end: isFiscalYear && fiscalEndMonth ? deriveFiscalPeriod(taxYear, fiscalEndMonth).end : null,
+      // The filer's own statement about years we did not file for them. Sent
+      // only once the column is known to exist; see supportsEarlierReturns.
+      ...(supportsEarlierReturns ? { earlier_returns_filed: earlierReturnsFiled } : {}),
       // Step 1b, filing status
       extension_filed: extensionFiled,
       include_reasonable_cause: rclApplies,
@@ -1950,21 +1878,6 @@ export function Intake() {
     return errs;
   }
 
-  function validateCurrentStep(): string[] {
-    if (step === 1) return validateStep1();
-    if (step === '1b') return validateStep1b();
-    if (step === 2) return validateStep2();
-    if (step === 3) {
-      if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
-      return validateStep3();
-    }
-    if (step === 4) {
-      if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
-      return validateStep4();
-    }
-    return [];
-  }
-
   function validationForStep(target: IntakeStep): string[] {
     if (target === 1) return validateStep1();
     if (target === '1b') return validateStep1b();
@@ -2018,8 +1931,7 @@ export function Intake() {
 
   // Persist a field patch to the current filing (creating the row on first
   // save). When propagateShared is true, company/owner fields are also copied to
-  // the job's other draft years. Shared by saveStep (legacy per-step) and
-  // saveAll (accordion whole-form save).
+  // the job's other draft years. Reached through saveAll / saveDraft.
   const persistPatch = async (
     patch: Partial<Filing> & Record<string, unknown>,
     propagateShared: boolean,
@@ -2076,9 +1988,6 @@ export function Intake() {
       setSaving(false);
     }
   };
-
-  const saveStep = (): Promise<string | null> =>
-    persistPatch(patchFromCurrentStep(), jobId != null && (step === 1 || step === 2));
 
   // Whole-form save for the accordion: persists every field and propagates the
   // shared company/owner fields to the job's other years.
@@ -2308,34 +2217,6 @@ export function Intake() {
     }
   };
 
-  const handleNext = async () => {
-    const errs = validateCurrentStep();
-    setStepErrors(errs);
-    if (step === 1 && ein) setEinErr(einProblem(ein));
-    if (errs.length > 0) return;
-    const nextIdx = currentStepIdx + 1;
-    if (nextIdx >= stepOrder.length) return;
-    if (step !== 4) {
-      const id = await saveStep();
-      if (!id) return;
-      if (!filingId) setLocalFilingId(id);
-      goToStepByIndex(nextIdx, id);
-      return;
-    }
-    const ensuredId = filingId ?? (await saveStep());
-    if (!ensuredId) return;
-    if (!filingId) setLocalFilingId(ensuredId);
-    const saved = await saveTransactions(ensuredId);
-    if (!saved) return;
-    goToStepByIndex(nextIdx, ensuredId);
-  };
-
-  const handleBack = () => {
-    setStepErrors([]);
-    const prevIdx = currentStepIdx - 1;
-    if (prevIdx >= 0) goToStepByIndex(prevIdx);
-  };
-
   // Switch a single-year filing to the multi-year catch-up. Persist whatever
   // company/owner details have been entered so far to the user's profile so the
   // year picker + each year's intake prefill them, the user doesn't re-type
@@ -2352,6 +2233,7 @@ export function Intake() {
           mailing_address: mailing,
           entity_business_activity: entityBizActivity.trim() || null,
           entity_business_code: entityBizCode.trim() || null,
+          entity_principal_country: entityPrincipalCountry.trim() || null,
           naics_code: entityBizCode.trim() || null,
           naics_description: entityBizActivity.trim() || null,
           owner_full_name: ownerName.trim() || null,
@@ -2485,6 +2367,7 @@ export function Intake() {
           mailing_address: mailing,
           entity_business_activity: entityBizActivity.trim() || null,
           entity_business_code: entityBizCode.trim() || null,
+          entity_principal_country: entityPrincipalCountry.trim() || null,
           naics_code: entityBizCode.trim() || null,
           naics_description: entityBizActivity.trim() || null,
           owner_full_name: ownerName.trim() || null,

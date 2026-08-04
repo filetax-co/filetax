@@ -126,6 +126,9 @@ alter table public.filings
   add column if not exists entity_business_activity      text,
   add column if not exists entity_business_code          text,
   -- late filing / extension
+  -- The filer's own statement that earlier years were already filed elsewhere.
+  -- Nullable: null means unanswered, and must never be read as "no".
+  add column if not exists earlier_returns_filed         boolean,
   add column if not exists extension_filed               boolean,
   add column if not exists include_7004                  boolean,
   add column if not exists include_reasonable_cause      boolean,
@@ -327,6 +330,7 @@ alter table public.user_profiles
   add column if not exists mailing_address           jsonb,
   add column if not exists entity_business_activity  text,
   add column if not exists entity_business_code      text,
+  add column if not exists entity_principal_country  text,
   add column if not exists naics_code                text,
   add column if not exists naics_description         text,
   add column if not exists owner_full_name           text,
