@@ -48,6 +48,7 @@ export default function FilingWizard() {
   const [loading,      setLoading]      = useState(true);
   const [generating,   setGenerating]   = useState(false);
   const [genErr,       setGenErr]       = useState<string | null>(null);
+  const [faxNotice,    setFaxNotice]    = useState<string | null>(null);
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
@@ -169,6 +170,7 @@ export default function FilingWizard() {
     if (!id || !filing || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
+    setFaxNotice(null);
     try {
       const { data: fi, error: fiErr } = await supabase
         .from('filings').select('*').eq('id', id).single();
@@ -183,7 +185,10 @@ export default function FilingWizard() {
       // disclosed in Part VI, and filing on time avoids the $25,000 penalty
       // even when no Part IV/V transaction occurred.
       const { generateFilingPackage, refuseUnsupportedText } = await import('../../lib/pdfGenerator');
-      const pkg = await generateFilingPackage(fi, txns ?? [], undefined, { drawnSignature });
+      const pkg = await generateFilingPackage(fi, txns ?? [], undefined, {
+        drawnSignature,
+        fax: fi.include_irs_fax === true,
+      });
 
       // The IRS forms are rendered with WinAnsi-encoded fonts. Anything outside
       // that set (Cyrillic, Arabic, CJK, Devanagari, …) cannot be drawn and is
@@ -204,6 +209,31 @@ export default function FilingWizard() {
       setPreview({ url, filename });
       triggerDownload(pkg.combined, filename);
       await markDownloaded([fi]);
+
+      // The signed fax bytes exist only in this tab. Relay them after the filer
+      // has safely received their own download; a provider outage must never
+      // take the customer's forms away. The edge function re-checks ownership,
+      // paid status and the purchased add-on, and its unique filing row makes a
+      // repeated click idempotent.
+      if (fi.include_irs_fax === true) {
+        if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
+        setFaxNotice('Submitting your signed package by fax...');
+        try {
+          const { dispatchIrsFax } = await import('../../lib/faxDispatch');
+          const result = await dispatchIrsFax(fi.id, pkg.faxPayload);
+          setFaxNotice(
+            result.status === 'delivered'
+              ? 'Fax delivered. Your transmission confirmation is recorded.'
+              : 'Fax submitted. We are waiting for Sinch to confirm delivery.',
+          );
+        } catch (faxErr) {
+          setFaxNotice(
+            `Your forms downloaded, but the fax was not submitted: ${
+              faxErr instanceof Error ? faxErr.message : 'please try again'
+            }`,
+          );
+        }
+      }
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -281,6 +311,7 @@ export default function FilingWizard() {
     if (!filing?.job_id || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
+    setFaxNotice(null);
     try {
       const { data: job } = await supabase
         .from('filing_jobs').select('include_rcl, rcl_narrative, reasonable_cause_reasons').eq('id', filing.job_id).single();
@@ -314,6 +345,7 @@ export default function FilingWizard() {
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
         rclNarrative: jobNarrative,
+        fax: filing.include_irs_fax === true,
         // One drawing signs the whole catch-up: the single reasonable cause
         // letter and every year's pro forma 1120.
         drawnSignature,
@@ -345,6 +377,26 @@ export default function FilingWizard() {
       // year is marked. Marking only the anchor filing would leave the rest of
       // the job sitting in "Ready to download" with the forms already on disk.
       await markDownloaded(yearFilings as Filing[]);
+
+      if (filing.include_irs_fax === true) {
+        if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
+        setFaxNotice('Submitting your signed multi-year package by fax...');
+        try {
+          const { dispatchIrsFax } = await import('../../lib/faxDispatch');
+          const result = await dispatchIrsFax(filing.id, pkg.faxPayload);
+          setFaxNotice(
+            result.status === 'delivered'
+              ? 'Fax delivered. Your transmission confirmation is recorded.'
+              : 'Fax submitted. We are waiting for Sinch to confirm delivery.',
+          );
+        } catch (faxErr) {
+          setFaxNotice(
+            `Your forms downloaded, but the fax was not submitted: ${
+              faxErr instanceof Error ? faxErr.message : 'please try again'
+            }`,
+          );
+        }
+      }
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -595,6 +647,9 @@ export default function FilingWizard() {
             {/* ── Generate error ───────────────────────────────────────── */}
             {genErr && (
               <div style={{ ...errorBannerStyle, marginBottom: '1rem' }}>{genErr}</div>
+            )}
+            {faxNotice && (
+              <div style={{ ...infoBannerStyle, marginBottom: '1rem' }}>{faxNotice}</div>
             )}
             {paymentNotice && (
               <div
@@ -872,6 +927,16 @@ const errorBannerStyle: React.CSSProperties = {
   background: 'var(--tf-error-bg)',
   color: 'var(--tf-error-text)',
   border: '1px solid var(--tf-error-border)',
+  borderRadius: '0.5rem',
+  padding: '0.75rem 1rem',
+  fontSize: '0.875rem',
+  marginBottom: '1.25rem',
+};
+
+const infoBannerStyle: React.CSSProperties = {
+  background: 'var(--tf-offset)',
+  color: 'var(--tf-text)',
+  border: '1px solid var(--tf-border)',
   borderRadius: '0.5rem',
   padding: '0.75rem 1rem',
   fontSize: '0.875rem',

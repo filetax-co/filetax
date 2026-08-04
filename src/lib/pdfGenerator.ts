@@ -1442,6 +1442,8 @@ export interface FaxCoverOpts {
   senderFax?: string;
   /** Transmission date. Defaults to today. */
   sentOn?: Date;
+  /** Multi-year catch-up years. Omit for a single-year transmission. */
+  taxYears?: number[];
 }
 
 export const buildFaxCoverPage = async (
@@ -1503,9 +1505,10 @@ export const buildFaxCoverPage = async (
     MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 2;
   cursor.y = drawWrapped(page, `EIN: ${ein}`, MARGIN, cursor.y, { size: FS_BODY }, fonts);
-  cursor.y = drawWrapped(page,
-    `Tax year: ${period.beginText} through ${period.endText}`,
-    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  const taxYearLine = opts.taxYears && opts.taxYears.length > 1
+    ? `Tax years: ${[...opts.taxYears].sort((a, b) => a - b).join(', ')}`
+    : `Tax year: ${period.beginText} through ${period.endText}`;
+  cursor.y = drawWrapped(page, taxYearLine, MARGIN, cursor.y, { size: FS_BODY }, fonts);
   cursor.y -= 12;
 
   // ── Body ───────────────────────────────────────────────────────────────────
@@ -1514,7 +1517,7 @@ export const buildFaxCoverPage = async (
 
   const forms = opts.formCount === 1 ? 'one Form 5472' : `${opts.formCount} Forms 5472`;
   const intro =
-    `Transmitted by fax are ${forms} for ${entity} for the tax year shown above, filed under ` +
+    `Transmitted by fax are ${forms} for ${entity} for the tax year(s) shown above, filed under ` +
     `Internal Revenue Code section 6038A. ${entity} is a U.S. limited liability company wholly ` +
     'owned by one foreign person, treated as a corporation for section 6038A reporting purposes ' +
     'under 26 CFR 301.7701-2(c)(2)(vi). A pro forma Form 1120 accompanies the filing as the ' +
@@ -2579,6 +2582,8 @@ export interface MultiYearPackage {
    *   RCL (once) → for each year: instructions → 1120 → 5472s + statements.
    */
   bundled: Uint8Array;
+  /** One transmission-ready PDF: cover, one RCL, then every year's forms. */
+  faxPayload?: Uint8Array;
   /** Years included, ascending. */
   taxYears: number[];
   /**
@@ -2603,6 +2608,10 @@ export const generateMultiYearPackage = async (
   opts: {
     includeRCL: boolean;
     rclNarrative?: string | null;
+    /** Also build a single transmission-ready PDF for the whole catch-up. */
+    fax?: boolean;
+    /** Sending fax number printed on the cover page. */
+    senderFax?: string;
     /**
      * Drawn signature, applied to the single reasonable cause letter and to the
      * pro forma 1120 of EVERY year in the catch-up. One drawing signs the whole
@@ -2641,10 +2650,15 @@ export const generateMultiYearPackage = async (
   // Per-year PDFs: instructions page (page 1) → that year's forms. No RCL here
   // (it is delivered once, separately and in the bundle).
   const perYear: MultiYearPackage['perYear'] = [];
+  const instructionPageCounts = new Map<number, number>();
   for (const yd of yearDocs) {
     const instructions = await buildInstructionsPage(yd.filing, yd.period, {
       isLate: opts.includeRCL, hasRCL: opts.includeRCL, formCount: yd.formCount,
     });
+    // assembleYear/mergeInto consumes and flattens its source document, so
+    // capture this before the merge. The fax builder uses it to remove every
+    // filer-facing instruction page from each year's PDF.
+    instructionPageCounts.set(yd.period.year, instructions.getPageCount());
     const y7004 = wants7004(yd.filing) ? await PDFDocument.load(await (await fill7004(yd.filing, yd.period)).save()) : null;
     const merged = await assembleYear(yd, [instructions], y7004);
     perYear.push({ taxYear: yd.period.year, pdf: await merged.save(), formCount: yd.formCount });
@@ -2692,11 +2706,57 @@ export const generateMultiYearPackage = async (
     return true;
   });
 
+  let faxPayload: Uint8Array | undefined;
+  if (opts.fax) {
+    const coverSource = chronological[chronological.length - 1];
+    const blocker = faxSignatureBlocker({
+      ownerFullName: coverSource.filing.owner.full_name,
+      drawnSignature: opts.drawnSignature,
+      includesRCL: opts.includeRCL,
+    });
+    if (blocker) throw new Error(blocker);
+
+    // Build one body for the whole paid job. The filer-facing instruction
+    // pages are removed from every year; the single job-level RCL leads once.
+    const body = await PDFDocument.create();
+    if (rclDoc) {
+      const rclCopy = await PDFDocument.load(await rclDoc.save());
+      await mergeInto(body, rclCopy);
+    }
+    for (const item of [...perYear].sort((a, b) => a.taxYear - b.taxYear)) {
+      const yearPdf = await PDFDocument.load(item.pdf);
+      const instructionPages = instructionPageCounts.get(item.taxYear) ?? 0;
+      const formPageIndices = yearPdf.getPageIndices().slice(instructionPages);
+      const pages = await body.copyPages(yearPdf, formPageIndices);
+      for (const page of pages) body.addPage(page);
+    }
+
+    const coverOpts: FaxCoverOpts = {
+      formCount: perYear.reduce((sum, item) => sum + item.formCount, 0),
+      hasRCL: !!rclDoc,
+      has7004: sorted.some((item) => wants7004(item.filing)),
+      pageCount: 0,
+      senderFax: opts.senderFax,
+      taxYears,
+    };
+    const probe = await buildFaxCoverPage(coverSource.filing, coverSource.period, coverOpts);
+    const cover = await buildFaxCoverPage(coverSource.filing, coverSource.period, {
+      ...coverOpts,
+      pageCount: probe.getPageCount() + body.getPageCount(),
+    });
+    const outbound = await PDFDocument.create();
+    await mergeInto(outbound, cover);
+    const pages = await outbound.copyPages(body, body.getPageIndices());
+    for (const page of pages) outbound.addPage(page);
+    faxPayload = await outbound.save();
+  }
+
   return {
     perYear: perYear.sort((a, b) => a.taxYear - b.taxYear),
     reasonableCauseLetter: rclDoc ? await rclDoc.save() : undefined,
     bundled: await bundle.save(),
     taxYears,
+    ...(faxPayload ? { faxPayload } : {}),
     ...(unsupportedText.length ? { unsupportedText } : {}),
   };
 

@@ -35,7 +35,7 @@ globalThis.fetch = async (url) => {
 
 const pyText = (file) => {
   const py = `import pypdf\nr=pypdf.PdfReader(r'${file}')\nprint('PAGES',len(r.pages))\nfor p in r.pages: print(p.extract_text() or '')`;
-  return execFileSync('python3', ['-c', py], { encoding: 'utf8' });
+  return execFileSync(process.env.PYTHON ?? 'python3', ['-c', py], { encoding: 'utf8' });
 };
 
 const baseFiling = (year, over = {}) => ({
@@ -64,7 +64,11 @@ const years = [2021, 2022, 2023].map((y) => ({
     { id: 't' + y, filing_id: 's', related_party_index: 0, transaction_type: 'capital_contribution', direction: 'received', amount_usd: 500 * (y - 2020), description: 'Capital ' + y },
   ],
 }));
-const my = await gen.generateMultiYearPackage(years, { includeRCL: true, rclNarrative: 'I was unaware of the Form 5472 requirement until my accountant flagged it in 2024.' });
+const my = await gen.generateMultiYearPackage(years, {
+  includeRCL: true,
+  rclNarrative: 'I was unaware of the Form 5472 requirement until my accountant flagged it in 2024.',
+  fax: true,
+});
 
 must(my.perYear.length === 3, `expected 3 per-year PDFs, got ${my.perYear.length}`);
 must(JSON.stringify(my.taxYears) === JSON.stringify([2021, 2022, 2023]), 'taxYears not [2021,2022,2023]: ' + JSON.stringify(my.taxYears));
@@ -90,6 +94,14 @@ const bFile = path.join(os.tmpdir(), 'bundle.pdf'); writeFileSync(bFile, Buffer.
 const bText = pyText(bFile);
 must((bText.match(/REASONABLE CAUSE STATEMENT/g) || []).length === 1, 'bundle should contain RCL exactly once');
 must(/Tax Year 2021/.test(bText) && /Tax Year 2022/.test(bText) && /Tax Year 2023/.test(bText), 'bundle missing one of the years');
+
+// Fax: one cover + one RCL + every year's forms, with no filer instructions.
+must(!!my.faxPayload, 'multi-year fax payload missing');
+const faxFile = path.join(os.tmpdir(), 'multi-year-fax.pdf'); writeFileSync(faxFile, Buffer.from(my.faxPayload));
+const faxText = pyText(faxFile);
+must(/Tax years: 2021, 2022, 2023/.test(faxText), 'fax cover does not list all years');
+must((faxText.match(/REASONABLE CAUSE STATEMENT/g) || []).length === 1, 'fax should contain the job RCL exactly once');
+must(!/Filing Instructions/.test(faxText), 'fax must not transmit filer-facing instructions');
 
 // ── Test 2: final-year return ────────────────────────────────────────────────
 const finalPkg = await gen.generateFilingPackage(
