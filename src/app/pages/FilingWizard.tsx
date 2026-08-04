@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
-import { PdfPreviewModal } from '../../components/PdfPreviewModal';
 import { startCheckout } from '../../lib/checkout';
 import { SignaturePad } from '../components/SignaturePad';
 import type { DrawnSignature } from '../../lib/drawnSignature';
@@ -51,12 +50,10 @@ export default function FilingWizard() {
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
-  // Generated single-year package: kept as a blob URL so the filer can preview
-  // it in the overlay and download the same bytes without regenerating.
+  // Generated single-year package: kept as a blob URL so the filer can download
+  // the same bytes again without regenerating. Named `preview` from when it fed
+  // an overlay; it now only backs the card and its Download button.
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
-  // Whether the preview overlay is showing. Kept separate from `preview` so the
-  // generated package can persist on the page after the overlay is dismissed.
-  const [previewOpen, setPreviewOpen] = useState(false);
   // Drawn signature, held in memory for this tab only. Deliberately NOT written
   // to the filing record or to storage: see the header of lib/drawnSignature.ts
   // for why that is what keeps the "we never store your documents" claim true.
@@ -196,13 +193,15 @@ export default function FilingWizard() {
       const refusal = refuseUnsupportedText(pkg.unsupportedText);
       if (refusal) throw new Error(refusal);
 
-      // The button says "Generate & preview", so open the overlay straight away;
-      // the package card stays on the page once it is dismissed.
+      // Straight to the file. The filer saw the forms in the draft preview
+      // before paying, so a second overlay after payment only stands between
+      // them and the download they came for. The card below keeps the object
+      // URL so they can download it again without regenerating.
       const blob = new Blob([pkg.combined], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       const filename = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
       setPreview({ url, filename });
-      setPreviewOpen(true);
+      triggerDownload(pkg.combined, filename);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -658,17 +657,22 @@ export default function FilingWizard() {
                     }}
                     type="button"
                   >
-                    {generating ? 'Generating…' : preview ? 'Regenerate' : 'Generate & preview'}
+                    {generating ? 'Generating…' : preview ? 'Regenerate' : 'Generate & download'}
                   </button>
                 )}
               </div>}
             </div>
 
-            {/* ── Generated package: open in the preview overlay ──────────────
-                The PDF used to sit inline at 75vh, which handed the page to the
-                browser's own viewer (toolbar, zoom, thumbnail rail) and read as
-                if the app had been replaced by Adobe. It now opens in the shared
-                overlay, so the filing page stays put behind it. */}
+            {/* ── Generated package ───────────────────────────────────────────
+                Generating downloads the file. This card is what remains after
+                it: the name of what was downloaded, and a way to get it again
+                without regenerating.
+
+                It has been an inline 75vh PDF (which handed the page to the
+                browser's own viewer and read as if the app had been replaced by
+                Adobe), then a preview overlay. The overlay went because the
+                filer already reviewed these forms in the draft preview before
+                paying, so it only stood between them and the download. */}
             {preview && (
               <div style={{ marginTop: '1.5rem' }}>
                 <div style={{
@@ -690,24 +694,12 @@ export default function FilingWizard() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button onClick={() => setPreviewOpen(true)} style={secondaryBtnStyle} type="button">
-                      Preview
-                    </button>
                     <button onClick={downloadPreview} style={primaryBtnStyle} type="button">
                       Download PDF
                     </button>
                   </div>
                 </div>
               </div>
-            )}
-
-            {previewOpen && preview && (
-              <PdfPreviewModal
-                target={preview}
-                onClose={() => setPreviewOpen(false)}
-                onDownload={downloadPreview}
-                footnote="Review every page. When it looks right, download the PDF, then print and mail (or fax) it to the IRS using the instructions on the first page."
-              />
             )}
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
