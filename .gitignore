@@ -46,3 +46,7 @@ yarn-error.log*
 # commits were rewritten before any push. Do not move it back in.
 FILETAX-HANDOFF.md
 blog-headings-and-faq-rewrite.md
+
+# pdf.js standard font data, copied out of node_modules by predev/prebuild so
+# the browser can fetch it. Regenerated, never edited, never committed.
+public/pdfjs/

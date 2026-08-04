@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
 import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
+import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
 import {
   BIZ_ACTIVITIES,
   COUNTRIES,
@@ -1069,6 +1070,12 @@ export function Intake() {
   // Payment-integrity state: a paid filing locks only the identity fields that
   // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
+  // Pre-payment draft preview. The rendered docs are held here rather than in
+  // the modal so closing it throws the raster away: these are the filer's own
+  // forms and there is no reason to keep them in memory afterwards.
+  const [draftDocs, setDraftDocs] = useState<DraftDoc[] | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [paidRelatedPartyCount, setPaidRelatedPartyCount] = useState(0);
 
   // Foreign tax ID guidance, driven by the country of TAX RESIDENCE (not
@@ -2298,6 +2305,71 @@ export function Intake() {
       }
     } catch { /* best-effort: still go to the picker */ }
     navigate('/catch-up');
+  };
+
+  /**
+   * Build the filer's real package and show it as watermarked images, before
+   * any money changes hands.
+   *
+   * It generates from the SAVED ROW, not from component state, and saves first
+   * to get there. That costs a round trip, and buys the guarantee that what is
+   * previewed is what handleSubmit will produce: both read the same filing and
+   * the same transactions through the same generator. A preview built from a
+   * second, parallel path would eventually drift from the product, and a
+   * preview that disagrees with the delivered forms is worse than none.
+   *
+   * No drawn signature is passed. Signing happens after payment, on the filing
+   * page, and the modal says so.
+   */
+  const handlePreviewDraft = async () => {
+    const errs = validateForSubmit();
+    setStepErrors(errs);
+    if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (!filingId) { setPreviewErr('This filing has no id yet. Go back to the dashboard and open it from there.'); return; }
+    setPreviewBusy(true);
+    setPreviewErr(null);
+    try {
+      if (!(await saveAll())) return;
+      if (!(await saveTransactions(filingId))) return;
+
+      const { data: fi, error: fiErr } = await supabase
+        .from('filings').select('*').eq('id', filingId).single();
+      if (fiErr) throw fiErr;
+      const { data: txns, error: txErr } = await supabase
+        .from('reportable_transactions').select('*').eq('filing_id', filingId);
+      if (txErr) throw txErr;
+
+      const { generateFilingPackage, refuseUnsupportedText } = await import('../../lib/pdfGenerator');
+      const pkg = await generateFilingPackage(fi, txns ?? [], undefined, { drawnSignature: null });
+      // Same refusal as the paid path: a package missing characters must never
+      // be shown as though it were fine, or the filer approves a draft that we
+      // will then refuse to generate.
+      const refusal = refuseUnsupportedText(pkg.unsupportedText);
+      if (refusal) throw new Error(refusal);
+
+      const docs: DraftDoc[] = [
+        { key: '5472', label: 'Form 5472', bytes: pkg.form5472 },
+        { key: '1120', label: 'Pro forma 1120', bytes: pkg.form1120 },
+      ];
+      if (pkg.reasonableCauseLetter) {
+        docs.push({
+          key: 'rcl',
+          label: 'Reasonable cause letter',
+          bytes: pkg.reasonableCauseLetter,
+          // Letterhead, the IRS address block, the RE line and the opening stay
+          // sharp. The argument does not: it is the part of this package a
+          // filer cannot write for themselves.
+          gateArgument: true,
+          gateNote: 'Your letter is written and ready. The argument it makes to the IRS is blurred until you submit, because it is the part of this package you are paying us to write. Everything above it is the real letter, addressed to the service centre that will read it.',
+        });
+      }
+      setDraftDocs(docs);
+    } catch (e: unknown) {
+      console.error(e);
+      setPreviewErr(`Your preview could not be prepared: ${describeError(e)} Your answers are saved, so you can try again or carry on and submit.`);
+    } finally {
+      setPreviewBusy(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -4465,8 +4537,28 @@ export function Intake() {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving}>
+            {previewErr && (
+              <div className="cat-banner-red" style={{ marginTop: '1rem' }}>{previewErr}</div>
+            )}
+
+            {/* Preview sits BEFORE submit and is styled as the secondary
+                action. "Can I see the forms before I pay?" is the most common
+                question from people who did not buy, and the honest answer is
+                now a button rather than a paragraph. It does not replace the
+                summary above it: the summary is what they can correct, the
+                preview is what they are buying. */}
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+              {!isPaidLocked && (
+                <button
+                  type="button"
+                  style={{ ...secondaryBtnStyle, opacity: previewBusy ? 0.6 : 1 }}
+                  onClick={handlePreviewDraft}
+                  disabled={previewBusy || saving}
+                >
+                  {previewBusy ? 'Preparing preview…' : 'Preview my forms'}
+                </button>
+              )}
+              <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || previewBusy}>
                 {saving
                   ? 'Submitting…'
                   : isPaidLocked
@@ -4487,6 +4579,14 @@ export function Intake() {
           </div>
         </AccordionSection>
       </div>
+
+      {draftDocs && (
+        <DraftPreviewModal
+          docs={draftDocs}
+          taxYear={taxYear}
+          onClose={() => setDraftDocs(null)}
+        />
+      )}
 
       {import.meta.env.DEV && <DevScenarioLoader onLoad={applyScenario} />}
     </>
