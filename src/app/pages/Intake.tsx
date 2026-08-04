@@ -16,6 +16,7 @@ import {
   filingDueDates,
   LOAN_TYPES,
   OWNER_ONLY_TX_TYPES,
+  NON_OWNER_BLOCKED_TX_TYPES,
   PART_V_TYPES,
   PART_VI_TYPES,
   type QuickTx,
@@ -1884,6 +1885,24 @@ export function Intake() {
           `${where} is a transaction between the LLC and its owner, so it belongs to ${allPartyLabels[0]}, `
           + `not to ${label}. Reassign it to the owner, or change its type to the one that describes what `
           + `passed between the LLC and ${label}.`,
+        );
+      }
+
+      // Form 5472 Part VII, questions 42a / 42b. A loan with a related party who
+      // is not the sole owner forces one of them to Yes, and Part VII has no
+      // field to answer it in, so the return would assert a No we know is wrong.
+      //
+      // The type card is already hidden for a non-owner party, but hiding it is
+      // not enough on its own: the party dropdown can be changed AFTER the type
+      // was picked, a saved row can predate this rule, and the scenario loader
+      // writes rows directly. This is the check that actually holds.
+      else if (t.related_party_index !== 0 && NON_OWNER_BLOCKED_TX_TYPES.has(t.transaction_type)) {
+        const label = allPartyLabels[t.related_party_index];
+        errs.push(
+          `${where} is a loan between the LLC and ${label}, who is not the owner. A loan with anyone `
+          + `other than the owner has to be answered in Part VII of Form 5472, which we do not prepare, `
+          + `and that stays true even if no interest was charged. Reassign it to ${allPartyLabels[0]} if `
+          + `the money actually moved between the LLC and its owner, or email hello@filetax.co.`,
         );
       }
 
@@ -4118,7 +4137,25 @@ export function Intake() {
                 // nowhere to print on another party's Form 5472. Offering it
                 // against a non-owner party lets the filer record a transaction
                 // that then appears on no form at all.
-                const typeAllowed = (v: string) => isOwnerParty || !OWNER_ONLY_TX_TYPES.has(v);
+                // A second rule, for Form 5472 PART VII questions 42a / 42b: a
+                // loan between the LLC and a related party who is NOT the sole
+                // owner forces one of them to Yes, and Part VII has no field to
+                // set it in (the checkboxes are absent from every template's
+                // AcroForm). Filing it would mean answering Yes as No, so the
+                // type is not offered against a non-owner at all.
+                //
+                // Against the OWNER it stays, and must: a disregarded entity and
+                // its sole owner are the same taxpayer, so an owner loan is a
+                // bookkeeping entry, which is why it is tier 1. That is the
+                // common case and removing it would gut the product.
+                //
+                // The eligibility gate asks this too, but the gate is bypassable
+                // by design (the portal link carries nothing, and /portal can be
+                // opened directly), so it cannot be the only place this is
+                // enforced.
+                const typeAllowed = (v: string) =>
+                  (isOwnerParty || !OWNER_ONLY_TX_TYPES.has(v)) &&
+                  (isOwnerParty || !NON_OWNER_BLOCKED_TX_TYPES.has(v));
                 const searchResults = q
                   ? TX_TYPES.filter((t) =>
                       typeAllowed(t.value) && (
@@ -4235,6 +4272,11 @@ export function Intake() {
                               </div>
                               {isOpen && (
                                 <div className="tx-cat-body">
+                                  {cat.note && (
+                                    <p style={{ fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55, color: 'var(--tf-banner-amber-text)', background: 'var(--tf-banner-amber-bg)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 0.75rem', marginBottom: '0.625rem' }}>
+                                      {cat.note}
+                                    </p>
+                                  )}
                                   {typesInCat.map((item) => (
                                     <button
                                       key={item.value}

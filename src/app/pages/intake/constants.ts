@@ -6,6 +6,18 @@ export type IntakeStep = 1 | '1b' | 2 | 3 | 4 | 5;
 
 export const TAX_YEARS = [2025, 2024, 2023, 2022, 2021, 2020, 2019];
 
+/**
+ * The oldest tax year this product will prepare.
+ *
+ * The Form 5472 requirement for a foreign-owned disregarded entity began for
+ * tax years beginning on or after 2017. 2019 is OUR supported floor, chosen
+ * rather than derived, and every surface that offers a year has to agree with
+ * it. It was written out separately in `MultiYearStart` and in
+ * `PenaltyCalculator`, which is how a "we support back to 2019" line ends up
+ * beside a picker offering 2018.
+ */
+export const EARLIEST_TAX_YEAR = 2019;
+
 export const STEP_LABELS: Record<string, string> = {
   1: 'LLC Details',
   '1b': 'Filing Status',
@@ -177,35 +189,75 @@ export const TX_TYPES: {
 }[] = [
 
   // ── Part IV, Goods & property ─────────────────────────────────────────
+  //
+  // FOUR cards, because Form 5472 splits goods twice: by direction, and by
+  // whether the goods are STOCK IN TRADE (inventory, held for resale) or
+  // tangible property other than stock in trade.
+  //
+  //     line 9  inventory sold        line 23  inventory bought
+  //     line 10 other property sold   line 24  other property bought
+  //
+  // There used to be three cards, and two of them were wrong. `tangible_purchase`
+  // read "Purchase of goods OR INVENTORY" and printed on line 24, whose own
+  // caption says "other than stock in trade", so every inventory purchase was
+  // reported on the line that exists to exclude it. Line 23 was unreachable:
+  // the only card mapping to canonical `sales` was the SALE card, which carries
+  // fixedDirection 'received'. And the sell side contradicted itself, since
+  // "Sale of goods or inventory" (line 10) and "Sale of stock in trade" (line 9)
+  // both accepted an inventory sale, so the line depended on which card the
+  // filer happened to open.
+  //
+  // The labels now name the distinction rather than the direction alone, and
+  // each card says what it is NOT, because this is a pair filers confuse and
+  // picking the wrong one produces a wrong return rather than an error.
   {
-    value: 'tangible_purchase',
-    label: 'Purchase of goods or inventory',
-    sentence: 'The LLC bought physical goods or inventory from {party}',
+    value: 'inventory_purchase',
+    label: 'Purchase of inventory (goods for resale)',
+    sentence: 'The LLC bought inventory, goods held for resale, from {party}',
     category: 1,
     part: 'IV',
     showDirection: false,
-    // The LLC pays to buy: Form 5472 line 24, purchases of tangible property.
+    // Line 23, purchases of stock in trade (inventory).
     fixedDirection: 'paid',
-  },
-  {
-    value: 'tangible_sale',
-    label: 'Sale of goods or inventory',
-    sentence: 'The LLC sold physical goods or inventory to {party}',
-    category: 2,
-    part: 'IV',
-    showDirection: false,
-    // The LLC is paid for the sale: line 10, sales of tangible property.
-    fixedDirection: 'received',
+    notThis:
+      'Equipment, machinery, computers, furniture or vehicles the LLC bought to use rather than to resell are not inventory. Use "Purchase of equipment or other property" for those.',
   },
   {
     value: 'sales',
-    label: 'Sale of stock in trade',
-    sentence: 'The LLC sold stock in trade to {party}',
+    label: 'Sale of inventory (goods for resale)',
+    sentence: 'The LLC sold inventory, goods held for resale, to {party}',
     category: 2,
     part: 'IV',
     showDirection: false,
-    // Line 9, sales of stock in trade.
+    // Line 9, sales of stock in trade. The code stays `sales` because saved rows
+    // carry it in ui_transaction_type; only the label changed.
     fixedDirection: 'received',
+    notThis:
+      'Selling equipment or other property the LLC used in its own business is not a sale of inventory. Use "Sale of equipment or other property" for that.',
+  },
+  {
+    value: 'tangible_purchase',
+    label: 'Purchase of equipment or other property',
+    sentence: 'The LLC bought equipment or other tangible property from {party}',
+    category: 1,
+    part: 'IV',
+    showDirection: false,
+    // Line 24, purchases of tangible property OTHER THAN stock in trade.
+    fixedDirection: 'paid',
+    notThis:
+      'Goods the LLC bought to resell are inventory, not equipment. Use "Purchase of inventory" for those. Software, licences and other intangibles do not belong here either.',
+  },
+  {
+    value: 'tangible_sale',
+    label: 'Sale of equipment or other property',
+    sentence: 'The LLC sold equipment or other tangible property to {party}',
+    category: 2,
+    part: 'IV',
+    showDirection: false,
+    // Line 10, sales of tangible property OTHER THAN stock in trade.
+    fixedDirection: 'received',
+    notThis:
+      'Goods the LLC held to resell are inventory, not equipment. Use "Sale of inventory" for those.',
   },
 
   // ── Part IV, Services ─────────────────────────────────────────────────
@@ -301,25 +353,27 @@ export const TX_TYPES: {
     notThis:
       'Buying or subscribing to software the LLC uses is not an IP transfer. This is for handing over, or licensing out, IP the LLC or the related party owns.',
   },
-  {
-    value: 'platform_contribution',
-    label: 'Platform contribution transaction (PCT)',
-    sentence: 'A platform contribution transaction (PCT) occurred between the LLC and {party}',
-    category: 3,
-    part: 'IV',
-    // Disclosed under "other amount", where 21 vs 35 turns entirely on who paid,
-    // so the filer has to be asked rather than defaulted.
-    showDirection: true,
-  },
-  {
-    value: 'cost_sharing',
-    label: 'Cost-sharing arrangement',
-    sentence: 'The LLC and {party} shared costs for developing intangible assets together',
-    category: 3,
-    part: 'IV',
-    // Same as the PCT above: lands on line 21 or 35 depending on who paid.
-    showDirection: true,
-  },
+  // `cost_sharing` and `platform_contribution` WERE HERE AND WERE REMOVED
+  // 5 August 2026. Do not add them back without also building Part VIII.
+  //
+  // Part VII question 39 asks whether the reporting corporation is a party to a
+  // cost sharing arrangement, and 1k asks how many Parts VIII are attached. This
+  // product answers Part VII all-No and attaches no Part VIII, which is right for
+  // every structure it serves EXCEPT these two types, where the answer is not a
+  // judgement call: a CSA makes 39 Yes by definition, and a platform contribution
+  // only exists inside a CSA. Offering the cards therefore promised a return the
+  // generator cannot produce, and produced a WRONG one rather than an incomplete
+  // one: both collapsed to canonical `other` and printed on line 21/35 with 39
+  // left No.
+  //
+  // Removing them costs nothing that worked, because no filer got a correct CSA
+  // return before either. A filer who genuinely has one is now stopped at the
+  // eligibility gate, which is the honest outcome: a cost sharing arrangement is
+  // a transfer-pricing engagement, not a form-filling job.
+  //
+  // The two codes stay in UI_TO_CANONICAL so rows saved before this still read
+  // back, and `resolveUiTxType` shows them as "Other", which is what they have
+  // always printed as.
   {
     value: 'insurance',
     label: 'Insurance or reinsurance premium',
@@ -527,9 +581,17 @@ export const RELATED_PARTY_TX: QuickTx[] = [
   { value: 'rent',                 label: 'Rent' },
   { value: 'royalty',              label: 'Royalty' },
   { value: 'interest',             label: 'Interest' },
-  { value: 'loan_to_llc',          label: 'Loan to the LLC',  direction: 'received' },
-  { value: 'loan_from_llc',        label: 'Loan from the LLC', direction: 'paid' },
-  { value: 'tangible_purchase',    label: 'Purchase of goods or inventory' },
+  // The two loan options were removed 5 August 2026. This list is the NON-OWNER
+  // list, and a loan with a related party who is not the owner forces Form 5472
+  // Part VII question 42a or 42b to Yes, which cannot be answered here. See
+  // NON_OWNER_BLOCKED_TX_TYPES. The owner's list, SIMPLE_TX, keeps both, because
+  // against the sole owner a loan is a bookkeeping entry rather than a loan.
+  // One ambiguous "Purchase of goods or inventory" used to stand here and put
+  // every inventory purchase on line 24, the line whose caption excludes it.
+  // The quick list has to ask the same question the detailed cards do, because
+  // a filer who never opens the detailed list would otherwise never be asked.
+  { value: 'inventory_purchase',   label: 'Purchase of goods for resale' },
+  { value: 'tangible_purchase',    label: 'Purchase of equipment or other property' },
   { value: 'other',                label: 'Other' },
 ];
 
@@ -547,12 +609,14 @@ export const DETAILED_TX_GROUPS: DetailedTxGroup[] = [
   {
     key: 'payments',
     label: 'Payments & services',
-    values: ['service_payment', 'tech_services', 'commission', 'rent', 'royalty', 'interest', 'tangible_purchase', 'tangible_sale', 'sales'],
+    values: ['service_payment', 'tech_services', 'commission', 'rent', 'royalty', 'interest', 'inventory_purchase', 'sales', 'tangible_purchase', 'tangible_sale'],
   },
   {
     key: 'complex',
     label: 'IP, insurance and other dealings',
-    values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi', 'other'],
+    // Cost sharing and platform contribution are deliberately absent: they force
+    // Part VII question 39 to Yes and a Part VIII this product does not produce.
+    values: ['intangible', 'insurance', 'loan_guarantee_fee', 'nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi', 'other'],
   },
   {
     key: 'entity_events',
@@ -636,6 +700,28 @@ export const OWNER_ONLY_TX_TYPES = new Set(
   [...PART_V_TYPES, ...PART_VI_TYPES].filter((v) => v !== 'dissolution_tx'),
 );
 
+/**
+ * Types that may NOT be recorded against a related party other than the owner.
+ *
+ * Different reason from `OWNER_ONLY_TX_TYPES`, which is about a type having no
+ * form to print on. These have somewhere to print; the problem is Form 5472
+ * PART VII. A loan between the LLC and a related party who is not the sole owner
+ * forces question 42a or 42b to Yes, and Part VII cannot be answered Yes here at
+ * all: the checkboxes are absent from every template's AcroForm, so there is no
+ * field to set. Offering the type would mean filing a known Yes as a No.
+ *
+ * Against the OWNER the same type is fine and stays. A disregarded entity and
+ * its sole owner are the same taxpayer, so an owner loan is a bookkeeping entry
+ * rather than a loan, which is why `ownerCategory` puts it at tier 1.
+ *
+ * Note "we charged no interest" does not take a non-owner loan out of scope: a
+ * rate of zero is outside the safe-haven range rather than absent from it.
+ */
+export const NON_OWNER_BLOCKED_TX_TYPES = new Set([
+  'loan_to_llc',
+  'loan_from_llc',
+]);
+
 // ── Transaction categories (accordion grouping in Step 4) ─────────────────
 export const TX_CATEGORIES: {
   key: string;
@@ -643,13 +729,23 @@ export const TX_CATEGORIES: {
   description: string;
   parts: Array<'IV' | 'V' | 'VI'>;
   values: string[];
+  /**
+   * Shown inside the category once it is open, above the type cards.
+   *
+   * For saying what is NOT in a category. A filer looking for something we do
+   * not offer will otherwise pick the nearest card, and "Other" is always near
+   * enough, so silence produces a wrong return rather than a question.
+   */
+  note?: string;
 }[] = [
   {
     key: 'goods',
     label: 'Goods & inventory',
     description: 'Physical products, stock-in-trade, tangible items bought or sold',
     parts: ['IV'],
-    values: ['tangible_purchase', 'tangible_sale', 'sales'],
+    // Inventory pair first, then the equipment pair: inventory is the common
+    // case and the two read as a set when they sit together.
+    values: ['inventory_purchase', 'sales', 'tangible_purchase', 'tangible_sale'],
   },
   {
     key: 'services',
@@ -682,9 +778,14 @@ export const TX_CATEGORIES: {
   {
     key: 'complex',
     label: 'IP, insurance & other',
-    description: 'Intellectual property transfers, insurance, cost-sharing, and other items',
+    // The description named cost-sharing while the cards for it are gone.
+    description: 'Intellectual property transfers, insurance, and other items',
     parts: ['IV'],
-    values: ['intangible', 'platform_contribution', 'cost_sharing', 'insurance', 'loan_guarantee_fee', 'other'],
+    values: ['intangible', 'insurance', 'loan_guarantee_fee', 'other'],
+    // Without this, a filer with a cost sharing arrangement picks "Other" and
+    // files exactly the return the removed cards used to produce: line 21 or 35
+    // with Part VII question 39 answered No and no Part VIII attached.
+    note: 'Cost sharing arrangements and platform contribution transactions are not filed here. They have to be reported in Part VIII of Form 5472, which needs a professional to prepare. Email hello@filetax.co if you have one, and do not record it as "Other".',
   },
   {
     key: 'structural',

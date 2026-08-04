@@ -400,6 +400,31 @@ console.log('\n- lines 1f / 1h, Part V/VI is owner-only -');
   ]);
   check('Part IV is unaffected by the gate',
     grossPaymentsForLines1f1h(partIVOnly, true) === grossPaymentsForLines1f1h(partIVOnly, false));
+
+  // Form 5472 splits goods twice: stock in trade (9 sold / 23 bought) against
+  // other tangible property (10 sold / 24 bought). The generator has always
+  // written all four, but nothing in the UI could produce a `sales` row with
+  // direction 'paid', so line 23 was dead and inventory purchases printed on
+  // line 24, whose caption is "other than stock in trade". `inventory_purchase`
+  // is the card that reaches it; this asserts the amount lands on line 23 and
+  // nowhere else.
+  const bought = aggregateTransactions([
+    { transaction_type: 'sales', direction: 'paid', amount_usd: 47000 },
+  ]);
+  check('an inventory purchase reaches line 23',
+    bought.sales_paid === 47000, `got ${bought.sales_paid}, expected 47000`);
+  check('an inventory purchase does not print as a sale (line 9)',
+    bought.sales_received === 0, `got ${bought.sales_received}`);
+  check('an inventory purchase does not print on line 24',
+    bought.tangible_prop_paid === 0, `got ${bought.tangible_prop_paid}`);
+
+  const equipment = aggregateTransactions([
+    { transaction_type: 'tangible_property', direction: 'paid', amount_usd: 47000 },
+  ]);
+  check('an equipment purchase still reaches line 24',
+    equipment.tangible_prop_paid === 47000, `got ${equipment.tangible_prop_paid}`);
+  check('an equipment purchase does not print on line 23',
+    equipment.sales_paid === 0, `got ${equipment.sales_paid}`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);

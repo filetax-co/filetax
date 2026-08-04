@@ -19,8 +19,15 @@ import {
 import {
   RP_NAICS, resolveBizPreset, TX_TYPES, filingDueDates,
   defaultDirectionFor, OWNER_ONLY_TX_TYPES, PART_V_TYPES,
+  NON_OWNER_BLOCKED_TX_TYPES, SIMPLE_TX, RELATED_PARTY_TX,
 } from '../src/app/pages/intake/constants.ts';
-import { PART_V_TX_TYPES, toCanonicalTxType, bucketForTx } from '../src/lib/filingMapping.ts';
+import {
+  PART_V_TX_TYPES, toCanonicalTxType, bucketForTx, RETIRED_UI_TX_TYPES,
+} from '../src/lib/filingMapping.ts';
+// From ./ein, not ./filingProfile: the latter imports the Supabase client,
+// which this runner cannot load and which throws without env vars anyway.
+import { normalizeEin, formatEin } from '../src/lib/ein.ts';
+import { missingTaxYears, describeYears } from '../src/lib/catchUpYears.ts';
 
 let failures = 0;
 const check = (name, actual, expected) => {
@@ -132,6 +139,12 @@ check('a tangible purchase is recovered from direction',
   resolveUiTxType({ transaction_type: 'tangible_property', direction: 'paid' }), 'tangible_purchase');
 check('a tangible sale is recovered from direction',
   resolveUiTxType({ transaction_type: 'tangible_property', direction: 'received' }), 'tangible_sale');
+// Every legacy `sales` row is a sale: the purchase card did not exist, so a
+// 'paid' row can only have been written after it did.
+check('a legacy stock-in-trade row is recovered as a sale',
+  resolveUiTxType({ transaction_type: 'sales', direction: 'received' }), 'sales');
+check('an inventory purchase is recovered from direction',
+  resolveUiTxType({ transaction_type: 'sales', direction: 'paid' }), 'inventory_purchase');
 
 const legacyResolved = [
   'sales', 'service_payment', 'rent', 'royalty', 'loan_to_llc', 'loan_from_llc',
@@ -141,6 +154,144 @@ const legacyResolved = [
 ].map((c) => resolveUiTxType({ transaction_type: c, direction: 'paid' }));
 check('every canonical code resolves to a code the UI can display',
   legacyResolved.filter((v) => !uiValues.has(v)), []);
+
+// ── Retired types: Part VII / Part VIII ─────────────────────────────────────
+// cost_sharing and platform_contribution were removed from intake on 5 Aug 2026.
+// Both force Part VII question 39 to Yes and require a Part VIII that is never
+// attached and never counted on line 1k, so offering them produced a WRONG
+// return rather than an incomplete one. Two things must stay true: they cannot
+// be selected, and a row saved before the removal must still render.
+console.log('\n- retired transaction types -');
+
+check('cost sharing cannot be selected', uiValues.has('cost_sharing'), false);
+check('a platform contribution cannot be selected', uiValues.has('platform_contribution'), false);
+check('every retired code is genuinely gone from TX_TYPES',
+  [...RETIRED_UI_TX_TYPES].filter((v) => uiValues.has(v)), []);
+// The saved row keeps its code; the SCREEN shows a card that exists. Returning
+// the retired code here is the "nothing selected" defect ui_transaction_type was
+// added to fix, one step removed.
+check('a saved cost sharing row displays as a type the UI has a card for',
+  uiValues.has(resolveUiTxType({
+    transaction_type: 'other', ui_transaction_type: 'cost_sharing', direction: 'paid',
+  })), true);
+check('a saved cost sharing row displays as other',
+  resolveUiTxType({
+    transaction_type: 'other', ui_transaction_type: 'cost_sharing', direction: 'paid',
+  }), 'other');
+check('a saved platform contribution row displays as other',
+  resolveUiTxType({
+    transaction_type: 'other', ui_transaction_type: 'platform_contribution', direction: 'paid',
+  }), 'other');
+// It must not reclassify what the form prints. Both have always been `other`,
+// and the removal changes the card, not the line.
+check('a retired cost sharing row still prints where it always did',
+  toCanonicalTxType('cost_sharing', false), 'other');
+
+// ── Company identity: the EIN is the key ────────────────────────────────────
+// `company_profiles` is keyed on (user_id, ein) with the EIN stored digits only,
+// so "12-3456789" and "123456789" are one company rather than two. The saved
+// companies editor lets a filer TYPE an EIN for the first time, which is the
+// only path that can put a new value into that key, so the pair has to hold in
+// both directions or an edit could split one company into two.
+console.log('\n- company EIN identity -');
+
+check('a formatted EIN normalises to digits',
+  normalizeEin('12-3456789'), '123456789');
+check('an already-digits EIN is unchanged',
+  normalizeEin('123456789'), '123456789');
+check('the two spellings are the same company',
+  normalizeEin('12-3456789') === normalizeEin('123456789'), true);
+check('a short EIN is rejected rather than stored', normalizeEin('1234567'), null);
+check('a long EIN is rejected rather than stored', normalizeEin('1234567890'), null);
+check('stored digits display with the dash', formatEin('123456789'), '12-3456789');
+check('display survives a round trip', normalizeEin(formatEin('123456789')), '123456789');
+// Whitespace and stray punctuation are what a paste from a letter actually
+// carries, and they must not create a second company.
+check('a pasted EIN with spaces still resolves', normalizeEin(' 12 - 3456789 '), '123456789');
+
+// ── The dashboard catch-up prompt ───────────────────────────────────────────
+// This arithmetic is what a prompt telling someone they may owe four returns is
+// built on. An off-by-one at either end invents an obligation or hides a real
+// gap, and neither fails loudly: the prompt just says a different number.
+console.log('\n- missing tax years -');
+
+const AUG_2026 = new Date('2026-08-05T00:00:00Z');
+const mt = (o) => missingTaxYears({ now: AUG_2026, ...o });
+
+check('the gap between formation and the only filing',
+  mt({ formationDate: '2021-03-04', filedYears: ['2025'] }), [2024, 2023, 2022, 2021]);
+// The ceiling is LAST year. 2026 cannot be filed during 2026, and offering it
+// would be offering a return the wizard would refuse to build.
+check('the current year is never asked about',
+  mt({ formationDate: '2021-03-04', filedYears: [] }).includes(2026), false);
+check('the most recent filable year is included',
+  mt({ formationDate: '2021-03-04', filedYears: [] })[0], 2025);
+// Both floors are real, and the later one wins.
+check('a company formed before 2019 is only asked back to 2019',
+  mt({ formationDate: '2016-01-01', filedYears: [] }).at(-1), 2019);
+check('a company is never asked about a year before it existed',
+  mt({ formationDate: '2023-06-01', filedYears: [] }), [2025, 2024, 2023]);
+check('a company formed this year has nothing to file yet',
+  mt({ formationDate: '2026-02-01', filedYears: [] }), []);
+// Silence beats a guess: without a formation date the range would be invented.
+check('no formation date means no prompt',
+  mt({ formationDate: null, filedYears: ['2025'] }), []);
+check('an unparseable formation date means no prompt',
+  mt({ formationDate: 'sometime in 2021', filedYears: [] }), []);
+// A bare ISO date read through `new Date` is UTC midnight, which is the
+// previous year for anyone west of Greenwich, and that would add a whole year.
+check('1 January formation does not slip a year',
+  mt({ formationDate: '2022-01-01', filedYears: [] }).at(-1), 2022);
+check('every year filed leaves nothing to ask',
+  mt({ formationDate: '2023-01-01', filedYears: ['2023', '2024', '2025'] }), []);
+// A draft already has its own card on the dashboard; listing the year as
+// missing as well would show it twice with two different stories.
+check('a year in progress is not also listed as missing',
+  mt({ formationDate: '2024-01-01', filedYears: ['2025'] }), [2024]);
+check('dismissed years drop out',
+  mt({ formationDate: '2021-01-01', filedYears: ['2025'], dismissedYears: ['2021', '2022'] }),
+  [2024, 2023]);
+check('dismissing everything silences the prompt',
+  mt({ formationDate: '2024-01-01', filedYears: [], dismissedYears: ['2024', '2025'] }), []);
+// Nulls arrive from the database on a draft that has not reached step 1.
+check('null years are ignored rather than counted',
+  mt({ formationDate: '2025-01-01', filedYears: [null, undefined, ''] }), [2025]);
+
+console.log('\n- how the years are described -');
+check('a run of years collapses', describeYears([2021, 2022, 2023, 2024]), '2021 to 2024');
+check('one year stands alone', describeYears([2023]), '2023');
+check('two consecutive years still read as a range', describeYears([2021, 2022]), '2021 to 2022');
+// The one that matters: a filer missing 2021 and 2024 must not be told
+// "2021 to 2024", which names two years they already filed.
+check('a gap is never described as a range', describeYears([2021, 2024]), '2021 and 2024');
+check('three scattered years are listed', describeYears([2021, 2023, 2025]), '2021, 2023 and 2025');
+check('order does not matter', describeYears([2024, 2021, 2023, 2022]), '2021 to 2024');
+
+// ── Part VII: loans with a non-owner related party ──────────────────────────
+// Questions 42a / 42b go Yes for a loan with a related party who is not the
+// sole owner, and Part VII cannot be answered Yes at all here: the checkboxes
+// are absent from every template's AcroForm. Against the OWNER the same type is
+// a bookkeeping entry and must stay, so this is a rule about the PARTY, not the
+// type, and both halves have to hold.
+console.log('\n- Part VII, non-owner loans -');
+
+check('a loan to the LLC is blocked against a non-owner',
+  NON_OWNER_BLOCKED_TX_TYPES.has('loan_to_llc'), true);
+check('a loan from the LLC is blocked against a non-owner',
+  NON_OWNER_BLOCKED_TX_TYPES.has('loan_from_llc'), true);
+// The owner's own list is where the common case lives; emptying it by mistake
+// would remove the most-used transaction in the product.
+check('the owner can still record both loan directions',
+  ['loan_to_llc', 'loan_from_llc'].filter((v) => !SIMPLE_TX.some((q) => q.value === v)), []);
+// The non-owner quick list must not offer what the rule forbids.
+check('the non-owner quick list offers no loan',
+  RELATED_PARTY_TX.map((q) => q.value).filter((v) => NON_OWNER_BLOCKED_TX_TYPES.has(v)), []);
+// Blocked is not the same as owner-only: these types are perfectly valid, just
+// not against this party, so they must NOT be swept into the owner-only set,
+// whose error message says something different and whose meaning is "prints on
+// no form at all".
+check('a blocked loan is not treated as an owner-only Part V type',
+  [...NON_OWNER_BLOCKED_TX_TYPES].filter((v) => OWNER_ONLY_TX_TYPES.has(v)), []);
 
 // An unknown code must not crash or leak through as a raw identifier.
 check('an unrecognized canonical code falls back to other',
@@ -153,9 +304,10 @@ check('an unrecognized canonical code falls back to other',
 // reported as money coming in on line 21.
 console.log('\n- transaction direction -');
 
-check('buying goods is paid (line 24)', defaultDirectionFor('tangible_purchase'), 'paid');
-check('selling goods is received (line 10)', defaultDirectionFor('tangible_sale'), 'received');
+check('buying equipment is paid (line 24)', defaultDirectionFor('tangible_purchase'), 'paid');
+check('selling equipment is received (line 10)', defaultDirectionFor('tangible_sale'), 'received');
 check('a sale of stock in trade is received (line 9)', defaultDirectionFor('sales'), 'received');
+check('a purchase of stock in trade is paid (line 23)', defaultDirectionFor('inventory_purchase'), 'paid');
 check('acquiring another entity is paid', defaultDirectionFor('acquisition_tx'), 'paid');
 check('disposing of the LLC is received', defaultDirectionFor('disposition_tx'), 'received');
 check('a dissolution payout defaults to paid', defaultDirectionFor('dissolution_tx'), 'paid');
@@ -163,6 +315,20 @@ check('a dissolution payout defaults to paid', defaultDirectionFor('dissolution_
 // The pair that had identical output is the sharpest statement of the bug.
 check('a purchase and a sale of goods no longer store the same direction',
   defaultDirectionFor('tangible_purchase') === defaultDirectionFor('tangible_sale'), false);
+
+// Form 5472 splits goods twice, by direction and by stock-in-trade, so there are
+// FOUR lines (9, 10, 23, 24) and four cards must reach four distinct
+// (canonical, direction) pairs. Line 23 was unreachable until
+// `inventory_purchase` existed, and both purchase cards printed on line 24.
+const goodsLines = new Set(
+  ['inventory_purchase', 'sales', 'tangible_purchase', 'tangible_sale']
+    .map((v) => `${toCanonicalTxType(v, false)}/${defaultDirectionFor(v)}`),
+);
+check('the four goods cards reach four different Part IV lines', goodsLines.size, 4);
+check('an inventory purchase is stock in trade, not other tangible property',
+  toCanonicalTxType('inventory_purchase', false), 'sales');
+check('an equipment purchase is not stock in trade',
+  toCanonicalTxType('tangible_purchase', false), 'tangible_property');
 
 // ── Risk 6: Money in / Money out, with Other reserved for Part VI ────────────
 // The buckets used to be two hand-written sets of Part V and loan codes with an

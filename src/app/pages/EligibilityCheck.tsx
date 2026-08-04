@@ -17,10 +17,15 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pri
 // A question asked here and re-asked there costs the user twice and
 // tells us nothing, because none of it was ever carried across.
 //
-// The one exception is the year COUNT in step 3, which exists purely to
-// put a real number on the estimate. Which years, specifically, is
+// There are two exceptions. The year COUNT in step 4 exists purely to
+// put a real number on the estimate; which years, specifically, is
 // chosen later in the multi-year flow, where the incorporation date is
-// known and can rule years out.
+// known and can rule years out. And step 3 asks five questions about
+// the filer's dealings, which looks like intake and is not: each one
+// stands for a Form 5472 Part VII question whose only servable answer
+// is No, so a Yes ends the flow rather than being carried forward.
+// Nothing there is re-asked in intake, because the transaction types
+// behind two of them were removed when the step was added.
 //
 // This links to the portal bare, with no query string, deliberately. Nothing
 // from this screen is carried across or stored anywhere, which is what makes
@@ -29,7 +34,7 @@ import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY } from "../../lib/pri
 // ---------------------------------------------------------------------
 const PORTAL_PATH = "/portal";
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 type Outcome = "pass" | "refer" | null;
 type YesNo = "yes" | "no";
 
@@ -37,9 +42,72 @@ interface SubAnswers {
   llcEIN?: YesNo;
   llcResidency?: YesNo;
   llcTaxTreatment?: YesNo;
+  /**
+   * Cost sharing arrangement. The one transaction-shaped question this gate
+   * asks, and it earns its place: Form 5472 Part VII question 39 asks whether
+   * the reporting corporation is a party to a CSA, and a Yes requires a Part
+   * VIII attached and counted on line 1k. This product answers Part VII all-No
+   * and attaches no Part VIII, so a filer with a CSA cannot be served here at
+   * all, and finding that out in the middle of intake is worse than at the gate.
+   *
+   * It does not break the rule above about never asking what intake will ask
+   * again, because intake no longer asks: the cost sharing and platform
+   * contribution transaction types were removed when this was added.
+   */
+  costSharing?: YesNo;
+  /**
+   * Imported goods. Part VII question 37 asks whether the reporting corporation
+   * imported goods from a foreign related party, and a Yes opens 38a, 38b and
+   * 38c about the customs value.
+   *
+   * Scoped to goods bought FROM a related party and brought into the US, which
+   * is what 37 is about. An LLC importing from an unrelated supplier is not
+   * caught by it and is not asked to leave.
+   */
+  importedGoods?: YesNo;
+  /**
+   * Loans with a related party who is NOT the sole owner, questions 42a / 42b.
+   *
+   * Deliberately does not catch loans between the LLC and the owner personally,
+   * which are the common case and are a bookkeeping entry rather than a loan: a
+   * disregarded entity and its sole owner are the same taxpayer. Against anyone
+   * else it is a real loan, and "we did not charge interest" does not make the
+   * answer No, because a 0% rate is outside the safe-haven range rather than
+   * absent from it.
+   */
+  nonOwnerLoan?: YesNo;
+  /** Interest or royalty paid under a hybrid arrangement, question 40a. */
+  hybridPayment?: YesNo;
+  /**
+   * Question 43a: loans alongside a distribution or an acquisition inside 36
+   * months, where the related party is a corporation.
+   *
+   * Asked rather than derived. The related-party form never records whether a
+   * party is a corporation, so nothing in the saved data could answer this even
+   * in principle, and the 36-month window reaches outside the year being filed.
+   */
+  loanAndPayout?: YesNo;
 }
 
-const totalSteps = 3;
+/**
+ * Step 3 exists because of Form 5472 PART VII.
+ *
+ * Part VII is a page of Yes/No questions the form says every reporting
+ * corporation must complete, and this product answers all of them No. That is
+ * correct for the structure it serves and wrong for a handful of specific
+ * dealings, listed one per question below.
+ *
+ * It cannot be fixed by answering Yes instead. The Part VII checkboxes are
+ * ABSENT FROM EVERY TEMPLATE'S ACROFORM (see the note in form5472Fields.ts), so
+ * there is no field to set: a Yes would have to be drawn at coordinates, per
+ * revision. Until that exists, a filer whose true answer is Yes cannot be served
+ * here, and the only honest place to find that out is before they pay.
+ *
+ * Every question is worded for someone who has never read the form, and each
+ * one is scoped as narrowly as the question it stands for, so an ordinary filer
+ * answers No five times and continues.
+ */
+const totalSteps = 4;
 
 const INITIAL_SUB: SubAnswers = {};
 
@@ -304,7 +372,7 @@ export function EligibilityCheck() {
   usePageMeta({
     title: "Check Your Eligibility | FileTax.co",
     description:
-      "Answer a few questions to confirm your Form 5472 filing is a good fit for FileTax.co. Takes about a minute. Your answers are never stored.",
+      "Answer a few questions to confirm your Form 5472 filing is a good fit for FileTax.co. Takes about two minutes. Your answers are never stored.",
   });
 
   const [step, setStep] = useState<Step>(1);
@@ -610,7 +678,7 @@ export function EligibilityCheck() {
           Before you begin, let us confirm this is the right fit.
         </h1>
         <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "2rem" }}>
-          A handful of quick questions, about a minute. Your answers stay in your browser and are never stored.
+          A handful of quick questions, about two minutes. Your answers stay in your browser and are never stored.
         </p>
 
         <div
@@ -744,7 +812,153 @@ export function EligibilityCheck() {
             </div>
           )}
 
+          {/* ── Step 3, Form 5472 Part VII. See the note on `totalSteps`. ──── */}
           {step === 3 && (
+            <div>
+              <SectionLabel text="Your Dealings" />
+              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
+                Five questions about who you deal with.
+              </h2>
+              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>
+                Form 5472 asks about a few specific arrangements that need a professional to
+                report properly. Almost everyone answers No to all five.
+              </p>
+
+              <div>
+                <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  Does the LLC share the cost of developing intellectual property with a
+                  related party, under a written cost sharing agreement?
+                  <InfoTip
+                    label="What counts as cost sharing"
+                    text="A cost sharing arrangement is a formal written agreement to split the cost of developing intangible property, such as software or a patent, in exchange for a share of the rights. Almost no small LLC has one. Paying a related party for work, or for the use of software, is not cost sharing."
+                  />
+                </h2>
+                <YesNoButtons
+                  selected={subAnswers.costSharing}
+                  onYes={() => {
+                    setSub("costSharing", "yes");
+                    triggerRefer(
+                      "A cost sharing arrangement has to be reported in Part VIII of Form 5472, with a separate Part VIII for each arrangement. Preparing that correctly is transfer-pricing work, not form filling, and it should be handled by a professional who can review the agreement itself."
+                    );
+                  }}
+                  onNo={() => setSub("costSharing", "no")}
+                />
+              </div>
+
+              {subAnswers.costSharing === "no" && (
+                <>
+                  <Divider />
+                  <div>
+                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                      Does the LLC buy physical goods from a related party and bring them into
+                      the United States?
+                      <InfoTip
+                        label="What counts here"
+                        text="This is about goods you import into the U.S. that you bought from someone related to you, such as your own company abroad or a company owned by your family. Buying from an unrelated supplier does not count, and neither does buying goods that never enter the U.S. Services, software and digital products are not physical goods."
+                      />
+                    </h2>
+                    <YesNoButtons
+                      selected={subAnswers.importedGoods}
+                      onYes={() => {
+                        setSub("importedGoods", "yes");
+                        triggerRefer(
+                          "Goods imported from a related party have to be reported in Part VII of Form 5472, along with the customs value you declared and whether it matches the cost you are reporting here. Those answers have to agree with your customs filings, so this needs someone who can look at both."
+                        );
+                      }}
+                      onNo={() => setSub("importedGoods", "no")}
+                    />
+                  </div>
+                </>
+              )}
+
+              {subAnswers.importedGoods === "no" && (
+                <>
+                  <Divider />
+                  <div>
+                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                      Has the LLC lent money to, or borrowed money from, a related party who is
+                      not you personally?
+                      <InfoTip
+                        label="What counts here"
+                        text="Money you put into or took out of your own LLC does not count, however you label it: you and a single-member LLC are the same taxpayer. This is about a loan involving someone else you are related to, such as another company you own or a family member's business. Charging no interest does not take it out of scope."
+                      />
+                    </h2>
+                    <YesNoButtons
+                      selected={subAnswers.nonOwnerLoan}
+                      onYes={() => {
+                        setSub("nonOwnerLoan", "yes");
+                        triggerRefer(
+                          "A loan between the LLC and a related party other than yourself has to be reported in Part VII of Form 5472, and the interest rate matters even when no interest was charged. A rate of zero is outside the range the rules treat as safe, so this needs a professional to review the terms."
+                        );
+                      }}
+                      onNo={() => setSub("nonOwnerLoan", "no")}
+                    />
+                  </div>
+                </>
+              )}
+
+              {subAnswers.nonOwnerLoan === "no" && (
+                <>
+                  <Divider />
+                  <div>
+                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                      Does the LLC pay interest or royalties to a related party under an
+                      arrangement that the two countries involved tax differently?
+                      <InfoTip
+                        label="What counts here"
+                        text="This is about an arrangement where a payment is treated as one thing in the U.S. and as something else in the other country, so it is deducted in one place and not taxed in the other. It comes from deliberate structuring and it is rare. Ordinary interest on a loan, or an ordinary royalty for using someone's intellectual property, is not this."
+                      />
+                    </h2>
+                    <YesNoButtons
+                      selected={subAnswers.hybridPayment}
+                      onYes={() => {
+                        setSub("hybridPayment", "yes");
+                        triggerRefer(
+                          "Interest or royalties paid under a hybrid arrangement have to be reported in Part VII of Form 5472, and whether an arrangement counts as hybrid depends on how the other country treats the payment. That is a question for a professional who can look at both sides."
+                        );
+                      }}
+                      onNo={() => setSub("hybridPayment", "no")}
+                    />
+                  </div>
+                </>
+              )}
+
+              {subAnswers.hybridPayment === "no" && (
+                <>
+                  <Divider />
+                  <div>
+                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                      In the last three years, has the LLC had a loan with a related COMPANY and
+                      also paid money out or bought a business?
+                      <InfoTip
+                        label="What counts here"
+                        text="Both halves have to be true, the related party has to be a company rather than a person, and the three years run across tax years rather than within the one you are filing. If the only loans were between you and your own LLC, answer No."
+                      />
+                    </h2>
+                    <YesNoButtons
+                      selected={subAnswers.loanAndPayout}
+                      onYes={() => {
+                        setSub("loanAndPayout", "yes");
+                        triggerRefer(
+                          "Loans with a related company alongside a distribution or an acquisition within thirty-six months have to be reported in Part VII of Form 5472. Working out whether the events fall inside that window, and what has to be disclosed, needs a professional."
+                        );
+                      }}
+                      onNo={() => setSub("loanAndPayout", "no")}
+                    />
+                  </div>
+                </>
+              )}
+
+              <StepNav
+                onBack={() => setStep(2)}
+                onReset={resetAll}
+                showContinue={subAnswers.loanAndPayout === "no"}
+                onContinue={() => setStep(4)}
+              />
+            </div>
+          )}
+
+          {step === 4 && (
             <div>
               <SectionLabel text="Filing Years" />
               <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
@@ -775,7 +989,7 @@ export function EligibilityCheck() {
                   }}
                 />
               </div>
-              <StepNav onBack={() => setStep(2)} onReset={resetAll} />
+              <StepNav onBack={() => setStep(3)} onReset={resetAll} />
             </div>
           )}
 

@@ -45,9 +45,20 @@ export type CanonicalTxType = Transaction['transaction_type'];
 
 const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   // ── Part IV, goods & property ──────────────────────────────────────────
-  tangible_purchase: 'tangible_property',
-  tangible_sale:     'tangible_property',
-  sales:             'sales',
+  //
+  // Canonical `sales` is STOCK IN TRADE (inventory): line 9 sold, line 23
+  // bought. Canonical `tangible_property` is everything else tangible: line 10
+  // sold, line 24 bought. Which of the four lines an amount reaches is decided
+  // by this code plus `direction`, and both halves have to be right.
+  //
+  // `inventory_purchase` is what makes line 23 reachable at all. Before it, the
+  // only card mapping to `sales` was the sale, which is fixed 'received', so
+  // nothing the UI could produce ever landed on line 23 while the purchase card
+  // advertised "goods or inventory" and printed on line 24.
+  inventory_purchase: 'sales',
+  sales:              'sales',
+  tangible_purchase:  'tangible_property',
+  tangible_sale:      'tangible_property',
 
   // ── Part IV, services ──────────────────────────────────────────────────
   service_payment: 'service_payment',
@@ -65,9 +76,12 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
 
   // ── Part IV, complex / CPA-level ───────────────────────────────────────
   intangible:            'intangible',
-  // The 5472 has dedicated platform-contribution / cost-sharing lines
-  // (11/12/25/26) but the generator does not expose them yet, so these are
-  // disclosed under "other amount" (line 21/35) until those lines are wired.
+  // RETIRED 5 August 2026, kept only so rows saved before then still read back.
+  // Neither code can be selected any more: a cost sharing arrangement forces
+  // Part VII question 39 to Yes and requires a Part VIII this product does not
+  // produce, and a platform contribution only exists inside a CSA. See the note
+  // where they were removed from TX_TYPES. They map to `other` because that is
+  // what they have always printed as, on line 21/35.
   platform_contribution: 'other',
   cost_sharing:          'other',
   // Form 5472 has no digital-asset line. The amount is disclosed under "other
@@ -355,7 +369,8 @@ export function mapTransactionForPersist(row: {
 // ───────────────────────────────────────────────────────────────────────────
 //
 // UI_TO_CANONICAL is deliberately MANY-TO-ONE: five UI codes collapse onto
-// `other`, two onto `tangible_property`, two onto `service_payment`. So a saved
+// `other`, two onto `tangible_property`, two onto `sales`, two onto
+// `service_payment`. So a saved
 // row cannot always be turned back into the exact code the filer picked.
 //
 // Until 1 Aug 2026 nothing tried. Intake loaded `transaction_type` straight from
@@ -416,6 +431,13 @@ export function canonicalToUiTxType(
   if (canonical === 'tangible_property') {
     return hints.direction === 'paid' ? 'tangible_purchase' : 'tangible_sale';
   }
+  // `sales` splits the same way once a purchase of inventory can be recorded:
+  // line 9 sold, line 23 bought. Every row written before `inventory_purchase`
+  // existed is a sale, because the only card mapping here carried
+  // fixedDirection 'received', so a 'paid' row can only be a purchase.
+  if (canonical === 'sales') {
+    return hints.direction === 'paid' ? 'inventory_purchase' : 'sales';
+  }
   return CANONICAL_TO_UI[canonical] ?? 'other';
 }
 
@@ -431,9 +453,29 @@ export function resolveUiTxType(row: {
   ui_transaction_type?: string | null;
   direction?: 'paid' | 'received' | null;
 }): string {
-  if (row.ui_transaction_type) return row.ui_transaction_type;
+  if (row.ui_transaction_type && !RETIRED_UI_TX_TYPES.has(row.ui_transaction_type)) {
+    return row.ui_transaction_type;
+  }
   return canonicalToUiTxType(row.transaction_type, { direction: row.direction });
 }
+
+/**
+ * UI codes that were offered once and are not offered any more.
+ *
+ * A retired code cannot be returned to the intake screens: TX_TYPES has no card
+ * for it, so it would render as nothing selected and print as a raw identifier,
+ * which is exactly the defect `ui_transaction_type` was added to fix. These fall
+ * back to the canonical derivation instead, which for both of them is `other`,
+ * the line they have always printed on. The row itself is untouched, so a filing
+ * already prepared from it is unchanged.
+ *
+ * Anything added here must ALSO be removed from TX_TYPES, and anything removed
+ * from TX_TYPES must be added here. The two lists are one decision.
+ */
+export const RETIRED_UI_TX_TYPES = new Set([
+  'cost_sharing',
+  'platform_contribution',
+]);
 
 // ───────────────────────────────────────────────────────────────────────────
 // Address normalization (Intake `{line1, region, postal_code}`  →  canonical

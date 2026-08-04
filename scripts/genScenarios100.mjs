@@ -564,10 +564,17 @@ const LONG_DESC = 'Quarterly cross-border management and administrative support 
   + 'within 30 days of each quarter end as required by the transfer pricing policy.';
 
 // -- uncovered transaction types ------------------------------------------
-one('Cost sharing arrangement', 'cost_sharing has no coverage',
+// The first two are RETIRED codes: intake stopped offering cost sharing and
+// platform contribution on 5 August 2026, because both force Part VII question
+// 39 to Yes and a Part VIII that is not produced. The scenarios stay, because
+// rows saved before that are still in the database and still have to generate a
+// package rather than crash or print a raw code.
+one('Cost sharing arrangement (retired type, legacy row)', 'cost_sharing has no coverage',
   { parties: [rp(0)], txns: [tx({ transaction_type: 'cost_sharing', amount_usd: '18000' })] }, 'drawn');
-one('Platform contribution', 'platform_contribution has no coverage',
+one('Platform contribution (retired type, legacy row)', 'platform_contribution has no coverage',
   { parties: [rp(0)], txns: [tx({ transaction_type: 'platform_contribution', amount_usd: '25000' })] }, 'typed');
+one('Purchase of inventory', 'inventory_purchase reaches line 23, which nothing could reach before',
+  { parties: [rp(0)], txns: [tx({ transaction_type: 'inventory_purchase', amount_usd: '47000' })] }, 'typed');
 one('Other Part V with a written description', 'other_part_v free-text path',
   { parties: [rp(0)], txns: [tx({ transaction_type: 'other_part_v', amount_usd: '4000', description: 'Owner settled a vendor invoice directly' })] }, 'drawn');
 one('Other Part VI with a written description', 'other_part_vi free-text path',

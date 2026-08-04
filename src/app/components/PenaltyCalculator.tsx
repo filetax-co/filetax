@@ -79,7 +79,7 @@ function scalePct(value: number): number {
  * that cap is REAL: we cannot prepare a 2018 return, so offering to count one
  * would price a filing we would then refuse.
  */
-const EARLIEST_TAX_YEAR = 2019;
+import { EARLIEST_TAX_YEAR } from '../pages/intake/constants';
 const MAX_YEARS = Math.max(1, new Date().getFullYear() - 1 - EARLIEST_TAX_YEAR + 1);
 
 interface Field {

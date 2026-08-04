@@ -45,11 +45,19 @@ const money = (lo, hi) => Math.round((lo + rnd() * (hi - lo)) / 100) * 100;
 const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 const FISCAL_END_MONTHS = [3, 6, 9, 12];
 
-/** Every UI transaction type the intake offers. */
+/**
+ * Every UI transaction type the intake offers.
+ *
+ * `cost_sharing` and `platform_contribution` were removed on 5 August 2026,
+ * because they force Form 5472 Part VII question 39 to Yes and require a Part
+ * VIII this product does not produce. `inventory_purchase` was added the same
+ * day: it is what makes line 23 reachable.
+ */
 const TX_TYPES = [
-  'tangible_purchase', 'tangible_sale', 'sales', 'service_payment', 'tech_services',
+  'inventory_purchase', 'sales', 'tangible_purchase', 'tangible_sale',
+  'service_payment', 'tech_services',
   'commission', 'rent', 'royalty', 'interest', 'loan_to_llc', 'loan_from_llc',
-  'intangible', 'platform_contribution', 'cost_sharing', 'insurance',
+  'intangible', 'insurance',
   'loan_guarantee_fee', 'other', 'capital_contribution', 'distribution', 'dividend',
   'formation_costs', 'formation_tx', 'dissolution_tx', 'acquisition_tx',
   'disposition_tx', 'other_part_v', 'nonmonetary_transfer', 'less_than_fmv',

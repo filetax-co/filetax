@@ -5,6 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { FILING_DUE_DATES } from './intake/constants';
 import { PRICE_PER_YEAR, PRICE_RCL, unavailableServices, serviceWithPrice } from '../../lib/pricing';
+import {
+  normalizeEin, formatEin, listCompanies, updateCompany, deleteCompany,
+  setYearsFiledElsewhere, type FilingProfile,
+} from '../../lib/filingProfile';
+import { missingTaxYears, describeYears } from '../../lib/catchUpYears';
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -214,9 +219,13 @@ export function Dashboard() {
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
 
   const [filings, setFilings] = useState<Filing[]>([]);
+  const [companies, setCompanies] = useState<FilingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  // Turned off the first time a write proves the column is missing, so the
+  // button disappears instead of failing again on the next company.
+  const [canDismissYears, setCanDismissYears] = useState(true);
 
   useEffect(() => {
     if (authLoading) return;
@@ -230,11 +239,17 @@ export function Dashboard() {
     async function load() {
       setLoading(true);
 
-      const filingsRes = await supabase
-        .from('filings')
-        .select('*')
-        .eq('user_id', effectiveUserId)
-        .order('updated_at', { ascending: false });
+      // Both at once. The saved companies are a separate table and neither
+      // read depends on the other, so serialising them would only make the
+      // dashboard slower to appear.
+      const [filingsRes, companiesRes] = await Promise.all([
+        supabase
+          .from('filings')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .order('updated_at', { ascending: false }),
+        listCompanies(effectiveUserId),
+      ]);
 
       if (cancelled) return;
 
@@ -243,6 +258,10 @@ export function Dashboard() {
       } else {
         setFilings((filingsRes.data ?? []) as Filing[]);
       }
+      // listCompanies returns [] rather than throwing, so a failure here shows
+      // an empty companies section rather than blocking the filings list, which
+      // is the part of this page the filer actually came for.
+      setCompanies(companiesRes);
 
       setLoading(false);
     }
@@ -372,6 +391,90 @@ export function Dashboard() {
     setBusy(null);
   }
 
+  /**
+   * Tell us these years are filed somewhere else, so the prompt stops.
+   *
+   * Stored PER YEAR even though the button dismisses the whole visible set. The
+   * grain matters later, not now: a filer who dismisses 2021 to 2024 today and
+   * comes back next January still gets asked about 2025, because only the years
+   * actually dismissed are remembered. A single "hide this company" flag would
+   * silence that too.
+   */
+  async function dismissYears(ein: string | null, years: number[]) {
+    const key = normalizeEin(ein);
+    if (!key || busy) return;
+    setBusy(`dismiss-${key}`);
+    setError('');
+    const company = companies.find((c) => normalizeEin(c.ein) === key);
+    const existing = company?.years_filed_elsewhere ?? [];
+    const next = [...existing, ...years.map(String)];
+    const res = await setYearsFiledElsewhere(effectiveUserId, key, next);
+    setBusy(null);
+    if (res === 'unsupported') {
+      // The migration has not been applied to this database. Say what is true
+      // rather than "something went wrong", because nothing did.
+      setError('Marking years as filed elsewhere is not available on this account yet. Contact support@filetax.co.');
+      setCanDismissYears(false);
+      return;
+    }
+    if (res === 'error') {
+      setError('That could not be saved. Refresh and try again, or contact support@filetax.co.');
+      return;
+    }
+    setCompanies((prev) => prev.map((c) => (
+      normalizeEin(c.ein) === key ? { ...c, years_filed_elsewhere: next.map(String) } : c
+    )));
+  }
+
+  // Computed once and read by BOTH the summary strip and the company sections.
+  // The strip's "Years not filed here" is the sum of what the prompts show, so
+  // deriving it separately would let the tile say six over a page showing two.
+  const companyGroups = groupByCompany(filings);
+
+  /**
+   * The years this company has no filing for, or [] when we cannot say.
+   *
+   * Empty whenever something is unknown rather than guessed: no EIN to key on,
+   * no saved profile, no formation date, or no gap. The formation date is what
+   * silences it most often, and rightly, since without one the range is a guess
+   * spanning years of returns the filer may never have owed.
+   */
+  function missingYearsFor(group: CompanyGroup): number[] {
+    const key = normalizeEin(group.ein);
+    if (!key) return [];
+    const profile = companies.find((c) => normalizeEin(c.ein) === key);
+    if (!profile) return [];
+    // The profile's date first; a filing's own date is the fallback, because a
+    // company recovered by the migration's backfill carries whatever its most
+    // recent filing had.
+    const formation = profile.date_of_incorporation
+      ?? group.filings.find((f) => f.date_of_incorporation)?.date_of_incorporation
+      ?? null;
+    return missingTaxYears({
+      formationDate: formation,
+      filedYears: group.filings.map((f) => f.tax_year),
+      dismissedYears: profile.years_filed_elsewhere ?? [],
+    });
+  }
+
+  /** The prompt for one company group, or null when there is no gap. */
+  function catchUpFor(group: CompanyGroup) {
+    const years = missingYearsFor(group);
+    if (years.length === 0) return null;
+    const key = normalizeEin(group.ein);
+    return (
+      <CatchUpPrompt
+        companyName={group.name}
+        ein={group.ein}
+        years={years}
+        canDismiss={canDismissYears}
+        dismissing={busy === `dismiss-${key}`}
+        onFile={() => navigate('/catch-up')}
+        onDismiss={(subset) => dismissYears(group.ein, subset ?? years)}
+      />
+    );
+  }
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -422,17 +525,48 @@ export function Dashboard() {
               // the earliest deadline still ahead of today, and the oldest one
               // already missed. Same shape as getNextDeadline(now) on the
               // marketing clock, which had this bug in its own form.
+              //
+              // Each date also carries the FILING it came from, so the tile can
+              // say whose deadline it is. Everything below this strip is grouped
+              // by company, so an unattributed date was the only thing left on
+              // the page whose scope you could not tell by looking: "Oldest
+              // missed deadline, October 15 2021" over two LLCs names neither.
               const pending = filings
                 .filter((f) => BUCKET_OF[f.status] !== 'done')
-                .map((f) => dueState(f.tax_year, hasExtension(f)))
-                .filter((d): d is NonNullable<DueState> => !!d)
-                .sort((a, b) => a.due.localeCompare(b.due));
-              const overdue = pending.filter((d) => d.tone === 'late')[0];
-              const upcoming = pending.filter((d) => d.tone !== 'late')[0];
-              const stat = (label: string, value: string, tone?: 'late' | 'warn') => (
+                .map((f) => ({ f, d: dueState(f.tax_year, hasExtension(f)) }))
+                .filter((x): x is { f: Filing; d: NonNullable<DueState> } => !!x.d)
+                .sort((a, b) => a.d.due.localeCompare(b.d.due));
+              const overdue = pending.filter((x) => x.d.tone === 'late')[0];
+              const upcoming = pending.filter((x) => x.d.tone !== 'late')[0];
+              // Attribution, not scope. These tiles answer "which is worst
+              // across the account", and that is ONE filing, so it has one
+              // owner. Shown only when there is more than one company, since a
+              // name repeated down a page with one LLC on it is noise.
+              const ownerOf = (f: Filing | undefined) => {
+                // companyGroups, not the saved-profile list: this has to match
+                // the condition the sections below use to show their headings,
+                // or the strip names companies on a page that does not.
+                if (!f || companyGroups.length < 2) return undefined;
+                const name = f.llc_name?.trim();
+                return name || undefined;
+              };
+              // The sum of what the catch-up prompts below are showing, so the
+              // strip and the sections cannot disagree. Dismissed years are
+              // already out of missingTaxYears, so dismissing a company's years
+              // drops this count too.
+              const yearsNotFiled = companyGroups
+                .reduce((n, g) => n + missingYearsFor(g).length, 0);
+              const stat = (label: string, value: string, tone?: 'late' | 'warn', who?: string) => (
                 <div style={{ background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '0.875rem 1rem' }}>
                   <div style={{ fontSize: '1.375rem', fontWeight: 700, color: tone === 'late' ? 'var(--tf-banner-red-text)' : tone === 'warn' ? 'var(--tf-banner-amber-text)' : 'var(--tf-text)' }}>{value}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '0.15rem' }}>{label}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '0.15rem' }}>
+                    {label}
+                    {/* On its own line rather than beside the value. The longest
+                        of these, "Extension due October 15, 2026", already wraps
+                        on a 390px phone, and that pill is what caused the
+                        document-level horizontal overflow once before. */}
+                    {who && <><br /><span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 'normal' }}>{who}</span></>}
+                  </div>
                 </div>
               );
               return (
@@ -441,8 +575,9 @@ export function Dashboard() {
                   {counts.ready > 0 && stat('Ready to download', String(counts.ready))}
                   {counts.in_progress > 0 && stat('In progress', String(counts.in_progress))}
                   {stat('Total filings', String(filings.length))}
-                  {overdue && stat('Oldest missed deadline', humanDate(overdue.due), 'late')}
-                  {upcoming && stat('Next deadline', humanDate(upcoming.due), upcoming.tone === 'warn' ? 'warn' : undefined)}
+                  {yearsNotFiled > 0 && stat('Years not filed here', String(yearsNotFiled), 'late')}
+                  {overdue && stat('Oldest missed deadline', humanDate(overdue.d.due), 'late', ownerOf(overdue.f))}
+                  {upcoming && stat('Next deadline', humanDate(upcoming.d.due), upcoming.d.tone === 'warn' ? 'warn' : undefined, ownerOf(upcoming.f))}
                 </>
               );
             })()}
@@ -467,50 +602,46 @@ export function Dashboard() {
             </div>
           ) : (
             (() => {
-              // Group standalone filings vs multi-year job filings.
-              const jobs = new Map<string, Filing[]>();
-              const standalone: Filing[] = [];
-              for (const f of filings) {
-                if (f.job_id) {
-                  const arr = jobs.get(f.job_id) ?? [];
-                  arr.push(f); jobs.set(f.job_id, arr);
-                } else standalone.push(f);
-              }
-              // Bucket standalone filings.
-              const byBucket = new Map<Bucket, Filing[]>();
-              for (const f of standalone) {
-                const b = BUCKET_OF[f.status];
-                const arr = byBucket.get(b) ?? [];
-                arr.push(f); byBucket.set(b, arr);
-              }
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-                  {/* Multi-year job cards first (most actionable) */}
-                  {[...jobs.entries()].map(([jobId, yearFilings]) => (
-                    <JobCard
-                      key={jobId}
-                      filings={yearFilings}
+              // One company is the common case, and a heading naming the only
+              // LLC on the page is noise. The entity grouping appears only when
+              // there is something to tell apart.
+              if (companyGroups.length < 2) {
+                return (
+                  <>
+                    {/* The prompt belongs to a company, not to the grouping, so
+                        it shows for a single-company filer too. That is in fact
+                        the commonest case for it: one 2025 filing and an LLC
+                        formed years earlier. */}
+                    {companyGroups[0] && catchUpFor(companyGroups[0])}
+                    <FilingGroups
+                      filings={filings}
                       onDeleteJob={deleteJob}
-                      onDeleteYear={deleteFiling}
+                      onDeleteFiling={deleteFiling}
                       busy={busy}
                     />
-                  ))}
-
-                  {BUCKET_ORDER.filter((b) => (byBucket.get(b)?.length ?? 0) > 0).map((b) => (
-                    <div key={b}>
-                      <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', marginBottom: '0.75rem' }}>
-                        {BUCKET_TITLE[b]}
-                      </h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {byBucket.get(b)!.map((f) => (
-                          <FilingCard
-                            key={f.id}
-                            f={f}
-                            onDelete={deleteFiling}
-                            deleting={busy === `del-${f.id}`}
-                          />
-                        ))}
+                  </>
+                );
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+                  {companyGroups.map((c) => (
+                    <div key={c.key}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem', paddingBottom: '0.6rem', borderBottom: '1px solid var(--tf-border)' }}>
+                        <h3 style={{ fontSize: '1.0625rem', fontWeight: 700, color: 'var(--tf-text)' }}>{c.name}</h3>
+                        {c.ein && (
+                          <span style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 500 }}>EIN {c.ein}</span>
+                        )}
+                        <span style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, marginLeft: 'auto' }}>
+                          {c.filings.length} filing{c.filings.length > 1 ? 's' : ''}
+                        </span>
                       </div>
+                      {catchUpFor(c)}
+                      <FilingGroups
+                        filings={c.filings}
+                        onDeleteJob={deleteJob}
+                        onDeleteFiling={deleteFiling}
+                        busy={busy}
+                      />
                     </div>
                   ))}
                 </div>
@@ -587,6 +718,16 @@ export function Dashboard() {
         <style>{`@media (max-width: 800px) { .dash-services { grid-template-columns: 1fr !important; } }`}</style>
       </section>
 
+      {/* ── Saved companies ─────────────────────────────────────────────── */}
+      {!loading && companies.length > 0 && (
+        <SavedCompanies
+          companies={companies}
+          userId={effectiveUserId}
+          onChange={setCompanies}
+          canUndoDismissed={canDismissYears}
+        />
+      )}
+
       <section style={{ background: 'var(--tf-bg)', padding: '2rem 1rem 4rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>
@@ -596,6 +737,537 @@ export function Dashboard() {
         </div>
       </section>
     </>
+  );
+}
+
+// ── Catch-up prompt ─────────────────────────────────────────────────────────
+/**
+ * "Have you filed 2021 to 2024 for this company?"
+ *
+ * Shown per company, above its filings, when we hold a formation date and there
+ * are years between it and now with no filing here.
+ *
+ * WORDED AS A QUESTION, ON PURPOSE. We know one thing, that we have no filing
+ * for those years, and that is a fact about our own records. Whether a given
+ * year REQUIRES a return turns on whether the company had a reportable
+ * transaction that year, which nothing on this page knows, and §4's claims
+ * rules do not let us assert it. "You have not filed these with us" is true;
+ * "you need to file these" is a claim we cannot support.
+ *
+ * NOT the amber deadline colour. Amber on this page means a deadline is close
+ * or missed, and it is used by the due-date pills a few pixels below. An offer
+ * to file more years in that colour reads as something being wrong with a
+ * filing already made. This uses the accent border and tint the multi-year job
+ * card already uses, which is the dashboard's existing "notable, not alarming".
+ */
+function CatchUpPrompt({
+  companyName,
+  ein,
+  years,
+  onFile,
+  onDismiss,
+  dismissing,
+  canDismiss,
+}: {
+  companyName: string;
+  ein: string | null;
+  years: number[];
+  onFile: () => void;
+  /** Called with the years to forget, or undefined to forget all shown. */
+  onDismiss: (subset?: number[]) => void;
+  dismissing: boolean;
+  canDismiss: boolean;
+}) {
+  const many = years.length > 1;
+  const cost = years.length * PRICE_PER_YEAR;
+  return (
+    <div
+      style={{
+        background: 'rgba(var(--tf-accent-rgb), 0.06)',
+        border: '1px solid var(--tf-accent)',
+        borderRadius: '0.75rem',
+        padding: '1.125rem 1.375rem',
+        marginBottom: '1rem',
+      }}
+    >
+      <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)', marginBottom: '0.35rem' }}>
+        Have you filed {describeYears(years)} for {companyName}?
+      </p>
+      <p style={{ color: 'var(--tf-muted)', fontSize: '0.875rem', fontWeight: 400, lineHeight: 1.6 }}>
+        {/* States what we know, not what they owe. See the note above. */}
+        We have no {many ? 'filings' : 'filing'} here for {many ? 'these years' : 'this year'}.
+        If {many ? 'they have' : 'it has'} already been filed elsewhere, say so and we will stop asking.
+      </p>
+      {/* Each year is separately dismissible, because the real case is partial:
+          a filer who did 2023 and 2024 with an accountant before they found us
+          and genuinely has not filed 2021 or 2022. One button for all four
+          would force them to either over-claim or keep being asked.
+          The × is always visible rather than on hover: a control that only
+          exists under a cursor does not exist on a phone at all. */}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.75rem 0' }}>
+        {years.map((y) => (
+          <span
+            key={y}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              background: 'var(--tf-surface)',
+              border: '1px solid var(--tf-border)',
+              borderRadius: '0.375rem',
+              padding: canDismiss ? '0.1rem 0.25rem 0.1rem 0.6rem' : '0.2rem 0.6rem',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              color: 'var(--tf-text)',
+            }}
+          >
+            {y}
+            {canDismiss && (
+              <button
+                type="button"
+                onClick={() => onDismiss([y])}
+                disabled={dismissing}
+                title={`Mark ${y} as already filed elsewhere`}
+                aria-label={`Mark ${y} as already filed elsewhere`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '20px',
+                  height: '20px',
+                  padding: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  color: 'var(--tf-muted)',
+                  cursor: dismissing ? 'not-allowed' : 'pointer',
+                  opacity: dismissing ? 0.4 : 1,
+                  fontSize: '0.9rem',
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {many && (
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.6, marginBottom: '0.875rem' }}>
+          {/* The letter is charged once however many years, which is the whole
+              argument for filing them together and is worth stating here rather
+              than making the filer find it on /pricing. */}
+          Filing {years.length} years together is ${cost}, plus one ${PRICE_RCL} reasonable cause
+          letter that covers all of them however many you file.
+        </p>
+      )}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onFile}
+          style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '40px' }}
+        >
+          {many ? 'File these years' : `File ${years[0]}`}
+        </button>
+        {/* Hidden, not disabled, when the column is missing: a dismissal that
+            looks like it worked and returns on reload is worse than none. */}
+        {canDismiss && many && (
+          <button type="button" onClick={() => onDismiss()} disabled={dismissing} style={linkBtnStyle}>
+            {dismissing ? 'Saving…' : 'I already filed all of these'}
+          </button>
+        )}
+      </div>
+      {ein && (
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.75rem', fontWeight: 400, marginTop: '0.75rem' }}>
+          Based on the formation date saved for EIN {formatEin(ein)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Saved companies ─────────────────────────────────────────────────────────
+/**
+ * Manage the details we offer to prefill, one entry per company.
+ *
+ * There was no surface for this at all. `company_profiles` rows are created as
+ * a side effect of submitting a filing, and until now nothing could rename one,
+ * correct one, or remove one. A filer who mistyped an EIN got a phantom company
+ * in the intake picker permanently, sitting next to the real one and differing
+ * by a digit, which is precisely the confusion the per-company rewrite existed
+ * to end.
+ *
+ * THE ONE THING THIS SCREEN MUST KEEP SAYING: editing here changes what the next
+ * filing is offered and nothing else. It does not amend a return, and it cannot,
+ * because `filings_freeze_when_paid` locks the EIN at payment and an already
+ * filed wrong EIN is an amended return, which is deferred. A filer correcting a
+ * typo will otherwise assume they have fixed the filing it went onto. The copy
+ * says so twice, once in the section subtitle and once on the delete confirm,
+ * because those are the two moments someone believes they are fixing a return.
+ */
+function SavedCompanies({
+  companies,
+  userId,
+  onChange,
+  canUndoDismissed,
+}: {
+  companies: FilingProfile[];
+  userId: string | null;
+  onChange: (next: FilingProfile[]) => void;
+  canUndoDismissed: boolean;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftEin, setDraftEin] = useState('');
+  const [rowError, setRowError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = (c: FilingProfile) => {
+    setEditing(c.ein ?? null);
+    setDraftName(c.llc_name ?? '');
+    setDraftEin(formatEin(c.ein));
+    setRowError('');
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setRowError('');
+  };
+
+  async function save(original: FilingProfile) {
+    if (busy) return;
+    setBusy(true);
+    setRowError('');
+    const res = await updateCompany(userId, original.ein, {
+      llc_name: draftName,
+      ein: draftEin,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setRowError(res.message);
+      return;
+    }
+    // Patch in place rather than refetching: the row we just wrote is the only
+    // one that changed, and a refetch would reorder the list under the filer by
+    // updated_at, moving the entry they were just looking at.
+    onChange(companies.map((c) => (
+      c.ein === original.ein
+        ? { ...c, ein: res.ein, llc_name: draftName.trim() || null }
+        : c
+    )));
+    setEditing(null);
+  }
+
+  /**
+   * Undo "I already filed these".
+   *
+   * Lives here rather than on the prompt, because once a year is dismissed the
+   * prompt is gone and there is nothing left to click. Without this the only
+   * route back was contacting support, which makes a one-click action on the
+   * dashboard effectively irreversible.
+   *
+   * Clears the whole list rather than one year: this is an undo, and the prompt
+   * it restores is itself per-year dismissible again.
+   */
+  async function undoDismissed(c: FilingProfile) {
+    if (busy) return;
+    setBusy(true);
+    setRowError('');
+    const res = await setYearsFiledElsewhere(userId, c.ein, []);
+    setBusy(false);
+    if (res !== 'ok') {
+      setRowError('That could not be undone. Refresh and try again, or contact support@filetax.co.');
+      return;
+    }
+    onChange(companies.map((x) => (
+      x.ein === c.ein ? { ...x, years_filed_elsewhere: [] } : x
+    )));
+  }
+
+  async function remove(c: FilingProfile) {
+    if (busy) return;
+    const label = c.llc_name?.trim() || `EIN ${formatEin(c.ein)}`;
+    if (!window.confirm(
+      `Forget the saved details for ${label}?\n\n`
+      + 'This only removes what we offer to fill in when you start a new filing. '
+      + 'Every filing you have already made is kept exactly as it is.',
+    )) return;
+    setBusy(true);
+    setRowError('');
+    const ok = await deleteCompany(userId, c.ein);
+    setBusy(false);
+    if (!ok) {
+      setRowError('Those details could not be removed. Refresh and try again, or contact support@filetax.co.');
+      return;
+    }
+    onChange(companies.filter((x) => x.ein !== c.ein));
+  }
+
+  return (
+    <section style={{ background: 'var(--tf-bg)', padding: '2.5rem 1rem 1rem' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '0.35rem' }}>Your saved companies</h2>
+        <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400, marginBottom: '1.25rem', maxWidth: '760px' }}>
+          These are the details we offer to fill in when you start a new filing. Changing them here
+          affects future filings only. Filings you have already made are never changed.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {companies.map((c) => {
+            const isEditing = editing === c.ein;
+            return (
+              <div
+                key={c.ein ?? c.llc_name ?? Math.random()}
+                style={{
+                  background: 'var(--tf-surface)',
+                  border: '1px solid var(--tf-border)',
+                  borderRadius: '0.75rem',
+                  padding: '1.125rem 1.5rem',
+                }}
+              >
+                {isEditing ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <label style={{ flex: '1 1 260px', minWidth: 0 }}>
+                        <span style={editLabelStyle}>LLC name</span>
+                        <input
+                          value={draftName}
+                          onChange={(e) => setDraftName(e.target.value)}
+                          style={editInputStyle}
+                          placeholder="Acme Holdings LLC"
+                        />
+                      </label>
+                      <label style={{ flex: '0 1 200px', minWidth: 0 }}>
+                        <span style={editLabelStyle}>EIN</span>
+                        <input
+                          value={draftEin}
+                          onChange={(e) => setDraftEin(e.target.value)}
+                          style={editInputStyle}
+                          placeholder="12-3456789"
+                          inputMode="numeric"
+                        />
+                      </label>
+                    </div>
+                    {/* Said here as well as in the section subtitle: this is the
+                        moment someone believes they are correcting a return. */}
+                    <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.55 }}>
+                      Correcting an EIN here does not change a filing you have already made. If a
+                      return went to the IRS with the wrong EIN, email{' '}
+                      <a href="mailto:hello@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>.
+                    </p>
+                    {rowError && (
+                      <p style={{ color: 'var(--tf-error-text)', fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.55 }}>{rowError}</p>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => save(c)}
+                        disabled={busy}
+                        style={{ background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', cursor: busy ? 'not-allowed' : 'pointer', minHeight: '40px', opacity: busy ? 0.7 : 1 }}
+                      >
+                        {busy ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button type="button" onClick={cancelEdit} disabled={busy} style={linkBtnStyle}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                      <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
+                        {c.llc_name?.trim() || 'Unnamed company'}
+                      </p>
+                      <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, marginTop: '0.15rem' }}>
+                        EIN {formatEin(c.ein)}
+                        {c.last_filed_tax_year ? ` · Last filed ${c.last_filed_tax_year}` : ' · Not filed yet'}
+                      </p>
+                      {/* Says what the filer TOLD US, not that a return exists.
+                          This is the only place a dismissed year is visible at
+                          all, since dismissing removes the prompt that named it. */}
+                      {(c.years_filed_elsewhere?.length ?? 0) > 0 && (
+                        <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, marginTop: '0.35rem' }}>
+                          You told us {describeYears((c.years_filed_elsewhere ?? []).map(Number).filter(Number.isFinite))} {(c.years_filed_elsewhere?.length ?? 0) > 1 ? 'were' : 'was'} filed elsewhere.
+                          {canUndoDismissed && (
+                            <>
+                              {' '}
+                              <button type="button" onClick={() => undoDismissed(c)} disabled={busy} style={{ ...linkBtnStyle, fontSize: '0.8125rem' }}>
+                                Undo
+                              </button>
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(c)}
+                        style={{ background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', fontWeight: 600, fontSize: '0.875rem', padding: '0.5rem 1.1rem', borderRadius: '0.5rem', cursor: 'pointer', minHeight: '40px' }}
+                      >
+                        Edit
+                      </button>
+                      <DeleteCardButton
+                        onClick={() => remove(c)}
+                        busy={busy}
+                        title={`Forget the saved details for ${c.llc_name?.trim() || `EIN ${formatEin(c.ein)}`}`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* An error from a delete has no open edit form to sit inside. */}
+        {rowError && editing === null && (
+          <p style={{ color: 'var(--tf-error-text)', fontSize: '0.8125rem', fontWeight: 500, marginTop: '0.75rem' }}>{rowError}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const editLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  color: 'var(--tf-muted)',
+  marginBottom: '0.3rem',
+};
+
+const editInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--tf-input-bg)',
+  color: 'var(--tf-text)',
+  border: '1px solid var(--tf-border)',
+  borderRadius: '0.5rem',
+  padding: '0.55rem 0.75rem',
+  fontSize: '0.9375rem',
+  fontWeight: 500,
+  minHeight: '42px',
+};
+
+// ── Grouping by entity ───────────────────────────────────────────────────────
+/**
+ * Split a user's filings by the company they are for.
+ *
+ * Saved details are per company (`company_profiles`, keyed on user_id + EIN),
+ * but the dashboard listed every filing flat, so a filer with two LLCs saw them
+ * interleaved with nothing but the LLC name in each card to tell them apart.
+ * That is the same confusion that let the old per-user profile file a return
+ * against the wrong EIN, one screen earlier.
+ *
+ * Keyed on the EIN, digits only, for the same reason the table is: "99-9999999"
+ * and "999999999" are one company. A filing with no EIN yet is a draft that has
+ * not reached step 2; it falls back to its LLC name, and failing that lands in
+ * one "Not identified yet" group rather than becoming a group of its own per
+ * empty draft.
+ *
+ * Company order follows the filings, which arrive newest-updated first, so the
+ * company the filer last touched is at the top. The unidentified group is
+ * always last: it is by definition the least informative heading on the page.
+ */
+type CompanyGroup = { key: string; name: string; ein: string | null; filings: Filing[] };
+
+const UNIDENTIFIED = '__unidentified__';
+
+function groupByCompany(filings: Filing[]): CompanyGroup[] {
+  const groups = new Map<string, CompanyGroup>();
+  for (const f of filings) {
+    const ein = normalizeEin(f.ein);
+    const name = f.llc_name?.trim() ?? '';
+    const key = ein ?? (name ? `name:${name.toLowerCase()}` : UNIDENTIFIED);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.filings.push(f);
+      // The newest filing wins the display EIN and name, but an older one still
+      // fills a blank: a fresh draft carries neither yet.
+      if (!existing.name && name) existing.name = name;
+      if (!existing.ein && f.ein) existing.ein = f.ein.trim();
+    } else {
+      groups.set(key, {
+        key,
+        name: name || (key === UNIDENTIFIED ? 'Not identified yet' : ''),
+        ein: f.ein?.trim() || null,
+        filings: [f],
+      });
+    }
+  }
+  const out = [...groups.values()];
+  for (const g of out) if (!g.name) g.name = g.ein ? `EIN ${g.ein}` : 'Not identified yet';
+  return out.sort((a, b) =>
+    (a.key === UNIDENTIFIED ? 1 : 0) - (b.key === UNIDENTIFIED ? 1 : 0));
+}
+
+/**
+ * The filings of one company (or of everything, when there is only one),
+ * as multi-year job cards followed by the status buckets.
+ *
+ * Extracted so the flat one-company layout and each per-company section are
+ * literally the same code: the alternative was two copies of the bucket
+ * rendering that would drift the first time a status was added.
+ */
+function FilingGroups({
+  filings,
+  onDeleteJob,
+  onDeleteFiling,
+  busy,
+}: {
+  filings: Filing[];
+  onDeleteJob: (filings: Filing[]) => void;
+  onDeleteFiling: (f: Filing) => void;
+  busy: string | null;
+}) {
+  // Group standalone filings vs multi-year job filings.
+  const jobs = new Map<string, Filing[]>();
+  const standalone: Filing[] = [];
+  for (const f of filings) {
+    if (f.job_id) {
+      const arr = jobs.get(f.job_id) ?? [];
+      arr.push(f); jobs.set(f.job_id, arr);
+    } else standalone.push(f);
+  }
+  // Bucket standalone filings.
+  const byBucket = new Map<Bucket, Filing[]>();
+  for (const f of standalone) {
+    const b = BUCKET_OF[f.status];
+    const arr = byBucket.get(b) ?? [];
+    arr.push(f); byBucket.set(b, arr);
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+      {/* Multi-year job cards first (most actionable) */}
+      {[...jobs.entries()].map(([jobId, yearFilings]) => (
+        <JobCard
+          key={jobId}
+          filings={yearFilings}
+          onDeleteJob={onDeleteJob}
+          onDeleteYear={onDeleteFiling}
+          busy={busy}
+        />
+      ))}
+
+      {BUCKET_ORDER.filter((b) => (byBucket.get(b)?.length ?? 0) > 0).map((b) => (
+        <div key={b}>
+          <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tf-muted)', marginBottom: '0.75rem' }}>
+            {BUCKET_TITLE[b]}
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {byBucket.get(b)!.map((f) => (
+              <FilingCard
+                key={f.id}
+                f={f}
+                onDelete={onDeleteFiling}
+                deleting={busy === `del-${f.id}`}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

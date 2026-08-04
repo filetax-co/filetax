@@ -18,10 +18,12 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { listCompanies, type FilingProfile } from '../../lib/filingProfile';
-import { REASONABLE_CAUSE_REASONS } from './intake/constants';
+import { REASONABLE_CAUSE_REASONS, EARLIEST_TAX_YEAR } from './intake/constants';
 import { PRICE_RCL } from '../../lib/pricing';
 
-const EARLIEST_YEAR = 2019;
+// Defined once, in intake/constants. It was written out here and in
+// PenaltyCalculator, and the dashboard catch-up prompt needed a third.
+const EARLIEST_YEAR = EARLIEST_TAX_YEAR;
 
 export function MultiYearStart() {
   usePageMeta({
