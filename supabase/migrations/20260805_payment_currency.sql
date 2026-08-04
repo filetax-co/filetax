@@ -67,3 +67,10 @@ begin
   return new;
 end;
 $$;
+
+-- PostgREST caches the schema, and verify-payment writes payment_currency
+-- THROUGH PostgREST. Without this the column exists in the database and the
+-- payment update still fails with "column not found in the schema cache", on
+-- the one path where a failure means a customer has been charged and the
+-- filing does not know it.
+notify pgrst, 'reload schema';
