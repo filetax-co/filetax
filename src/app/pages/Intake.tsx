@@ -9,11 +9,13 @@ import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
 import { startCheckout } from '../../lib/checkout';
 import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
 import {
+  asksDirection,
   BIZ_ACTIVITIES,
   COUNTRIES,
-  DIRECTION_TYPES,
+  defaultDirectionFor,
   filingDueDates,
   LOAN_TYPES,
+  OWNER_ONLY_TX_TYPES,
   PART_V_TYPES,
   PART_VI_TYPES,
   type QuickTx,
@@ -796,10 +798,22 @@ function formatAddress(a?: { line1?: string; city?: string; region?: string; pos
  */
 function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summarizeTransactions>; count: number }) {
   if (count === 0) return null;
-  const bucket = (label: string, b: { count: number; total: number }, color: string) => (
+  // `countOnly` is for the non-cash tile. Those disclosures often carry no
+  // amount at all, so a bold "$0" beside them reads as a figure that failed to
+  // add up rather than as a transaction that legitimately has no dollar value.
+  const bucket = (
+    label: string,
+    b: { count: number; total: number },
+    color: string,
+    countOnly = false,
+  ) => (
     <div style={{ background: 'var(--tf-offset)', borderRadius: '0.5rem', padding: '0.7rem 0.85rem' }}>
       <div style={{ fontSize: '0.75rem', color: 'var(--tf-muted)' }}>{label}{b.count ? ` · ${b.count}` : ''}</div>
-      <div style={{ fontSize: '1.1rem', fontWeight: 700, color }}>{usd(b.total)}</div>
+      <div style={{ fontSize: '1.1rem', fontWeight: 700, color }}>
+        {countOnly && b.total === 0
+          ? (b.count === 1 ? '1 item' : `${b.count} items`)
+          : usd(b.total)}
+      </div>
     </div>
   );
   return (
@@ -850,7 +864,11 @@ function TxSummaryPanel({ summary, count }: { summary: ReturnType<typeof summari
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginTop: '0.85rem' }}>
         {bucket('Money in', summary.bucketIn, 'var(--tf-success)')}
         {bucket('Money out', summary.bucketOut, 'var(--tf-accent)')}
-        {bucket('Other dealings', summary.bucketOther, 'var(--tf-text)')}
+        {/* Only Part VI reaches this tile now: non-cash and below-market
+            disclosures, the one kind of dealing that is genuinely neither money
+            in nor money out. Every Part IV row is bucketed by its direction,
+            which is what it was for. */}
+        {bucket('Other dealings (non-cash)', summary.bucketOther, 'var(--tf-text)', true)}
       </div>
     </div>
   );
@@ -1086,6 +1104,13 @@ export function Intake() {
   // yet". Seeded true for a filing already saved past step 3, so reopening a
   // finished filing does not show that section as unreviewed.
   const [relatedPartiesReviewed, setRelatedPartiesReviewed] = useState(false);
+  // Same idea as relatedPartiesReviewed, for the owner section. A returning
+  // filer has their owner details prefilled from their saved profile, which
+  // makes the section VALID the instant the page loads and used to tick it
+  // before the filer had looked at it once. A tick is a claim that the filer
+  // has checked something; prefilled data is a claim that WE have. Sticky, so
+  // scrolling back up does not un-tick it.
+  const [ownerReviewed, setOwnerReviewed] = useState(false);
   // Furthest step this filing has been saved at, mirroring filings.current_step
   // so progress survives a reload. It only ever moves forward: editing step 1
   // on a filing that reached review does not un-progress it.
@@ -1224,6 +1249,7 @@ export function Intake() {
       const savedStep = Number((f as any).current_step ?? 1) || 1;
       setFurthestStep(savedStep);
       setRelatedPartiesReviewed(f.status !== 'draft' || savedStep > 3);
+      setOwnerReviewed(f.status !== 'draft' || savedStep > 2);
 
       setLlcName(f.llc_name ?? '');
       setEin(f.ein ?? '');
@@ -1313,8 +1339,7 @@ export function Intake() {
           // Loading it raw is what printed "rent_royalty" in the list and left
           // the type cards showing nothing selected on an Edit. Resolve back to
           // the intake vocabulary: the exact saved code when the row has one,
-          // otherwise derived from the canonical code plus is_royalty and
-          // direction.
+          // otherwise derived from the canonical code plus direction.
           transaction_type: resolveUiTxType(t),
           direction: t.direction,
           amount_usd: String(t.amount_usd ?? ''),
@@ -1523,7 +1548,13 @@ export function Intake() {
     let errs: string[] = [];
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
-    else if (s === 2) errs = validateStep2();
+    else if (s === 2) {
+      errs = validateStep2();
+      // Valid because we filled it in, not because the filer confirmed it.
+      if (errs.length === 0 && prefilledFromProfile && !ownerReviewed) {
+        errs = ['not reviewed'];
+      }
+    }
     else if (s === 3) {
       errs = showRpForm ? ['open'] : validateStep3();
       // An empty related-party list is valid because the foreign owner is
@@ -1810,8 +1841,12 @@ export function Intake() {
       // line, under no checkbox and with no statement, while still counting
       // toward that party's line 1f. Catch it here, where the filer can still
       // say who the transaction really belonged to.
-      else if (t.related_party_index !== 0
-        && (PART_V_TYPES.has(t.transaction_type) || PART_VI_TYPES.has(t.transaction_type))) {
+      //
+      // OWNER_ONLY_TX_TYPES, not PART_V_TYPES + PART_VI_TYPES: a dissolution is
+      // offered on the Part V list but can genuinely involve a non-owner related
+      // party, and for that party it is reported as a Part IV amount rather than
+      // in a statement. It is the one Part V type this must not reject.
+      else if (t.related_party_index !== 0 && OWNER_ONLY_TX_TYPES.has(t.transaction_type)) {
         const label = allPartyLabels[t.related_party_index];
         errs.push(
           `${where} is a transaction between the LLC and its owner, so it belongs to ${allPartyLabels[0]}, `
@@ -2073,6 +2108,7 @@ export function Intake() {
     else if (s === 4) errs = showRpForm ? ['Finish or cancel the related party form before continuing.'] : validateStep4();
     setStepErrors(errs);
     if (errs.length > 0) { errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (s === 2) setOwnerReviewed(true);
     if (s === 3) setRelatedPartiesReviewed(true);
     const idx = stepOrder.indexOf(s);
     const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
@@ -2171,7 +2207,9 @@ export function Intake() {
 
       // Translate each row from the rich UI vocabulary into the canonical
       // transaction_type the DB CHECK constraint and the PDF generator
-      // understand, carrying is_royalty / loan beginning balance.
+      // understand, carrying the loan beginning balance. The party matters:
+      // a wind-down against the owner is a Part V liquidating distribution,
+      // against anyone else a Part IV "other amount".
       const mapRow = (t: TransactionRow) => {
         const m = mapTransactionForPersist({
           transaction_type: t.transaction_type,
@@ -2180,7 +2218,7 @@ export function Intake() {
           loan_begin_usd: t.loan_begin_usd ? Number(t.loan_begin_usd) : null,
           description: t.description,
           transaction_date: t.transaction_date,
-        });
+        }, t.related_party_index === 0);
         return {
           filing_id: activeFilingId,
           related_party_index: t.related_party_index,
@@ -2189,7 +2227,6 @@ export function Intake() {
           direction: m.direction,
           amount_usd: m.amount_usd,
           loan_begin_usd: m.loan_begin_usd,
-          is_royalty: m.is_royalty,
           description: m.description,
           transaction_date: m.transaction_date,
         };
@@ -2614,9 +2651,10 @@ export function Intake() {
     // belongs here: left in place, a scenario written to exercise the tier-3
     // gate passed on an acknowledgment ticked by the PREVIOUS scenario.
     setCat3Acknowledged(false);
-    // A scenario is a fully-populated filing, so its related-party section
-    // counts as reviewed, empty or not.
+    // A scenario is a fully-populated filing, so its related-party and owner
+    // sections count as reviewed, empty or not.
     setRelatedPartiesReviewed(true);
+    setOwnerReviewed(true);
     setStepErrors([]);
     setRpErrors([]);
     setTxErrors([]);
@@ -2695,19 +2733,9 @@ export function Intake() {
         [data-theme="dark"] .intake-form select {
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394A3B8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         }
-        /* Chromium keeps the native date-picker icon nearly black unless its
-           color scheme is set explicitly. Match the grey dropdown chevron so
-           the calendar remains visible on the dark input surface. */
-        .intake-form input[type="date"]::-webkit-calendar-picker-indicator {
-          opacity: 0.72;
-        }
-        [data-theme="dark"] .intake-form input[type="date"] {
-          color-scheme: dark;
-        }
-        [data-theme="dark"] .intake-form input[type="date"]::-webkit-calendar-picker-indicator {
-          filter: invert(67%) sepia(8%) saturate(1088%) hue-rotate(176deg) brightness(88%) contrast(86%);
-          opacity: 1;
-        }
+        /* The native date-picker icon is themed globally in taxfile.css, not
+           here: scoping it to .intake-form left every date field on every other
+           screen with an invisible icon in dark mode. */
         /* Same exclusion as above. This ring is drawn with border-color plus a
            box-shadow, and the checkbox overrides force \`border: none\` and
            \`box-shadow: none\`, so applying it to a checkbox produced no visible
@@ -3524,15 +3552,12 @@ export function Intake() {
               </div>
             </section>
 
-            {jobId && isLateForRcl && (
-              <section style={sectionStyle}>
-                <div className="cat-banner-green">
-                  <strong>Your reasonable cause letter is handled for the whole catch-up.</strong> You
-                  chose whether to include it, and gave your reasons, when you selected your years, one
-                  letter covers every year, so there's nothing to repeat here.
-                </div>
-              </section>
-            )}
+            {/* A multi-year job used to show a green banner here explaining that
+                the reasonable cause letter was already chosen at year selection
+                and covers every year. Nothing is asked on this screen for a job,
+                so the banner answered a question the filer had not been asked,
+                on the step where they are trying to get on with the return. The
+                absence of the section is its own answer. */}
 
             {rclSectionShown && (
             <section style={sectionStyle}>
@@ -3991,8 +4016,11 @@ export function Intake() {
                 const quickList: QuickTx[] = isOwnerParty ? SIMPLE_TX : RELATED_PARTY_TX;
                 const selectQuick = (q: QuickTx) => {
                   setTxType(q.value);
-                  if (q.direction) setTxDir(q.direction);
-                  else if (!DIRECTION_TYPES.has(q.value)) setTxDir('received');
+                  // The quick tile's own direction wins; otherwise the type's.
+                  // This used to fall back to 'received' for every type with no
+                  // dropdown, which put purchases of goods on the sales line and
+                  // dissolution payouts under "other amounts received".
+                  setTxDir(q.direction ?? defaultDirectionFor(q.value));
                   setShowDetailedTx(false);
                   setTxErrors([]);
                   setCat3Acknowledged(false);
@@ -4003,15 +4031,24 @@ export function Intake() {
                 // sentence). Lets the filer type "royalty", "loan", "dissolution"
                 // and jump straight to it instead of hunting the accordion.
                 const q = txSearch.trim().toLowerCase();
+                // The Part V and Part VI statements are generated for the owner
+                // alone, so a type that exists only inside one of them has
+                // nowhere to print on another party's Form 5472. Offering it
+                // against a non-owner party lets the filer record a transaction
+                // that then appears on no form at all.
+                const typeAllowed = (v: string) => isOwnerParty || !OWNER_ONLY_TX_TYPES.has(v);
                 const searchResults = q
                   ? TX_TYPES.filter((t) =>
-                      t.label.toLowerCase().includes(q) ||
-                      t.sentence.toLowerCase().includes(q))
+                      typeAllowed(t.value) && (
+                        t.label.toLowerCase().includes(q) ||
+                        t.sentence.toLowerCase().includes(q)))
                   : [];
                 const selectType = (value: string) => {
                   setTxType(value);
                   setTxErrors([]);
-                  if (!DIRECTION_TYPES.has(value)) setTxDir('received');
+                  // Fixed for types with no dropdown, the opening value for the
+                  // rest. See defaultDirectionFor.
+                  setTxDir(defaultDirectionFor(value));
                   setCat3Acknowledged(false);
                   scrollToTransactionDetails();
                 };
@@ -4085,7 +4122,13 @@ export function Intake() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
                         {TX_CATEGORIES.map((cat) => {
                           const isOpen = openCategory === cat.key;
-                          const typesInCat = TX_TYPES.filter((t) => cat.values.includes(t.value));
+                          const typesInCat = TX_TYPES.filter(
+                            (t) => cat.values.includes(t.value) && typeAllowed(t.value),
+                          );
+                          // A category whose every type is owner-only (Part V,
+                          // Part VI) is empty for a non-owner party: hide it
+                          // rather than render a heading that opens onto nothing.
+                          if (typesInCat.length === 0) return null;
                           const hasSelection = typesInCat.some((t) => t.value === txType);
                           return (
                             <div key={cat.key} style={{ ...groupedCardStyle, borderColor: hasSelection ? 'var(--tf-accent)' : 'var(--tf-border)' }}>
@@ -4118,7 +4161,7 @@ export function Intake() {
                                       onClick={() => {
                                         setTxType(item.value);
                                         setTxErrors([]);
-                                        if (!DIRECTION_TYPES.has(item.value)) setTxDir('received');
+                                        setTxDir(defaultDirectionFor(item.value));
                                         setCat3Acknowledged(false);
                                         scrollToTransactionDetails();
                                       }}
@@ -4206,7 +4249,7 @@ export function Intake() {
                 )}
 
                 <div style={gridStyle}>
-                  {DIRECTION_TYPES.has(txType) && (
+                  {asksDirection(txType, txRelatedPartyIdx === 0) && (
                     <Field label="Who paid?" required>
                       <select value={txDir} onChange={(e) => setTxDir(e.target.value as 'paid' | 'received')}>
                         <option value="received">LLC received the money</option>
@@ -4280,9 +4323,14 @@ export function Intake() {
                     const amount = t.amount_usd && Number(t.amount_usd) > 0
                       ? `USD ${Number(t.amount_usd).toLocaleString()}`
                       : '';
-                    const sentence = DIRECTION_TYPES.has(t.transaction_type)
+                    const sentence = asksDirection(t.transaction_type, t.related_party_index === 0)
                       ? `The LLC ${t.direction === 'received' ? 'received' : 'paid'}${amount ? ` ${amount}` : ' money'} ${t.direction === 'received' ? 'from' : 'to'} ${partyLabel} for this transaction: ${meta?.label ?? humanizeTxType(t.transaction_type)}.`
-                      : `${(meta?.sentence ?? humanizeTxType(t.transaction_type)).replace('{party}', partyLabel)}${amount ? ` The reported amount was ${amount}.` : '.'}`;
+                      // The TX_TYPES sentences carry no terminal period, so the
+                      // full stop is added here in both branches. It used to be
+                      // added only when there was no amount, which is why a card
+                      // with one read "...as a capital contribution The reported
+                      // amount was USD 123,456."
+                      : `${(meta?.sentence ?? humanizeTxType(t.transaction_type)).replace('{party}', partyLabel)}.${amount ? ` The reported amount was ${amount}.` : ''}`;
                     return (
                       <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
                         <div style={{ minWidth: 0 }}>
@@ -4475,7 +4523,10 @@ export function Intake() {
                       <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? 'Not provided'} />
                       <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : 'Not provided'} />
                       {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? `USD ${Number(t.loan_begin_usd).toLocaleString()}` : 'USD 0'} />}
-                      {DIRECTION_TYPES.has(t.transaction_type) && <SummaryRow label="Direction" value={t.direction === 'received' ? 'Money in' : 'Money out'} />}
+                      {/* Echoed back only when it was actually asked, so review
+                          does not present a value the filer never chose. */}
+                      {asksDirection(t.transaction_type, t.related_party_index === 0)
+                        && <SummaryRow label="Direction" value={t.direction === 'received' ? 'Money in' : 'Money out'} />}
                       <SummaryRow label="Date" value={t.transaction_date || null} />
                       <SummaryRow label="Description" value={t.description || null} />
                     </div>

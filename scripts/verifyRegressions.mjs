@@ -18,7 +18,9 @@ import {
 } from '../src/lib/filingMapping.ts';
 import {
   RP_NAICS, resolveBizPreset, TX_TYPES, filingDueDates,
+  defaultDirectionFor, OWNER_ONLY_TX_TYPES, PART_V_TYPES,
 } from '../src/app/pages/intake/constants.ts';
+import { PART_V_TX_TYPES, toCanonicalTxType, bucketForTx } from '../src/lib/filingMapping.ts';
 
 let failures = 0;
 const check = (name, actual, expected) => {
@@ -94,13 +96,16 @@ let lossy = [];
 for (const t of TX_TYPES) {
   const persisted = mapTransactionForPersist({
     transaction_type: t.value,
-    direction: 'paid',
+    // The direction the intake screens would actually store for this type, not
+    // a constant. Hardcoding 'paid' here hid the bug it was meant to catch:
+    // every non-dropdown type used to be written 'received' regardless, which
+    // put purchases of goods on the sales line.
+    direction: defaultDirectionFor(t.value),
     amount_usd: 100,
   });
   const back = resolveUiTxType({
     transaction_type: persisted.transaction_type,
     ui_transaction_type: persisted.ui_transaction_type,
-    is_royalty: persisted.is_royalty,
     direction: persisted.direction,
   });
   if (back !== t.value) lossy.push(`${t.value} -> ${persisted.transaction_type} -> ${back}`);
@@ -119,20 +124,20 @@ check('every round-tripped code has a TX_TYPES entry',
 // code with no card, and it must recover the two cases that have a
 // discriminator already stored.
 console.log('\n- legacy rows, no ui_transaction_type -');
-check('rent is recovered from is_royalty = false',
-  resolveUiTxType({ transaction_type: 'rent_royalty', is_royalty: false }), 'rent');
-check('royalty is recovered from is_royalty = true',
-  resolveUiTxType({ transaction_type: 'rent_royalty', is_royalty: true }), 'royalty');
+check('rent maps straight back, no flag needed',
+  resolveUiTxType({ transaction_type: 'rent' }), 'rent');
+check('royalty maps straight back, no flag needed',
+  resolveUiTxType({ transaction_type: 'royalty' }), 'royalty');
 check('a tangible purchase is recovered from direction',
   resolveUiTxType({ transaction_type: 'tangible_property', direction: 'paid' }), 'tangible_purchase');
 check('a tangible sale is recovered from direction',
   resolveUiTxType({ transaction_type: 'tangible_property', direction: 'received' }), 'tangible_sale');
 
 const legacyResolved = [
-  'sales', 'service_payment', 'rent_royalty', 'loan_to_llc', 'loan_from_llc',
+  'sales', 'service_payment', 'rent', 'royalty', 'loan_to_llc', 'loan_from_llc',
   'interest', 'insurance', 'dividend', 'commission', 'intangible', 'other',
-  'capital_contribution', 'distribution', 'formation_costs', 'property_transfer',
-  'tangible_property', 'loan_guarantee', 'nonmonetary_other',
+  'capital_contribution', 'distribution', 'formation_costs', 'structural_event',
+  'property_transfer', 'tangible_property', 'loan_guarantee', 'nonmonetary_other',
 ].map((c) => resolveUiTxType({ transaction_type: c, direction: 'paid' }));
 check('every canonical code resolves to a code the UI can display',
   legacyResolved.filter((v) => !uiValues.has(v)), []);
@@ -140,6 +145,84 @@ check('every canonical code resolves to a code the UI can display',
 // An unknown code must not crash or leak through as a raw identifier.
 check('an unrecognized canonical code falls back to other',
   resolveUiTxType({ transaction_type: 'something_new_from_the_future' }), 'other');
+
+// ── Risk 5: direction decides WHICH SIDE of Part IV an amount lands on ───────
+// Every type without a paid/received dropdown used to be stored 'received'
+// unconditionally. A purchase of goods and a sale of goods therefore produced
+// byte-identical Part IV output, both on line 10, and a dissolution payout was
+// reported as money coming in on line 21.
+console.log('\n- transaction direction -');
+
+check('buying goods is paid (line 24)', defaultDirectionFor('tangible_purchase'), 'paid');
+check('selling goods is received (line 10)', defaultDirectionFor('tangible_sale'), 'received');
+check('a sale of stock in trade is received (line 9)', defaultDirectionFor('sales'), 'received');
+check('acquiring another entity is paid', defaultDirectionFor('acquisition_tx'), 'paid');
+check('disposing of the LLC is received', defaultDirectionFor('disposition_tx'), 'received');
+check('a dissolution payout defaults to paid', defaultDirectionFor('dissolution_tx'), 'paid');
+
+// The pair that had identical output is the sharpest statement of the bug.
+check('a purchase and a sale of goods no longer store the same direction',
+  defaultDirectionFor('tangible_purchase') === defaultDirectionFor('tangible_sale'), false);
+
+// ── Risk 6: Money in / Money out, with Other reserved for Part VI ────────────
+// The buckets used to be two hand-written sets of Part V and loan codes with an
+// `else` that swept every ordinary Part IV trade into "Other", while `direction`
+// (the signal that answers the question) went unread.
+console.log('\n- summary buckets -');
+
+check('a purchase of goods is money out', bucketForTx('tangible_purchase', 'paid'), 'out');
+check('a sale of goods is money in', bucketForTx('tangible_sale', 'received'), 'in');
+check('a service payment follows its direction', bucketForTx('service_payment', 'paid'), 'out');
+check('a capital contribution is money in', bucketForTx('capital_contribution', 'received'), 'in');
+check('an acquisition is money out', bucketForTx('acquisition_tx', 'paid'), 'out');
+check('a loan from the LLC is money out', bucketForTx('loan_from_llc', 'received'), 'out');
+
+// Only Part VI may reach the third tile, whatever direction it carries.
+const nonPartVIOther = TX_TYPES
+  .filter((t) => t.part !== 'VI')
+  .filter((t) => bucketForTx(t.value, defaultDirectionFor(t.value)) === 'other')
+  .map((t) => t.value);
+check('nothing outside Part VI lands in "Other dealings"', nonPartVIOther, []);
+
+const partVINotOther = TX_TYPES
+  .filter((t) => t.part === 'VI')
+  .filter((t) => bucketForTx(t.value, defaultDirectionFor(t.value)) !== 'other')
+  .map((t) => t.value);
+check('every Part VI type lands in "Other dealings"', partVINotOther, []);
+
+// ── Risk 7: an intake Part V promise must produce a Part V statement ─────────
+// PART_V_TYPES (what the wizard offers under "contributions, distributions and
+// entity events") and PART_V_TX_TYPES (what the generator builds a statement
+// from) drifted once: dissolution_tx sat in the first and mapped to canonical
+// 'other', so a filing whose only structural row was a dissolution promised a
+// statement and shipped none.
+console.log('\n- Part V promise -');
+
+const brokenPartV = [...PART_V_TYPES].filter(
+  (v) => !PART_V_TX_TYPES.has(toCanonicalTxType(v, true)),
+);
+check('every Part V intake type reaches a Part V canonical code', brokenPartV, []);
+
+// A structural event must not be filed as a contribution by the owner: that
+// prints "Capital Contribution by Owner" over the purchase of a third company
+// and inflates contributions_received, and so line 1f.
+check('an acquisition is a structural event, not a contribution',
+  toCanonicalTxType('acquisition_tx', true), 'structural_event');
+check('a disposal is a structural event, not a distribution',
+  toCanonicalTxType('disposition_tx', true), 'structural_event');
+check('structural events are excluded from gross payments',
+  summarizeTransactions([{ transaction_type: 'acquisition_tx', direction: 'paid', amount_usd: 5000 }]).formGross,
+  0);
+
+// A dissolution is party-dependent: a Part V liquidating distribution against
+// the owner, a Part IV "other amount" against anyone else. It is the one Part V
+// card that may legitimately be recorded against a non-owner party.
+check('a dissolution with the owner is a Part V distribution',
+  toCanonicalTxType('dissolution_tx', true), 'distribution');
+check('a dissolution with another related party is a Part IV other amount',
+  toCanonicalTxType('dissolution_tx', false), 'other');
+check('a dissolution is not owner-only', OWNER_ONLY_TX_TYPES.has('dissolution_tx'), false);
+check('a capital contribution is owner-only', OWNER_ONLY_TX_TYPES.has('capital_contribution'), true);
 
 // ── Risk 4: due dates must follow the PERIOD, not the tax-year label ────────
 // filingDueDates replaced a hardcoded table that was keyed on the tax year, so

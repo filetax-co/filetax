@@ -111,19 +111,48 @@ create index if not exists filings_job_id_idx on public.filings(job_id);
 -- ============================================================================
 alter table public.reportable_transactions
   add column if not exists related_party_index int     not null default 0,
-  add column if not exists loan_begin_usd      numeric,
-  add column if not exists is_royalty          boolean;
+  add column if not exists loan_begin_usd      numeric;
+
+-- Split 'rent_royalty' into 'rent' (13a/27a) and 'royalty' (13b/27b) and retire
+-- the is_royalty flag.
+--
+-- The OLD constraint is dropped first. The backfill writes the new codes, which
+-- the old constraint does not list, so leaving it attached fails on the first
+-- converted row. The new constraint goes on afterwards, against a fully
+-- converted table.
+alter table public.reportable_transactions
+  drop constraint if exists reportable_transactions_transaction_type_check;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='reportable_transactions'
+      and column_name='is_royalty'
+  ) then
+    update public.reportable_transactions
+       set transaction_type = case when is_royalty then 'royalty' else 'rent' end
+     where transaction_type = 'rent_royalty';
+    alter table public.reportable_transactions drop column is_royalty;
+  end if;
+end $$;
+
+-- Acquisitions / disposals / other structural events, identified by the intake
+-- code preserved on the row. Rows written before ui_transaction_type existed
+-- cannot be told from a real contribution and are left alone.
+update public.reportable_transactions
+   set transaction_type = 'structural_event'
+ where ui_transaction_type in ('acquisition_tx', 'disposition_tx', 'other_part_v');
 
 do $$
 begin
   alter table public.reportable_transactions
-    drop constraint if exists reportable_transactions_transaction_type_check;
-  alter table public.reportable_transactions
     add constraint reportable_transactions_transaction_type_check
     check (transaction_type in (
-      'sales','service_payment','rent_royalty','loan_to_llc','loan_from_llc',
+      'sales','service_payment','rent','royalty','loan_to_llc','loan_from_llc',
       'interest','insurance','dividend','commission','intangible','other',
-      'capital_contribution','distribution','formation_costs','property_transfer',
+      'capital_contribution','distribution','formation_costs','structural_event',
+      'property_transfer',
       'tangible_property','loan_guarantee','nonmonetary_other'
     ));
 exception when others then

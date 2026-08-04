@@ -423,8 +423,8 @@ add('Loan plus the interest paid on it',
   });
 
 // ── 75-77 · rent vs royalty, and Part VI variants ───────────────────────────
-add('Rent and royalty separated (is_royalty flag)',
-  'Both map to rent_royalty; is_royalty must split them on line 12',
+add('Rent and royalty separated (distinct canonical codes)',
+  'Rent must land on line 13a/27a and royalty on 13b/27b, from their own codes',
   {
     filing: filing({ name: 'Rentroyalty Split LLC', ein: '53-7500001', year: '2024', doi: '2020-04-04' }),
     owner: owner({ name: 'Isabella Conti', country: 'Italy', ref: 'ISA001', ftin: 'IT-1212', address: foreignAddr('Via Condotti 8', 'Rome', '00187', 'Italy', 'RM') }),

@@ -152,7 +152,7 @@ the reviewer.
 **Severity: A, low likelihood, cheap to test.**
 
 `aggregateTransactions` (`:457-508`) tests direction two different ways:
-- `sales`, `tangible_property`, `intangible`, `service_payment`, `commission`, `rent_royalty`:
+- `sales`, `tangible_property`, `intangible`, `service_payment`, `commission`, `rent`, `royalty`:
   `dir === 'received' ? received : paid` → an absent/garbage direction lands in **paid**.
 - `interest`, `insurance`, `loan_guarantee`, `other`: `dir === 'paid' ? paid : received` → an
   absent/garbage direction lands in **received**.

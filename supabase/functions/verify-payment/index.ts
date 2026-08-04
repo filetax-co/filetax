@@ -85,7 +85,7 @@ serve(async (req) => {
 
     const { data: anchor, error: anchorErr } = await supabase
       .from('filings')
-      .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents')
+      .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents, payment_currency')
       .eq('id', filing_id)
       .eq('user_id', user.id)
       .single();
@@ -98,7 +98,7 @@ serve(async (req) => {
         await Promise.all([
           supabase
             .from('filings')
-            .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents')
+            .select('id, job_id, status, user_id, include_rcl, include_irs_fax, related_parties, payment_id, paid_related_party_count, payment_amount_cents, payment_currency')
             .eq('job_id', anchor.job_id)
             .eq('user_id', user.id),
           supabase
@@ -166,20 +166,56 @@ serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const amount =
-      payment.settlement_currency === 'USD' && Number.isInteger(payment.settlement_amount)
-        ? payment.settlement_amount
+
+    // The amount is recorded whatever the settlement currency, and the currency
+    // is recorded beside it. This used to be gated on `settlement_currency ===
+    // 'USD'`, so a settlement in anything else marked the filing paid and left
+    // payment_amount_cents holding the PREVIOUS total: a paid row whose
+    // recorded amount was quietly lower than what the customer was charged.
+    // Only a non-integer amount is unrecordable now, and that is a malformed
+    // response rather than a currency we did not expect.
+    const amount = Number.isInteger(payment.settlement_amount)
+      ? payment.settlement_amount
+      : null;
+    const currency: string | null =
+      typeof payment.settlement_currency === 'string' && payment.settlement_currency
+        ? payment.settlement_currency.toUpperCase()
         : null;
+
     for (const filing of filings) {
+      // Amounts in two different currencies cannot be added. A filing can be
+      // topped up (the additional-party add-on is a second checkout), so the
+      // running total is only meaningful while the currency holds. When it
+      // changes, the total is set to null rather than to a sum that is not a
+      // quantity of anything: null reads as "ask the payment provider", a wrong
+      // integer reads as an answer. This is logged because it should not happen
+      // and, if it does, reconciliation needs to know which filing to look at.
+      const priorCurrency = filing.payment_currency ?? null;
+      const currencyChanged =
+        priorCurrency !== null && currency !== null && priorCurrency !== currency;
+
+      if (currencyChanged) {
+        console.error(
+          `[verify-payment] settlement currency changed for filing ${filing.id}: `
+          + `${priorCurrency} -> ${currency}. Running total cleared; reconcile against `
+          + `payment ${payment.payment_id}.`,
+        );
+      }
+
+      const nextAmount = currencyChanged
+        ? null
+        : amount === null
+          ? filing.payment_amount_cents
+          : Number(filing.payment_amount_cents ?? 0) + amount;
+
       const { error: updateErr } = await supabase
         .from('filings')
         .update({
           status: 'paid',
           paid_at: filing.status === 'paid' || filing.status === 'completed' ? undefined : now,
           payment_id: payment.payment_id,
-          payment_amount_cents: amount === null
-            ? filing.payment_amount_cents
-            : Number(filing.payment_amount_cents ?? 0) + amount,
+          payment_amount_cents: nextAmount,
+          payment_currency: currencyChanged ? null : (currency ?? priorCurrency),
           paid_related_party_count: relatedPartyCount(filing.related_parties),
         })
         .eq('id', filing.id);

@@ -5102,8 +5102,8 @@
     },
     {
       "scenario_id": 74,
-      "title": "Rent and royalty separated (is_royalty flag)",
-      "tests": "Both map to rent_royalty; is_royalty must split them on line 12",
+      "title": "Rent and royalty separated (distinct canonical codes)",
+      "tests": "Rent must land on line 13a/27a and royalty on 13b/27b, from their own codes",
       "filing": {
         "llc_name": "Rentroyalty Split LLC",
         "ein": "53-7500001",

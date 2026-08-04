@@ -29,14 +29,17 @@ import type { Filing, Address, Transaction } from './supabase';
 // The canonical set is exactly what `reportable_transactions.transaction_type`
 // CHECK allows AND what `aggregateTransactions` in pdfGenerator.ts switches on:
 //
-//   sales, service_payment, rent_royalty, loan_to_llc, loan_from_llc,
+//   sales, service_payment, rent, royalty, loan_to_llc, loan_from_llc,
 //   interest, insurance, dividend, commission, intangible, other,
-//   capital_contribution, distribution, formation_costs, property_transfer,
-//   tangible_property, loan_guarantee, nonmonetary_other
+//   capital_contribution, distribution, formation_costs, structural_event,
+//   property_transfer, tangible_property, loan_guarantee, nonmonetary_other
 //
-// Some UI codes carry extra meaning that the canonical code alone can't hold
-// (e.g. `royalty` vs `rent` both map to `rent_royalty`, distinguished by the
-// `is_royalty` flag). `mapTransactionForPersist` handles that.
+// The mapping is still many-to-one in places (tech_services and service_payment
+// share a code; five UI codes share `other`), but it no longer needs a
+// side-channel column to reach the right line. `rent` and `royalty` used to be
+// one code plus an `is_royalty` boolean, which meant a nullable column decided
+// whether an amount printed on line 13a or 13b, and null and false had to mean
+// the same thing. They are separate codes now and the flag is gone.
 
 export type CanonicalTxType = Transaction['transaction_type'];
 
@@ -52,8 +55,8 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   commission:      'commission',
 
   // ── Part IV, rent, royalty, interest ───────────────────────────────────
-  rent:     'rent_royalty', // is_royalty = false
-  royalty:  'rent_royalty', // is_royalty = true
+  rent:     'rent',     // lines 13a / 27a
+  royalty:  'royalty',  // lines 13b / 27b
   interest: 'interest',
 
   // ── Part IV, loans ─────────────────────────────────────────────────────
@@ -80,17 +83,23 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
   distribution:         'distribution',
   dividend:             'dividend',
   formation_costs:      'formation_costs',
-  // Structural events map to the nearest monetary concept; the statement
-  // narrates the specifics from the description.
+  // Money the owner puts in at formation IS a capital contribution, so this one
+  // genuinely belongs on that code.
   formation_tx:         'capital_contribution',
-  // A dissolution / wind-down payout is reported as an "other amount paid"
-  // (Form 5472 Part IV, line 35). Part IV renders per related party, so a
-  // dissolution distribution to a related party's trust actually prints on
-  // that party's 5472, unlike Part V, which is generated for the owner only.
+  // An acquisition, a disposal or another entity-level event is disclosed in
+  // the Part V statement under its own name. These used to map onto
+  // `capital_contribution` and `distribution`, which printed "Capital
+  // Contribution by Owner" on a filed statement describing the purchase of a
+  // third company, and rolled the amount into the contributions subtotal and
+  // therefore into line 1f. `structural_event` carries no amount onto any line
+  // and into no subtotal; the statement narrates it from the description.
+  acquisition_tx:       'structural_event',
+  disposition_tx:       'structural_event',
+  other_part_v:         'structural_event',
+  // dissolution_tx is party-dependent and is resolved in toCanonicalTxType,
+  // not here. Against the owner it is a liquidating distribution (Part V);
+  // against any other related party it is a Part IV "other amount".
   dissolution_tx:       'other',
-  acquisition_tx:       'capital_contribution',
-  disposition_tx:       'distribution',
-  other_part_v:         'capital_contribution',
 
   // ── Part VI, nonmonetary / less-than-FMV ───────────────────────────────
   nonmonetary_transfer:  'property_transfer',
@@ -103,8 +112,16 @@ const UI_TO_CANONICAL: Record<string, CanonicalTxType> = {
  * Translate a single Intake UI transaction-type code into the canonical code
  * understood by the DB and the PDF generator. Falls back to 'other' for any
  * unrecognized code so a row is never silently rejected by the DB CHECK.
+ *
+ * `isOwner` matters for exactly one code today. A wind-down against the owner
+ * is a liquidating distribution and belongs in the Part V statement, which is
+ * generated for the owner alone. The same event against another related party
+ * has no statement to sit in, so it is reported as a Part IV "other amount" on
+ * that party's own Form 5472. Passing the wrong flag does not lose the row, it
+ * files it in the wrong place, so callers that know the party must say.
  */
-export function toCanonicalTxType(uiType: string): CanonicalTxType {
+export function toCanonicalTxType(uiType: string, isOwner = true): CanonicalTxType {
+  if (uiType === 'dissolution_tx') return isOwner ? 'distribution' : 'other';
   return UI_TO_CANONICAL[uiType] ?? 'other';
 }
 
@@ -122,9 +139,51 @@ export function toCanonicalTxType(uiType: string): CanonicalTxType {
 //                   alongside formGross so nothing looks "missing".
 //   • buckets     = friendly Money in / Money out / Other split.
 
-/** UI-vocabulary classification (works on the codes the wizard stores pre-translation). */
-const MONEY_IN_UI = new Set(['capital_contribution', 'loan_to_llc', 'formation_costs', 'formation_tx', 'acquisition_tx']);
-const MONEY_OUT_UI = new Set(['distribution', 'dividend', 'loan_from_llc', 'dissolution_tx', 'disposition_tx']);
+// ── Money in / Money out ──────────────────────────────────────────────────
+//
+// Every monetary transaction is money entering the LLC or money leaving it.
+// Only Part VI is neither: those are non-cash and below-FMV disclosures, which
+// frequently carry no amount at all, and that is what "Other dealings" means.
+//
+// This used to be two hand-written sets covering Part V and loans, with an
+// `else` that swept EVERY Part IV type into Other. That made the third tile a
+// dumping ground for the ordinary trading transactions most filings consist of,
+// while the signal that answers the question, `direction`, was sitting unread
+// on every row. Part IV rows are now classified by their direction; the fixed
+// types keep an explicit answer because their direction is a property of the
+// transaction rather than something the filer chooses.
+
+/** Part VI UI codes: non-cash / below-FMV, the only genuine "other". */
+const PART_VI_UI = new Set([
+  'nonmonetary_transfer', 'less_than_fmv', 'property_transfer_fmv', 'other_part_vi',
+]);
+
+/** UI codes whose in/out sense is fixed by what the transaction IS. */
+const MONEY_IN_UI = new Set([
+  'capital_contribution', 'formation_costs', 'formation_tx',
+  'loan_to_llc', 'disposition_tx',
+]);
+const MONEY_OUT_UI = new Set([
+  'distribution', 'dividend', 'loan_from_llc',
+  'dissolution_tx', 'acquisition_tx',
+]);
+
+export type TxBucket = 'in' | 'out' | 'other';
+
+/**
+ * Which summary tile a transaction belongs to.
+ *
+ * Takes the UI code and the stored direction. `other_part_v` is deliberately
+ * absent from both fixed sets: a structural event with no stated direction has
+ * no in/out sense, so it follows its direction like a Part IV row.
+ */
+export function bucketForTx(uiType: string, direction: 'paid' | 'received'): TxBucket {
+  if (PART_VI_UI.has(uiType)) return 'other';
+  if (MONEY_IN_UI.has(uiType)) return 'in';
+  if (MONEY_OUT_UI.has(uiType)) return 'out';
+  return direction === 'received' ? 'in' : 'out';
+}
+
 // Canonical types that contribute to Form 5472 gross payments (line 1f / 1h).
 // Mirrors grossPaymentsForLines1f1h in pdfGenerator.ts, which sums:
 //   totalReceived + totalPaid            → the Part IV flows and the ending loan
@@ -140,8 +199,11 @@ const MONEY_OUT_UI = new Set(['distribution', 'dividend', 'loan_from_llc', 'diss
 // already reads. Every term above must be represented here or the "On Form 5472
 // (gross payments)" figure shown in the wizard undercounts what the generated
 // form actually reports.
+// `structural_event` is absent by design: it reaches no Part IV line and is
+// excluded from the Part V monetary subtotals, so counting it here would make
+// the wizard promise a line 1f the generated form does not print.
 const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
-  'sales', 'tangible_property', 'rent_royalty', 'intangible', 'service_payment',
+  'sales', 'tangible_property', 'rent', 'royalty', 'intangible', 'service_payment',
   'commission', 'interest', 'insurance', 'loan_guarantee', 'other',
   'loan_to_llc', 'loan_from_llc',
   'distribution', 'dividend', 'capital_contribution',
@@ -166,11 +228,26 @@ const GROSS_PAYMENT_CANONICAL = new Set<CanonicalTxType>([
  * so what the card promises and what the package contains cannot drift.
  *
  * Note these are CANONICAL codes. Intake's wider vocabulary reaches them through
- * toCanonicalTxType (formation_tx, acquisition_tx and other_part_v all land on
- * capital_contribution), and only canonical codes are ever persisted.
+ * toCanonicalTxType (formation_tx lands on capital_contribution; acquisition_tx,
+ * disposition_tx and other_part_v land on structural_event; dissolution_tx lands
+ * on distribution when it is against the owner), and only canonical codes are
+ * ever persisted.
+ *
+ * `structural_event` is here and NOT in GROSS_PAYMENT_CANONICAL on purpose: it
+ * produces a statement entry but contributes to no subtotal and no line.
+ *
+ * This set and PART_V_TYPES in intake/constants.ts must agree on what promises a
+ * Part V. They drifted once, when dissolution_tx sat in the intake set while
+ * mapping to canonical `other`, so a filing whose only structural row was a
+ * dissolution promised a statement and shipped none. The invariant to preserve:
+ * every member of intake's PART_V_TYPES must reach a canonical code in this set
+ * through toCanonicalTxType, for at least the party it can be recorded against.
+ * dissolution_tx satisfies it via the owner branch, which is the only party its
+ * Part V card is offered for.
  */
 export const PART_V_TX_TYPES = new Set<CanonicalTxType>([
   'distribution', 'dividend', 'capital_contribution', 'formation_costs',
+  'structural_event',
 ]);
 
 export interface TxMoneySummary {
@@ -189,7 +266,11 @@ export interface TxMoneySummary {
  * (amount) for the "entered"/bucket figures, matching what the user sees.
  */
 export function summarizeTransactions(
-  rows: { transaction_type: string; amount_usd: number | string | null | undefined }[],
+  rows: {
+    transaction_type: string;
+    direction?: 'paid' | 'received' | null;
+    amount_usd: number | string | null | undefined;
+  }[],
 ): TxMoneySummary {
   const amt = (v: number | string | null | undefined): number => {
     const n = typeof v === 'string' ? Number(v) : (v ?? 0);
@@ -208,9 +289,10 @@ export function summarizeTransactions(
     const a = amt(r.amount_usd);
     s.totalEntered += a;
 
-    if (MONEY_IN_UI.has(r.transaction_type)) {
+    const bucket = bucketForTx(r.transaction_type, r.direction ?? 'received');
+    if (bucket === 'in') {
       s.bucketIn.count++; s.bucketIn.total += a;
-    } else if (MONEY_OUT_UI.has(r.transaction_type)) {
+    } else if (bucket === 'out') {
       s.bucketOut.count++; s.bucketOut.total += a;
     } else {
       s.bucketOther.count++; s.bucketOther.total += a;
@@ -225,13 +307,18 @@ export function summarizeTransactions(
   return s;
 }
 
-/** UI codes that mean a royalty (sets is_royalty = true on the canonical row). */
-const ROYALTY_UI_TYPES = new Set(['royalty']);
-
 /**
  * Build the canonical row to persist into `reportable_transactions` from an
- * Intake transaction draft. Centralises the type translation + the is_royalty
- * derivation so Intake.tsx never has to know the canonical vocabulary.
+ * Intake transaction draft, so Intake.tsx never has to know the canonical
+ * vocabulary.
+ *
+ * `isOwner` says whether this row is recorded against the owner (related-party
+ * index 0). It only changes `dissolution_tx` today, but it changes where that
+ * row is reported, so callers pass the real answer rather than letting the
+ * default stand.
+ *
+ * There is no is_royalty derivation any more: `rent` and `royalty` are separate
+ * canonical codes.
  */
 export function mapTransactionForPersist(row: {
   transaction_type: string;
@@ -240,22 +327,17 @@ export function mapTransactionForPersist(row: {
   loan_begin_usd?: number | null;
   description?: string | null;
   transaction_date?: string | null;
-}): {
+}, isOwner = true): {
   transaction_type: CanonicalTxType;
   ui_transaction_type: string;
   direction: 'paid' | 'received';
   amount_usd: number | null;
   loan_begin_usd: number | null;
-  is_royalty: boolean | null;
   description: string | null;
   transaction_date: string | null;
 } {
-  const canonical = toCanonicalTxType(row.transaction_type);
-  const isRoyalty =
-    canonical === 'rent_royalty' ? ROYALTY_UI_TYPES.has(row.transaction_type) : null;
-
   return {
-    transaction_type: canonical,
+    transaction_type: toCanonicalTxType(row.transaction_type, isOwner),
     // The exact code the filer picked, kept alongside the canonical one so a
     // reopened filing shows what they chose rather than a best guess. The
     // canonical value above is still the only thing the generator reads.
@@ -263,7 +345,6 @@ export function mapTransactionForPersist(row: {
     direction: row.direction,
     amount_usd: row.amount_usd ?? null,
     loan_begin_usd: row.loan_begin_usd ?? null,
-    is_royalty: isRoyalty,
     description: row.description?.trim() || null,
     transaction_date: row.transaction_date || null,
   };
@@ -285,14 +366,18 @@ export function mapTransactionForPersist(row: {
 //     re-pick a type that had in fact been chosen
 //   - rent vs royalty was lost even though `is_royalty` was sitting in the row
 //
-// This resolves what CAN be resolved, from the canonical code plus the two
-// discriminators already persisted (`is_royalty`, `direction`). It is a
-// best-effort read path for rows written before `ui_transaction_type` existed;
-// new rows carry the exact code and should prefer that. See
+// This resolves what CAN be resolved, from the canonical code plus `direction`.
+// It is a best-effort read path for rows written before `ui_transaction_type`
+// existed; new rows carry the exact code and should prefer that. See
 // `resolveUiTxType` for the precedence.
+//
+// `is_royalty` is gone: rent and royalty are separate canonical codes and map
+// straight back.
 
 const CANONICAL_TO_UI: Record<string, string> = {
   sales:                'sales',
+  rent:                 'rent',
+  royalty:              'royalty',
   service_payment:      'service_payment',
   commission:           'commission',
   interest:             'interest',
@@ -305,6 +390,10 @@ const CANONICAL_TO_UI: Record<string, string> = {
   distribution:         'distribution',
   dividend:             'dividend',
   formation_costs:      'formation_costs',
+  // structural_event is genuinely many-to-one (acquisition / disposal / other).
+  // Rows carry ui_transaction_type, so this only decides what a pre-column row
+  // shows; "other structural transaction" is the honest one of the three.
+  structural_event:     'other_part_v',
   property_transfer:    'nonmonetary_transfer',
   nonmonetary_other:    'other_part_vi',
   other:                'other',
@@ -313,16 +402,17 @@ const CANONICAL_TO_UI: Record<string, string> = {
 /**
  * Best-effort canonical code to UI code.
  *
- * `is_royalty` splits rent_royalty, and `direction` splits tangible_property
- * into the purchase and sale cards. Everything else is a straight lookup, and
- * anything unrecognized falls back to 'other' so the UI always has a valid
- * selection rather than an empty one.
+ * `direction` splits tangible_property into the purchase and sale cards, which
+ * is now reliable: purchases are stored 'paid' and sales 'received', instead of
+ * every non-direction type being written 'received' unconditionally, which used
+ * to make every tangible row read back as a sale. Everything else is a straight
+ * lookup, and anything unrecognized falls back to 'other' so the UI always has a
+ * valid selection rather than an empty one.
  */
 export function canonicalToUiTxType(
   canonical: string,
-  hints: { is_royalty?: boolean | null; direction?: 'paid' | 'received' | null } = {},
+  hints: { direction?: 'paid' | 'received' | null } = {},
 ): string {
-  if (canonical === 'rent_royalty') return hints.is_royalty ? 'royalty' : 'rent';
   if (canonical === 'tangible_property') {
     return hints.direction === 'paid' ? 'tangible_purchase' : 'tangible_sale';
   }
@@ -339,14 +429,10 @@ export function canonicalToUiTxType(
 export function resolveUiTxType(row: {
   transaction_type: string;
   ui_transaction_type?: string | null;
-  is_royalty?: boolean | null;
   direction?: 'paid' | 'received' | null;
 }): string {
   if (row.ui_transaction_type) return row.ui_transaction_type;
-  return canonicalToUiTxType(row.transaction_type, {
-    is_royalty: row.is_royalty,
-    direction: row.direction,
-  });
+  return canonicalToUiTxType(row.transaction_type, { direction: row.direction });
 }
 
 // ───────────────────────────────────────────────────────────────────────────

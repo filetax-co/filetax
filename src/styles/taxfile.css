@@ -339,3 +339,25 @@ h1, h2, h3 {
     transition: opacity 0.15s;
   }
 }
+
+/* ── Native date inputs in dark mode ─────────────────────────────────────────
+   Chromium renders the calendar-picker icon nearly black and gives the popup a
+   light chrome unless the element's color-scheme is set explicitly. On a dark
+   surface that leaves an icon the filer cannot see.
+
+   These rules are GLOBAL on purpose. They lived scoped to `.intake-form`, so
+   every date field outside the intake accordion kept the invisible icon: the
+   incorporation date on the multi-year start page is one, and it is the first
+   date field a catch-up filer ever meets. A native control that needs theming
+   needs it everywhere it appears, not on one screen. */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.72;
+  cursor: pointer;
+}
+[data-theme="dark"] input[type="date"] {
+  color-scheme: dark;
+}
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(67%) sepia(8%) saturate(1088%) hue-rotate(176deg) brightness(88%) contrast(86%);
+  opacity: 1;
+}

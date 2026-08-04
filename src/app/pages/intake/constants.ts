@@ -129,6 +129,18 @@ export const REASONABLE_CAUSE_REASONS: { value: string; label: string; hint: str
 //   category, 1 = DIY-safe, 2 = may need CPA, 3 = refer to CPA
 //   part, 'IV' | 'V' | 'VI'
 //   showDirection, whether to show the paid/received dropdown (Part IV monetary flows only)
+//   fixedDirection, the direction this type ALWAYS has, or the default the
+//                    dropdown opens on when `showDirection` is also set.
+//
+//                    Direction is not cosmetic: for every Part IV type it picks
+//                    which side of the form the amount lands on (a purchase of
+//                    goods is line 24, a sale is line 10). Types with no
+//                    dropdown used to be written as 'received' unconditionally,
+//                    which put every `tangible_purchase` on the sales line and
+//                    every dissolution payout on "other amounts received". A
+//                    type whose direction is knowable states it here; a type
+//                    whose direction is genuinely the filer's to say sets
+//                    `showDirection` and, optionally, the sensible default.
 //   amountLabel, custom label for the amount field
 //   amountHint, optional hint shown under amount
 //   amountOptional, true if amount can be omitted
@@ -157,6 +169,7 @@ export const TX_TYPES: {
   ownerCategory?: 1 | 2 | 3;
   part: 'IV' | 'V' | 'VI';
   showDirection: boolean;
+  fixedDirection?: 'paid' | 'received';
   amountLabel?: string;
   amountHint?: string;
   amountOptional?: boolean;
@@ -171,6 +184,8 @@ export const TX_TYPES: {
     category: 1,
     part: 'IV',
     showDirection: false,
+    // The LLC pays to buy: Form 5472 line 24, purchases of tangible property.
+    fixedDirection: 'paid',
   },
   {
     value: 'tangible_sale',
@@ -179,6 +194,8 @@ export const TX_TYPES: {
     category: 2,
     part: 'IV',
     showDirection: false,
+    // The LLC is paid for the sale: line 10, sales of tangible property.
+    fixedDirection: 'received',
   },
   {
     value: 'sales',
@@ -187,6 +204,8 @@ export const TX_TYPES: {
     category: 2,
     part: 'IV',
     showDirection: false,
+    // Line 9, sales of stock in trade.
+    fixedDirection: 'received',
   },
 
   // ── Part IV, Services ─────────────────────────────────────────────────
@@ -288,7 +307,9 @@ export const TX_TYPES: {
     sentence: 'A platform contribution transaction (PCT) occurred between the LLC and {party}',
     category: 3,
     part: 'IV',
-    showDirection: false,
+    // Disclosed under "other amount", where 21 vs 35 turns entirely on who paid,
+    // so the filer has to be asked rather than defaulted.
+    showDirection: true,
   },
   {
     value: 'cost_sharing',
@@ -296,7 +317,8 @@ export const TX_TYPES: {
     sentence: 'The LLC and {party} shared costs for developing intangible assets together',
     category: 3,
     part: 'IV',
-    showDirection: false,
+    // Same as the PCT above: lands on line 21 or 35 depending on who paid.
+    showDirection: true,
   },
   {
     value: 'insurance',
@@ -389,7 +411,14 @@ export const TX_TYPES: {
     sentence: 'The LLC was dissolved or wound down, involving {party}',
     category: 2,
     part: 'V',
-    showDirection: false,
+    // A wind-down against the OWNER is a liquidating distribution and belongs in
+    // the Part V statement, where direction is not asked. Against any other
+    // related party it is a Part IV "other amount", and what is being reported
+    // is a payout, so the default is 'paid'. It is still asked, because the LLC
+    // can also be on the receiving end of a wind-down settlement and the answer
+    // decides line 21 against line 35.
+    showDirection: true,
+    fixedDirection: 'paid',
     amountOptional: true,
   },
   {
@@ -399,6 +428,8 @@ export const TX_TYPES: {
     category: 3,
     part: 'V',
     showDirection: false,
+    // The LLC pays to acquire.
+    fixedDirection: 'paid',
     amountOptional: true,
   },
   {
@@ -408,6 +439,8 @@ export const TX_TYPES: {
     category: 3,
     part: 'V',
     showDirection: false,
+    // Proceeds come in on a disposal.
+    fixedDirection: 'received',
     amountOptional: true,
   },
   {
@@ -560,6 +593,47 @@ export const PART_VI_TYPES = new Set([
 // Transaction types that show the direction dropdown (Part IV monetary flows only)
 export const DIRECTION_TYPES = new Set(
   TX_TYPES.filter((t) => t.showDirection).map((t) => t.value),
+);
+
+/**
+ * The direction to store for a type the filer is not asked about, and the value
+ * the dropdown opens on for a type they are.
+ *
+ * Every selector calls this instead of falling back to 'received'. Returning
+ * 'received' for an unknown code preserves the old behaviour for anything not
+ * yet classified, but every type whose side of Form 5472 is knowable now
+ * declares it on its TX_TYPES entry.
+ */
+export function defaultDirectionFor(txType: string): 'paid' | 'received' {
+  return TX_TYPES.find((t) => t.value === txType)?.fixedDirection ?? 'received';
+}
+
+/**
+ * Whether to put the "Who paid?" question in front of the filer.
+ *
+ * `showDirection` on the type is the general answer, but one type depends on
+ * the counterparty. A wind-down against the OWNER is a liquidating distribution
+ * reported in the Part V statement, and Part V reads no direction at all, so
+ * asking produces an answer that decides nothing. Against any other related
+ * party the same event is a Part IV "other amount", where the answer picks
+ * line 21 or line 35, and there it has to be asked.
+ */
+export function asksDirection(txType: string, isOwner: boolean): boolean {
+  if (txType === 'dissolution_tx') return !isOwner;
+  return DIRECTION_TYPES.has(txType);
+}
+
+/**
+ * Types that may only be recorded against the owner (related_party_index 0).
+ *
+ * Part V and Part VI statements are built for the owner alone, so a type that
+ * exists only inside one of those statements has nowhere to go on another
+ * party's Form 5472. `dissolution_tx` is deliberately absent: a wind-down can
+ * involve a non-owner related party, and for that party it is reported as a
+ * Part IV amount rather than in a statement.
+ */
+export const OWNER_ONLY_TX_TYPES = new Set(
+  [...PART_V_TYPES, ...PART_VI_TYPES].filter((v) => v !== 'dissolution_tx'),
 );
 
 // ── Transaction categories (accordion grouping in Step 4) ─────────────────

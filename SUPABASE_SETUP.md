@@ -38,8 +38,13 @@ Related parties / flags: `related_parties` (jsonb), `no_transactions_confirmed`,
 
 ### `reportable_transactions` - new columns
 `related_party_index` (0 = owner, 1..n = related parties), `loan_begin_usd`
-(Form 5472 lines 17a/31a beginning balance), `is_royalty` (rent vs royalty split).
+(Form 5472 lines 17a/31a beginning balance).
 Plus the `transaction_type` CHECK is re-asserted to the full canonical set.
+
+`is_royalty` is dropped. Rent and royalty are separate `transaction_type` values
+(`rent` on lines 13a/27a, `royalty` on 13b/27b) rather than one `rent_royalty`
+code split by a nullable boolean. Existing `rent_royalty` rows are migrated by
+the setup scripts before the CHECK is re-asserted.
 
 ### `user_profiles` - new columns
 All prefillable entity + owner fields + `related_parties`, so year-2+ filings

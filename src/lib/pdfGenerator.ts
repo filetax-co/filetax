@@ -526,12 +526,15 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
       case 'tangible_property':
         dir === 'received' ? (t.tangible_prop_received += amt) : (t.tangible_prop_paid += amt);
         t.hasPartIV = true; break;
-      case 'rent_royalty':
-        if (dir === 'received') {
-          tx.is_royalty ? (t.royalties_received += amt) : (t.rents_received += amt);
-        } else {
-          tx.is_royalty ? (t.royalties_paid += amt) : (t.rents_paid += amt);
-        }
+      // Lines 13a / 27a. Rent used to share a `rent_royalty` code with royalty
+      // and be told apart by a nullable `is_royalty` boolean, so a null decided
+      // whether an amount printed on 13a or 13b.
+      case 'rent':
+        dir === 'received' ? (t.rents_received += amt) : (t.rents_paid += amt);
+        t.hasPartIV = true; break;
+      // Lines 13b / 27b.
+      case 'royalty':
+        dir === 'received' ? (t.royalties_received += amt) : (t.royalties_paid += amt);
         t.hasPartIV = true; break;
       case 'intangible':
         dir === 'received' ? (t.intangible_received += amt) : (t.intangible_paid += amt);
@@ -567,6 +570,14 @@ export const aggregateTransactions = (txns: Transaction[]): AggregatedTransactio
         t.hasPartV = true; break;
       case 'distribution':
         t.distributions_paid += amt;
+        t.hasPartV = true; break;
+      // An acquisition, a disposal or another entity-level event. It gets a
+      // narrated line in the Part V statement and NO subtotal: rolling the
+      // purchase price of a third company into contributions_received (which is
+      // what mapping these onto capital_contribution used to do) both printed
+      // "Capital Contribution by Owner" over an acquisition and inflated the
+      // line 1f gross.
+      case 'structural_event':
         t.hasPartV = true; break;
       case 'other':
         dir === 'paid' ? (t.other_paid += amt) : (t.other_received += amt);
@@ -791,13 +802,35 @@ const PART_V_TYPE_LABELS: Record<string, string> = {
   dividend:             'Dividend Paid to Owner',
   capital_contribution: 'Capital Contribution by Owner',
   formation_costs:      'Payment by Owner on Behalf of LLC (Formation / Start-up Costs)',
+  structural_event:     'Entity-Level Structural Transaction',
+};
+
+/**
+ * Statement labels keyed on the INTAKE code, for the codes where the canonical
+ * one is too coarse to name the event honestly.
+ *
+ * `structural_event` covers an acquisition, a disposal and "other", and
+ * `distribution` covers both an ordinary withdrawal and a liquidating one. The
+ * canonical code decides every number on the return; this decides only the
+ * sentence printed above those numbers, and printing "Capital Contribution by
+ * Owner" over the purchase of a third company is a statement that says the
+ * wrong thing about a real transaction.
+ *
+ * Nothing else in this file may read ui_transaction_type. Narration only.
+ */
+const PART_V_UI_TYPE_LABELS: Record<string, string> = {
+  acquisition_tx:  'Acquisition of Another Entity by the LLC',
+  disposition_tx:  'Sale or Disposition of the LLC',
+  dissolution_tx:  'Liquidating Distribution on Dissolution of the LLC',
+  formation_tx:    'Capital Contribution by Owner on Formation of the LLC',
+  other_part_v:    'Other Structural Transaction with Owner',
 };
 
 /**
  * A readable description for a transaction type that has no entry above.
  *
- * PART_V_TX_TYPES and PART_V_TYPE_LABELS currently hold the same four codes, so
- * this is unreachable today. It exists because the previous fallback printed
+ * PART_V_TX_TYPES and PART_V_TYPE_LABELS hold the same codes, so this is
+ * unreachable today. It exists because the previous fallback printed
  * `tx.transaction_type` itself, meaning the day someone adds a fifth Part V
  * code and forgets the label, an internal identifier like `capital_contribution`
  * is what the IRS reads on the filer's statement. A humanised form is wrong in
@@ -874,7 +907,10 @@ export const buildPartVStatement = async (
   partVTxns.forEach((tx, idx) => {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
 
-    const label     = PART_V_TYPE_LABELS[tx.transaction_type] ?? humanizeTxCode(tx.transaction_type);
+    const label =
+      (tx.ui_transaction_type ? PART_V_UI_TYPE_LABELS[tx.ui_transaction_type] : undefined)
+      ?? PART_V_TYPE_LABELS[tx.transaction_type]
+      ?? humanizeTxCode(tx.transaction_type);
     const txDate    = tx.transaction_date ? fmtDate(tx.transaction_date) : 'Not specified';
     const amtText   = tx.amount_usd != null && tx.amount_usd !== 0
       ? `$${tx.amount_usd.toLocaleString('en-US')}`

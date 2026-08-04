@@ -171,6 +171,7 @@ alter table public.filings
   add column if not exists paid_at                       timestamptz,
   add column if not exists payment_id                    text,
   add column if not exists payment_amount_cents          int,
+  add column if not exists payment_currency              text,
   add column if not exists forms_generated_at            timestamptz,
   add column if not exists download_count                int not null default 0,
   add column if not exists file_path                     text,
@@ -219,6 +220,7 @@ begin
   if new.paid_at is distinct from old.paid_at
   or new.payment_id is distinct from old.payment_id
   or new.payment_amount_cents is distinct from old.payment_amount_cents
+  or new.payment_currency     is distinct from old.payment_currency
   or new.forms_generated_at is distinct from old.forms_generated_at then
     raise exception 'payment columns are server-managed' using errcode='42501';
   end if;
@@ -276,19 +278,41 @@ create table if not exists public.reportable_transactions (
   description      text
 );
 alter table public.reportable_transactions
-  add column if not exists is_royalty          boolean,
   add column if not exists related_party_index int not null default 0,
   add column if not exists related_party_naics text,
   add column if not exists loan_begin_usd      numeric;
 
+-- Split 'rent_royalty' into 'rent' / 'royalty' and drop the is_royalty flag.
+-- The OLD constraint comes off first: the backfill writes codes it does not
+-- list, so it fails on the first converted row if left attached.
+alter table public.reportable_transactions
+  drop constraint if exists reportable_transactions_transaction_type_check;
+
+do $$ begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='reportable_transactions'
+      and column_name='is_royalty'
+  ) then
+    update public.reportable_transactions
+       set transaction_type = case when is_royalty then 'royalty' else 'rent' end
+     where transaction_type = 'rent_royalty';
+    alter table public.reportable_transactions drop column is_royalty;
+  end if;
+end $$;
+
+update public.reportable_transactions
+   set transaction_type = 'structural_event'
+ where ui_transaction_type in ('acquisition_tx', 'disposition_tx', 'other_part_v');
+
 -- transaction_type CHECK = the full canonical set the generator understands.
 do $$ begin
-  alter table public.reportable_transactions drop constraint if exists reportable_transactions_transaction_type_check;
   alter table public.reportable_transactions add constraint reportable_transactions_transaction_type_check
     check (transaction_type in (
-      'sales','service_payment','rent_royalty','loan_to_llc','loan_from_llc',
+      'sales','service_payment','rent','royalty','loan_to_llc','loan_from_llc',
       'interest','insurance','dividend','commission','intangible','other',
-      'capital_contribution','distribution','formation_costs','property_transfer',
+      'capital_contribution','distribution','formation_costs','structural_event',
+      'property_transfer',
       'tangible_property','loan_guarantee','nonmonetary_other'));
 exception when others then raise notice 'tx_type check skipped: %', sqlerrm; end $$;
 

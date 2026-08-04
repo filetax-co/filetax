@@ -131,6 +131,12 @@ create table if not exists public.filings (
   paid_at               timestamptz,
   payment_id            text,
   payment_amount_cents  int,
+  -- ISO-4217 code for payment_amount_cents. Without it the amount is a bare
+  -- number that everything downstream reads as USD. verify-payment used to
+  -- record the amount ONLY when the settlement came back in USD, so a non-USD
+  -- settlement marked the filing paid and kept whatever total was there before,
+  -- under-reporting what was actually taken with nothing on the row to say so.
+  payment_currency      text,
 
   -- ── Output ───────────────────────────────────────────────────────────────
   forms_generated_at  timestamptz,
@@ -196,6 +202,7 @@ begin
   if new.paid_at              is distinct from old.paid_at
   or new.payment_id           is distinct from old.payment_id
   or new.payment_amount_cents is distinct from old.payment_amount_cents
+  or new.payment_currency     is distinct from old.payment_currency
   or new.forms_generated_at   is distinct from old.forms_generated_at then
     raise exception 'payment columns are server-managed and cannot be written from the client'
       using errcode = '42501';
@@ -221,22 +228,27 @@ create table if not exists public.reportable_transactions (
   filing_id        uuid        not null references public.filings(id) on delete cascade,
   transaction_type text        not null
                    check (transaction_type in (
-                     'sales','service_payment','rent_royalty',
+                     'sales','service_payment',
+                     -- Separate codes, separate lines: rent is 13a / 27a and
+                     -- royalty is 13b / 27b. These were one 'rent_royalty' code
+                     -- plus a nullable is_royalty boolean, so a null was the
+                     -- only thing keeping a rent off the royalty line.
+                     'rent','royalty',
                      'loan_to_llc','loan_from_llc','interest',
                      'insurance','dividend','commission','intangible',
                      'other','capital_contribution','distribution',
-                     'formation_costs','property_transfer',
+                     'formation_costs',
+                     -- Acquisition / disposal / other entity-level event. Part V
+                     -- statement only: no Part IV line, no monetary subtotal.
+                     'structural_event',
+                     'property_transfer',
                      -- Used by pdfGenerator.aggregateTransactions:
                      'tangible_property','loan_guarantee','nonmonetary_other'
                    )),
   direction        text        not null check (direction in ('paid','received')),
   amount_usd       numeric,
   transaction_date date,
-  description      text,
-  -- Only meaningful when transaction_type = 'rent_royalty'. true means the
-  -- amount maps to royalties_* lines (13b / 27b); false (or null) means rents
-  -- (13a / 27a).
-  is_royalty       boolean
+  description      text
 );
 
 alter table public.reportable_transactions enable row level security;
@@ -441,6 +453,7 @@ do $$ begin
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='paid_at') then alter table public.filings add column paid_at timestamptz; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='payment_id') then alter table public.filings add column payment_id text; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='payment_amount_cents') then alter table public.filings add column payment_amount_cents int; end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='payment_currency') then alter table public.filings add column payment_currency text; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='forms_generated_at') then alter table public.filings add column forms_generated_at timestamptz; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='download_count') then alter table public.filings add column download_count int not null default 0; end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='filings' and column_name='mailing_address') then alter table public.filings add column mailing_address jsonb; end if;
@@ -482,33 +495,47 @@ create table if not exists public.reportable_transactions (
   description      text
 );
 
--- Idempotent: ensure transaction_type CHECK matches the code-side union.
--- Drop-and-recreate is safe because existing rows can only contain values
--- that previously passed the constraint.
-do $$ begin
-  alter table public.reportable_transactions
-    drop constraint if exists reportable_transactions_transaction_type_check;
-  alter table public.reportable_transactions
-    add constraint reportable_transactions_transaction_type_check
-    check (transaction_type in (
-      'sales','service_payment','rent_royalty',
-      'loan_to_llc','loan_from_llc','interest',
-      'insurance','dividend','commission','intangible',
-      'other','capital_contribution','distribution',
-      'formation_costs','property_transfer',
-      'tangible_property','loan_guarantee','nonmonetary_other'
-    ));
-end; $$;
+-- Rent / royalty split and the retirement of is_royalty.
+--
+-- The OLD constraint is dropped first. The backfill writes 'rent' and 'royalty',
+-- and it is the old constraint that is in force while it runs; that constraint
+-- lists neither, so the first converted row raises 23514. There is no ordering
+-- in which a constraint can be attached during the backfill: the old one rejects
+-- the new codes and the new one rejects the rows not yet converted.
+alter table public.reportable_transactions
+  drop constraint if exists reportable_transactions_transaction_type_check;
 
--- Optional: backfill is_royalty column on older databases.
 do $$ begin
-  if not exists (
+  if exists (
     select 1 from information_schema.columns
     where table_schema='public' and table_name='reportable_transactions'
       and column_name='is_royalty'
   ) then
-    alter table public.reportable_transactions add column is_royalty boolean;
+    update public.reportable_transactions
+       set transaction_type = case when is_royalty then 'royalty' else 'rent' end
+     where transaction_type = 'rent_royalty';
+    alter table public.reportable_transactions drop column is_royalty;
   end if;
+end; $$;
+
+-- Structural events, identified by the intake code preserved on the row.
+update public.reportable_transactions
+   set transaction_type = 'structural_event'
+ where ui_transaction_type in ('acquisition_tx', 'disposition_tx', 'other_part_v');
+
+-- Idempotent: ensure transaction_type CHECK matches the code-side union. Added
+-- here, after the backfills above, against a fully converted table.
+do $$ begin
+  alter table public.reportable_transactions
+    add constraint reportable_transactions_transaction_type_check
+    check (transaction_type in (
+      'sales','service_payment','rent','royalty',
+      'loan_to_llc','loan_from_llc','interest',
+      'insurance','dividend','commission','intangible',
+      'other','capital_contribution','distribution',
+      'formation_costs','structural_event','property_transfer',
+      'tangible_property','loan_guarantee','nonmonetary_other'
+    ));
 end; $$;
 
 do $$ begin

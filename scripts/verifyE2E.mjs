@@ -11,7 +11,7 @@
  *   F. Part VI managerial toggle OFF, only a contribution → no Part VI
  *   G. Extension filed → Form 7004 in package
  *   H. No reportable transactions
- *   I. Royalty vs rent split (is_royalty)
+ *   I. Royalty vs rent split (separate canonical codes)
  *
  * Run: node scripts/verifyE2E.mjs
  */
@@ -171,8 +171,10 @@ let ran = 0;
 {
   const pkg = await gen.generateFilingPackage(
     base(),
-    [tx({ transaction_type: 'rent_royalty', direction: 'received', amount_usd: 700, is_royalty: true }),
-     tx({ transaction_type: 'rent_royalty', direction: 'received', amount_usd: 250, is_royalty: false })],
+    // Separate canonical codes now: 'royalty' is 13b/27b and 'rent' is 13a/27a.
+    // They shared a 'rent_royalty' code split by a nullable is_royalty boolean.
+    [tx({ transaction_type: 'royalty', direction: 'received', amount_usd: 700 }),
+     tx({ transaction_type: 'rent',    direction: 'received', amount_usd: 250 })],
     2024);
   const t = text(pkg.combined, 'I');
   must(/700/.test(t), 'I: royalty amount present');

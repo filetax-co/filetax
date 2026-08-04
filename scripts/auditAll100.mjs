@@ -33,7 +33,11 @@ const eq = (a, b) => norm(a) === norm(b);
 const num = (s) => Number(String(s ?? '').replace(/[^0-9.-]/g, '') || 0);
 
 /** Part V (owner-transaction) types - disclosed in a statement, not Part IV. */
-const PART_V_TYPES = new Set(['distribution', 'dividend', 'capital_contribution', 'formation_costs']);
+// structural_event = an acquisition, a disposal or another entity-level event.
+// It gets a narrated statement entry carrying its amount, but feeds no monetary
+// subtotal and reaches no Part IV line, so it belongs in this set.
+const PART_V_TYPES = new Set(['distribution', 'dividend', 'capital_contribution', 'formation_costs',
+  'structural_event']);
 /** Part VI (nonmonetary / below-FMV) types. */
 const PART_VI_TYPES = new Set(['property_transfer', 'nonmonetary_other']);
 
@@ -53,11 +57,10 @@ const PART_IV_LINE = {
   loan_guarantee:   { received: 'LoanGuaranteeReceived',paid: 'GuaranteePaid' },           // 20 / 34
   other:            { received: 'OtherAmountRec',       paid: 'OtherPayments' },           // 21 / 35
 };
-/** rent_royalty splits on the is_royalty flag. */
-const RENT_ROYALTY_LINE = {
-  rent:    { received: 'RentReceived',    paid: 'RentPaid' },      // 13a / 27a
-  royalty: { received: 'RoyaltyReceived', paid: 'RoyaltiesPaid' }, // 13b / 27b
-};
+// Rent and royalty are separate canonical codes on separate lines. They were
+// one 'rent_royalty' code split by a nullable is_royalty boolean.
+PART_IV_LINE.rent    = { received: 'RentReceived',    paid: 'RentPaid' };      // 13a / 27a
+PART_IV_LINE.royalty = { received: 'RoyaltyReceived', paid: 'RoyaltiesPaid' }; // 13b / 27b
 /** Loans: balances, not flows. */
 const LOAN_LINE = {
   loan_to_llc:   { begin: 'LoanBorrowedBegBal', end: 'AmountsBorrowed' },      // 17a / 17b
@@ -344,9 +347,7 @@ for (const rec of facts) {
       // The 2019-2021 Form 5472 revision has no loan-guarantee line (20/34),
       // so those fees are disclosed under "other amounts" (21/35) instead.
       const guaranteeHasNoLine = type === 'loan_guarantee' && Number(inp.tax_year) <= 2021;
-      const line = type === 'rent_royalty'
-        ? RENT_ROYALTY_LINE[t.is_royalty ? 'royalty' : 'rent']
-        : guaranteeHasNoLine ? PART_IV_LINE.other : PART_IV_LINE[type];
+      const line = guaranteeHasNoLine ? PART_IV_LINE.other : PART_IV_LINE[type];
       if (!line) { add('INFO', id, 'unmodelled transaction type', `${type} - audit has no Part IV expectation for it`); continue; }
       const field = line[t.direction];
       if (!field) continue;

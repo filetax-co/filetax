@@ -198,6 +198,13 @@ export type Filing = {
   paid_at?: string | null;
   payment_id?: string | null;
   payment_amount_cents?: number | null;
+  /**
+   * ISO-4217 code for `payment_amount_cents`. Null on filings paid before the
+   * column existed, and null when a filing was topped up in a second currency,
+   * because two currencies cannot be summed into one integer. Read them as a
+   * pair: an amount without a currency is not a price.
+   */
+  payment_currency?: string | null;
   /** Related parties already covered by verified Dodo payments. */
   paid_related_party_count?: number | null;
 
@@ -255,7 +262,12 @@ export type Transaction = {
   transaction_type:
     | 'sales'
     | 'service_payment'
-    | 'rent_royalty'
+    // Rent and royalty are separate codes because they are separate lines
+    // (13a/27a against 13b/27b). They were one code plus an `is_royalty`
+    // boolean, which made a nullable column the only thing standing between a
+    // rent and the royalty line.
+    | 'rent'
+    | 'royalty'
     | 'loan_to_llc'
     | 'loan_from_llc'
     | 'interest'
@@ -267,6 +279,12 @@ export type Transaction = {
     | 'capital_contribution'
     | 'distribution'
     | 'formation_costs'
+    // A structural event disclosed in the Part V statement: an acquisition, a
+    // disposal, or another entity-level event. It carries no amount onto any
+    // Part IV line and is deliberately NOT folded into the contributions or
+    // distributions subtotals, because an acquisition of a third company is
+    // neither a contribution by the owner nor a distribution to them.
+    | 'structural_event'
     | 'property_transfer'
     // Handled in aggregateTransactions; kept in sync with the DB CHECK
     // constraint on reportable_transactions.transaction_type so inserts of
@@ -284,7 +302,6 @@ export type Transaction = {
   loan_begin_usd?: number | null;
   transaction_date?: string | null;
   description?: string | null;
-  is_royalty?: boolean | null;
   /**
    * The intake UI code the filer actually selected, e.g. 'royalty',
    * 'digital_asset', 'tangible_purchase'.
