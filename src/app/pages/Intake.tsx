@@ -3123,11 +3123,11 @@ export function Intake() {
                 </div>
                 {hasUsActivity === true && (
                   <div className="cat-banner-amber" style={{ marginTop: '0.875rem' }}>
-                    <strong>This may mean a second filing that we do not prepare.</strong> Income
-                    the IRS treats as U.S.-source can make you personally liable to file Form
-                    1040-NR, and a return is required even when no tax is due. You can still
-                    prepare your Form 5472 here, because that obligation is separate and still
-                    applies. Please confirm your position with a CPA or tax adviser.
+                    <strong>You may also need to file a personal return.</strong> Income the IRS
+                    treats as U.S.-source can make you personally liable for Form 1040-NR, which is
+                    required even when no tax is due. That is separate from Form 5472, so carry on
+                    here. Form 1040-NR is not part of this package. Confirm your position with a
+                    CPA or tax adviser.
                   </div>
                 )}
               </div>
@@ -3420,9 +3420,8 @@ export function Intake() {
                   <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--tf-muted)' }}>
                     Must fall inside the period you're filing for{' '}
                     ({formatDateLong(effectiveTaxPeriod.begin)} to {formatDateLong(nominalTaxPeriod.end)}).
-                    Your tax period ends on this date rather than on the normal year-end,
-                    because the LLC no longer existed after it. Both forms will show the
-                    shorter period.
+                    Your tax period ends on this date instead of the normal year-end, and
+                    both forms will show the shorter period.
                   </div>
                 </>
               )}
