@@ -1,23 +1,46 @@
 /**
- * Per-user entity + owner profile.
+ * Per-COMPANY entity + owner profile.
  *
  * The LLC's details and the owner's details almost never change between years,
- * so we remember them in `user_profiles` and prefill each NEW filing from the
- * profile for the user to review/edit. "Edits apply to future filings only", * editing a filing does not retroactively change other filings; the profile is
- * refreshed only when a filing is submitted.
+ * so we remember them and offer them when a new filing starts. Edits apply to
+ * future filings only: editing a filing does not retroactively change other
+ * filings, and a profile is refreshed only when a filing is submitted.
  *
  * This is the same carry-forward mechanism the multi-year catch-up flow uses to
  * reuse entity/owner data across years (the user only re-enters transactions
  * per year).
+ *
+ * WAS PER USER, AND THAT WAS THE BUG. `user_profiles` held one row keyed on
+ * user_id, so a filer with two LLCs had the second overwrite the first, and
+ * their next filing was prefilled with the wrong company's name and EIN. Since
+ * `filings_freeze_when_paid` locks `ein`, `llc_name` and `owner_full_name` the
+ * moment a filing is paid, a filer who did not catch it had no way back.
+ * Profiles are now keyed on (user_id, ein) in `company_profiles`, and intake
+ * ASKS which company rather than filling one in silently.
+ *
+ * `user_profiles` still exists and is no longer read. Do not add a read of it.
  */
 
 import { supabase } from './supabase';
 
-/** Shape mirrors the prefillable columns added in 20260701_*.sql. */
+/**
+ * EINs are stored digits-only, so "99-9999999" and "999999999" are one company
+ * rather than two. Every read and write goes through this; the display form is
+ * whatever the filer typed on the filing itself.
+ */
+export function normalizeEin(ein: string | null | undefined): string | null {
+  const digits = (ein ?? '').replace(/\D/g, '');
+  return digits.length === 9 ? digits : null;
+}
+
+/** Shape mirrors the prefillable columns on `company_profiles`. */
 export interface FilingProfile {
+  /** Digits only. Present on every saved company; absent only on a draft shape. */
+  ein?: string | null;
+  /** Most recent tax year filed for this company, for the picker's subtitle. */
+  last_filed_tax_year?: string | null;
   // Entity
   llc_name?: string | null;
-  ein?: string | null;
   state_of_formation?: string | null;
   date_of_incorporation?: string | null;
   mailing_address?: Record<string, unknown> | null;
@@ -44,21 +67,9 @@ export interface FilingProfile {
   related_parties?: unknown[] | null;
 }
 
-/**
- * Columns added after the profile table shipped, whose migration may not have
- * been run yet on a given database.
- *
- * Migrations here are applied by hand, so the deployed app can be ahead of the
- * schema. PostgREST rejects a SELECT naming an unknown column outright, and
- * loadProfile treats any error as "no profile", so one missing column would
- * silently turn off ALL prefill rather than that one field. loadProfile retries
- * without these when the first attempt fails.
- */
-const RECENT_PROFILE_COLUMNS = ['entity_principal_country'] as const;
-
 /** The columns we read/write for prefill. Kept in one place to avoid drift. */
 const PROFILE_COLUMNS = [
-  'llc_name', 'ein', 'state_of_formation', 'date_of_incorporation',
+  'llc_name', 'state_of_formation', 'date_of_incorporation',
   'mailing_address', 'entity_business_activity', 'entity_business_code',
   'entity_principal_country', 'naics_code', 'naics_description',
   'owner_full_name', 'owner_country', 'owner_primary_country',
@@ -68,51 +79,95 @@ const PROFILE_COLUMNS = [
   'owner_naics_code', 'signer_title', 'related_parties',
 ] as const;
 
-/** Load the signed-in user's saved profile, or null if none / not signed in. */
-export async function loadProfile(userId: string | null | undefined): Promise<FilingProfile | null> {
-  if (!userId) return null;
-  const read = async (columns: readonly string[]) =>
-    supabase
-      .from('user_profiles')
-      .select(columns.join(','))
-      .eq('user_id', userId)
-      .maybeSingle();
+/** Everything the picker reads, including the two key columns. */
+const COMPANY_COLUMNS = ['ein', 'last_filed_tax_year', ...PROFILE_COLUMNS] as const;
 
-  let { data, error } = await read(PROFILE_COLUMNS);
-  if (error) {
-    // See RECENT_PROFILE_COLUMNS: losing one field is a much smaller failure
-    // than losing every prefilled field.
-    const older = PROFILE_COLUMNS.filter(
-      (c) => !(RECENT_PROFILE_COLUMNS as readonly string[]).includes(c),
-    );
-    ({ data, error } = await read(older));
-  }
+/**
+ * Every company this user has saved, newest first.
+ *
+ * Returns [] rather than null when there are none, so the caller can treat
+ * "no saved companies" and "not signed in" the same way: show a blank form.
+ */
+export async function listCompanies(
+  userId: string | null | undefined,
+): Promise<FilingProfile[]> {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('company_profiles')
+    .select(COMPANY_COLUMNS.join(','))
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error || !data) return [];
+  return data as unknown as FilingProfile[];
+}
+
+/**
+ * One saved company by EIN, or null.
+ *
+ * The EIN is normalised here rather than at the call site, so a caller holding
+ * the display form ("99-9999999") does not have to know how it is stored.
+ */
+export async function loadCompany(
+  userId: string | null | undefined,
+  ein: string | null | undefined,
+): Promise<FilingProfile | null> {
+  const key = normalizeEin(ein);
+  if (!userId || !key) return null;
+  const { data, error } = await supabase
+    .from('company_profiles')
+    .select(COMPANY_COLUMNS.join(','))
+    .eq('user_id', userId)
+    .eq('ein', key)
+    .maybeSingle();
   if (error || !data) return null;
   return data as unknown as FilingProfile;
 }
 
 /**
- * Upsert the entity + owner fields of a just-submitted filing into the user's
- * profile, so the next new filing prefills from it. Only writes non-empty
- * values so a sparse filing never wipes good profile data.
+ * Forget a saved company. The filings themselves are untouched: this removes
+ * the prefill entry, not the returns that were filed for it.
+ */
+export async function deleteCompany(
+  userId: string | null | undefined,
+  ein: string | null | undefined,
+): Promise<boolean> {
+  const key = normalizeEin(ein);
+  if (!userId || !key) return false;
+  const { data, error } = await supabase
+    .from('company_profiles')
+    .delete()
+    .eq('user_id', userId)
+    .eq('ein', key)
+    .select('id');
+  return !error && !!data && data.length > 0;
+}
+
+/**
+ * Upsert the entity + owner fields of a just-submitted filing against ITS OWN
+ * company, so the next filing for that company can offer them. Only non-empty
+ * values are written, so a sparse filing never wipes good saved data.
+ *
+ * A filing with no usable EIN saves nothing. That is deliberate: the EIN is the
+ * company's identity here, and a row without one could only be stored against
+ * some other key, which is precisely the per-user clobbering this replaced.
  */
 export async function saveProfileFromFiling(
   userId: string | null | undefined,
   filing: Record<string, unknown>,
 ): Promise<void> {
-  if (!userId) return;
-  const patch: Record<string, unknown> = { user_id: userId };
+  const key = normalizeEin(filing.ein as string | null | undefined);
+  if (!userId || !key) return;
+
+  const patch: Record<string, unknown> = { user_id: userId, ein: key };
   for (const col of PROFILE_COLUMNS) {
     const v = filing[col];
     if (v !== undefined && v !== null && v !== '') patch[col] = v;
   }
-  // Nothing meaningful to save beyond the key.
-  if (Object.keys(patch).length <= 1) return;
-  const { error } = await supabase.from('user_profiles').upsert(patch, { onConflict: 'user_id' });
-  if (!error) return;
-  // Same reasoning as loadProfile: a column whose migration has not been run
-  // must not take the whole profile write down with it.
-  for (const col of RECENT_PROFILE_COLUMNS) delete patch[col];
-  if (Object.keys(patch).length <= 1) return;
-  await supabase.from('user_profiles').upsert(patch, { onConflict: 'user_id' });
+  const year = filing.tax_year;
+  if (year !== undefined && year !== null && year !== '') patch.last_filed_tax_year = year;
+
+  const { error } = await supabase
+    .from('company_profiles')
+    .upsert(patch, { onConflict: 'user_id,ein' });
+  if (error) console.error('[saveProfileFromFiling]', error.message);
 }

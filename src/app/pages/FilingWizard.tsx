@@ -203,6 +203,7 @@ export default function FilingWizard() {
       const filename = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
       setPreview({ url, filename });
       triggerDownload(pkg.combined, filename);
+      await markDownloaded([fi]);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -224,6 +225,44 @@ export default function FilingWizard() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    // A re-download is still a download. The status is already 'completed' by
+    // this point, so this only moves the counter, which is what it is for.
+    if (filing) void markDownloaded([filing]);
+  };
+
+  /**
+   * Record that the filer has the forms.
+   *
+   * Nothing wrote `status = 'completed'` or `download_count`, so a paid filing
+   * stayed in the dashboard's "Ready to download" bucket forever, the
+   * "Filed & downloaded" bucket was permanently empty, and the card kept its
+   * red "Past due, file ASAP" chip after the filer had the return in hand.
+   * Every piece of UI for the finished state already existed; the state was
+   * simply unreachable.
+   *
+   * Safe from the client: `filings_block_payment_writes` permits `completed`
+   * when the row is already `paid`, `download_count` is not one of its guarded
+   * columns, and `filings_freeze_when_paid` only defends the identity columns
+   * and related-party removal, so this costs nothing from the correction
+   * budget. `forms_generated_at` IS guarded and is deliberately left to the
+   * server.
+   *
+   * Best-effort by design. The bytes are already on the filer's disk by the
+   * time this runs, so a failure here must not surface as a download error; it
+   * is a bookkeeping write, and the next one will correct it.
+   */
+  const markDownloaded = async (rows: { id: string; download_count?: number | null }[]) => {
+    await Promise.all(rows.map(async (row) => {
+      const { error } = await supabase
+        .from('filings')
+        .update({
+          status: 'completed',
+          download_count: Number(row.download_count ?? 0) + 1,
+        })
+        .eq('id', row.id);
+      if (error) console.error('[markDownloaded]', row.id, error.message);
+    }));
+    setFiling((prev) => (prev ? { ...prev, status: 'completed', download_count: Number(prev.download_count ?? 0) + 1 } : prev));
   };
 
   const triggerDownload = (bytes: Uint8Array, filename: string) => {
@@ -301,6 +340,11 @@ export default function FilingWizard() {
           triggerDownload(y.pdf, `Form-5472-${slug}-${y.taxYear}.pdf`);
         }
       }
+
+      // Every year in the catch-up was just delivered, in either mode, so every
+      // year is marked. Marking only the anchor filing would leave the rest of
+      // the job sitting in "Ready to download" with the forms already on disk.
+      await markDownloaded(yearFilings as Filing[]);
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {

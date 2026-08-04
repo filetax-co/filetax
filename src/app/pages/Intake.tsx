@@ -5,7 +5,7 @@ import { Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
-import { loadProfile, saveProfileFromFiling } from '../../lib/filingProfile';
+import { listCompanies, loadCompany, saveProfileFromFiling, type FilingProfile } from '../../lib/filingProfile';
 import { startCheckout } from '../../lib/checkout';
 import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
 import {
@@ -95,6 +95,12 @@ function formatEIN(raw: string): string {
  * accepting a well-formed but unissued one, because the filer has no way around
  * it. See the handoff before adding one.
  */
+/** "999999999" → "99-9999999", the form the filer types and the IRS prints. */
+function formatEinDigits(digits: string | null | undefined): string {
+  const d = (digits ?? '').replace(/\D/g, '');
+  return d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : '';
+}
+
 function einProblem(val: string): string | null {
   const raw = val.trim();
   if (!raw) return 'Enter your EIN.';
@@ -1089,6 +1095,12 @@ export function Intake() {
   // True once we auto-fill entity/owner data from the saved profile, so we can
   // show a "we pre-filled this, please review" banner on a returning user.
   const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
+  // Saved companies offered at the top of a brand-new filing, and whether the
+  // chooser is still up. Nothing is written into the form until one is picked
+  // or the filer chooses to start blank.
+  const [savedCompanies, setSavedCompanies] = useState<FilingProfile[]>([]);
+  const [showCompanyPicker, setShowCompanyPicker] = useState(false);
+  const [importRelatedParties, setImportRelatedParties] = useState(true);
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
@@ -1354,9 +1366,15 @@ export function Intake() {
       // per-year row may have been seeded before the profile existed, e.g. the
       // owner's country should carry across every year, not be re-selected each
       // time. Only empty fields are filled; nothing the row already has is touched.
+      //
+      // Keyed on THIS FILING'S EIN, not on the user. The old per-user profile
+      // meant a filing for the second LLC was backfilled from the first one,
+      // quietly replacing blank fields with another company's answers. A row
+      // with no EIN yet is left alone: there is no way to tell which company it
+      // belongs to, and guessing is the failure this replaced.
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        const profile = user ? await loadProfile(user.id) : null;
+        const profile = user ? await loadCompany(user.id, f.ein) : null;
         if (profile) {
           const bf = (val: string | null | undefined) => (setter: (u: (c: string) => string) => void) => {
             if (val) setter((c) => (c && c.trim() ? c : (val ?? '')));
@@ -1373,7 +1391,6 @@ export function Intake() {
           // the profile prefill above (for filings with no id yet) covered
           // them, but intake creates the row first and then loads it, so in
           // practice this backfill is the path every filing takes.
-          bf(profile.ein)(setEin);
           bf(profile.date_of_incorporation)(setEntityDOI);
           bf(profile.entity_business_activity ?? profile.naics_description)(setEntityBizActivity);
           bf(profile.entity_business_code ?? profile.naics_code)(setEntityBizCode);
@@ -1396,21 +1413,33 @@ export function Intake() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingId]);
 
-  // Prefill a BRAND-NEW filing (no filing_id) from the user's saved profile so
-  // year 2+ is auto-populated for review. Only fills empty fields; never
-  // overwrites anything the user has already typed this session.
+  // Offer the user's saved companies on a BRAND-NEW filing (no filing_id).
+  //
+  // This used to load the single per-user profile and fill the form in
+  // immediately, announcing it afterwards with a banner. A filer with a second
+  // LLC therefore got their FIRST company's name and EIN written into the new
+  // filing without being asked, and `filings_freeze_when_paid` locks both the
+  // moment they pay. Nothing is filled now until the filer picks a company.
   useEffect(() => {
     if (filingId) return; // existing filing is loaded by the effect above
     let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (cancelled || !user) return;
-      const profile = await loadProfile(user.id);
-      if (cancelled || !profile) return;
+      const saved = await listCompanies(user.id);
+      if (cancelled || saved.length === 0) return;
+      setSavedCompanies(saved);
+      setShowCompanyPicker(true);
+    })();
+    return () => { cancelled = true; };
+  }, [filingId]);
 
+  /** Copy a chosen saved company into the form. Empty fields only. */
+  const importCompany = (profile: FilingProfile, withRelatedParties: boolean) => {
+    {
       const fill = (cur: string, val?: string | null) => (cur ? cur : (val ?? ''));
+      setEin((c) => fill(c, formatEinDigits(profile.ein)));
       setLlcName((c) => fill(c, profile.llc_name));
-      setEin((c) => fill(c, profile.ein));
       setStateOfFormation((c) => fill(c, profile.state_of_formation));
       setEntityDOI((c) => fill(c, profile.date_of_incorporation));
       setEntityBizActivity((c) => fill(c, profile.entity_business_activity ?? profile.naics_description));
@@ -1429,13 +1458,16 @@ export function Intake() {
       setOwnerBizCode((c) => fill(c, profile.owner_business_code ?? profile.owner_naics_code));
       setSignerTitle((c) => (c && c !== 'Managing Member' ? c : (profile.signer_title || 'Managing Member')));
       setOwnerAddress((c) => (c && c.line1 ? c : ((profile.owner_address as Address) ?? {})));
-      if (profile.related_parties && Array.isArray(profile.related_parties)) {
+      // Related parties are opt-in. They go stale between years far more often
+      // than an address does, and a stale related party is a wrong Form 5472
+      // for a taxpayer who may no longer be related at all.
+      if (withRelatedParties && profile.related_parties && Array.isArray(profile.related_parties)) {
         setRelatedParties((c) => (c.length ? c : (profile.related_parties as RelatedParty[])));
       }
       setPrefilledFromProfile(true);
-    })();
-    return () => { cancelled = true; };
-  }, [filingId]);
+    }
+    setShowCompanyPicker(false);
+  };
 
   // Auto-generate the owner reference code whenever we have an owner name but no
   // reference code yet, covers the case where the name was prefilled from the
@@ -3050,9 +3082,59 @@ export function Intake() {
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
             <p style={stepSubheadStyle}>Basic information about the U.S. company. This goes on the Pro Forma 1120 and all Form 5472 filings.</p>
 
+            {/* Which company is this filing for?
+                Shown only on a brand-new filing that has saved companies, and
+                only until the filer answers. Prefill used to happen first and
+                announce itself afterwards, which is how a second-LLC filer
+                ended up with the wrong EIN on a filing that freezes it at
+                payment. */}
+            {showCompanyPicker && savedCompanies.length > 0 && (
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1.125rem 1.25rem', marginBottom: '1.5rem' }}>
+                <h3 style={{ ...sectionLabelStyle, marginTop: 0 }}>Which company is this filing for?</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0 0 0.875rem', lineHeight: 1.55 }}>
+                  Pick a company to bring its details across, or start blank. Check the EIN is the right one: it is locked once this filing is paid for.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {savedCompanies.map((co) => (
+                    <button
+                      key={co.ein ?? co.llc_name ?? Math.random()}
+                      type="button"
+                      onClick={() => importCompany(co, importRelatedParties)}
+                      style={{ ...groupedCardStyle, textAlign: 'left', padding: '0.75rem 1rem', cursor: 'pointer', background: 'transparent', display: 'block', width: '100%' }}
+                    >
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--tf-text)' }}>
+                        {co.llc_name?.trim() || 'Unnamed company'}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--tf-muted)', marginTop: '0.15rem' }}>
+                        EIN {formatEinDigits(co.ein)}
+                        {co.state_of_formation ? ` · ${co.state_of_formation}` : ''}
+                        {co.last_filed_tax_year ? ` · last filed ${co.last_filed_tax_year}` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {savedCompanies.some((c) => Array.isArray(c.related_parties) && c.related_parties.length > 0) && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.875rem', fontSize: '0.82rem', color: 'var(--tf-muted)' }}>
+                    <input type="checkbox" checked={importRelatedParties} onChange={(e) => setImportRelatedParties(e.target.checked)} />
+                    Also bring across the related parties saved for that company
+                  </label>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowCompanyPicker(false)}
+                  style={{ ...secondaryBtnStyle, marginTop: '0.875rem' }}
+                >
+                  Start blank
+                </button>
+              </div>
+            )}
+
             {prefilledFromProfile && (
               <div className="cat-banner-green" style={{ marginBottom: '1.5rem' }}>
-                <strong>We’ve pre-filled your details from your last filing.</strong> Please review everything below and update anything that changed. Your edits here apply to this filing only.
+                <strong>We’ve brought across your saved details for this company.</strong> Please review everything below and update anything that changed. Your edits here apply to this filing only.
               </div>
             )}
 

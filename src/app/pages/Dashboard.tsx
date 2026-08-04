@@ -285,10 +285,21 @@ export function Dashboard() {
     if (!window.confirm(`Delete the ${f.tax_year ?? ''} filing for ${f.llc_name?.trim() || 'this LLC'}? This can't be undone.`)) return;
     setBusy(`del-${f.id}`);
     setError('');
-    const { error } = await supabase.from('filings').delete().eq('id', f.id);
+    // `.select()` on the delete so we get the rows back and can tell "deleted
+    // nothing" apart from "deleted it". Without it a delete that RLS filtered
+    // to zero rows returned no error, this code took that for success, and the
+    // card disappeared from local state only to return on the next refresh.
+    // That is exactly what happened while `filings` had no DELETE policy.
+    const { data: removed, error } = await supabase
+      .from('filings').delete().eq('id', f.id).select('id');
     if (error) {
       setBusy(null);
       setError(error.message);
+      return;
+    }
+    if (!removed || removed.length === 0) {
+      setBusy(null);
+      setError('That filing could not be deleted. Refresh and try again, or contact support@filetax.co if it persists.');
       return;
     }
     // If this belonged to a multi-year job and no siblings remain, drop the job.
@@ -341,10 +352,19 @@ export function Dashboard() {
     setError('');
     // Delete by job_id rather than looping the ids: one statement, so it cannot
     // half-succeed and leave the job in the partial state described above.
-    const { error } = await supabase.from('filings').delete().eq('job_id', jobId);
+    const { data: removed, error } = await supabase
+      .from('filings').delete().eq('job_id', jobId).select('id');
     if (error) {
       setBusy(null);
       setError(error.message);
+      return;
+    }
+    // Same reasoning as deleteFiling: zero rows back is a failure, not a
+    // success. Here it matters more, because dropping the job row after a
+    // no-op delete would orphan every year in the catch-up.
+    if (!removed || removed.length === 0) {
+      setBusy(null);
+      setError('That catch-up could not be deleted. Refresh and try again, or contact support@filetax.co if it persists.');
       return;
     }
     await supabase.from('filing_jobs').delete().eq('id', jobId);

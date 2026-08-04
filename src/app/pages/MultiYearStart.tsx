@@ -17,7 +17,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
-import { loadProfile } from '../../lib/filingProfile';
+import { listCompanies, type FilingProfile } from '../../lib/filingProfile';
 import { REASONABLE_CAUSE_REASONS } from './intake/constants';
 import { PRICE_RCL } from '../../lib/pricing';
 
@@ -48,9 +48,32 @@ export function MultiYearStart() {
   const [includeRcl, setIncludeRcl] = useState(true);
   const [rclReasons, setRclReasons] = useState<string[]>([]);
   const [incorpDate, setIncorpDate] = useState('');
+  // Saved companies, and which one this catch-up is for. A catch-up seeds EVERY
+  // year from one company, so picking the wrong one is a whole job of filings
+  // carrying the wrong EIN, not a single return. Defaults to the most recently
+  // used, which is the right answer for the common single-company filer.
+  const [companies, setCompanies] = useState<FilingProfile[]>([]);
+  const [selectedEin, setSelectedEin] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [anyYearPaid, setAnyYearPaid] = useState(false);
+
+  // Load the saved companies and default to the most recently used.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const saved = await listCompanies(user.id);
+      if (cancelled || saved.length === 0) return;
+      setCompanies(saved);
+      setSelectedEin((cur) => cur || (saved[0].ein ?? ''));
+      if (!incorpDate && saved[0].date_of_incorporation) {
+        setIncorpDate(String(saved[0].date_of_incorporation));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // When editing an existing job, prefill the selected years, RCL choice,
   // reasons and incorporation date from the job and its filings.
@@ -147,8 +170,7 @@ export function MultiYearStart() {
       // Insert rows for newly-added years, seeded from the profile.
       const newYears = chosen.filter((y) => !existingYears.has(y));
       if (newYears.length) {
-        const profile = await loadProfile(user.id);
-        const seed = buildSeed(profile);
+        const seed = buildSeed(selectedCompany());
         const rows = newYears.map((y) => ({
           ...seed,
           date_of_incorporation: incorpDate || (seed.date_of_incorporation as string | null) || null,
@@ -180,11 +202,23 @@ export function MultiYearStart() {
     }
   }
 
-  function buildSeed(profile: Awaited<ReturnType<typeof loadProfile>>): Record<string, unknown> {
+  /** "999999999" → "99-9999999". Profiles store digits; filings store the dashed form. */
+  function formatEin(digits: string | null | undefined): string {
+    const d = (digits ?? '').replace(/\D/g, '');
+    return d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : '';
+  }
+
+  /** The company this catch-up is for, or null when the filer has none saved. */
+  function selectedCompany(): FilingProfile | null {
+    if (companies.length === 0) return null;
+    return companies.find((c) => c.ein === selectedEin) ?? companies[0];
+  }
+
+  function buildSeed(profile: FilingProfile | null): Record<string, unknown> {
     return profile
       ? {
           llc_name: profile.llc_name ?? null,
-          ein: profile.ein ?? null,
+          ein: formatEin(profile.ein),
           state_of_formation: profile.state_of_formation ?? null,
           date_of_incorporation: incorpDate || profile.date_of_incorporation || null,
           mailing_address: profile.mailing_address ?? null,
@@ -232,9 +266,8 @@ export function MultiYearStart() {
         .single();
       if (jobErr || !job) throw new Error(jobErr?.message ?? 'Could not create the catch-up job.');
 
-      // 2. Prefill entity/owner from the saved profile so every year carries it.
-      const profile = await loadProfile(user.id);
-      const seed = buildSeed(profile);
+      // 2. Seed entity/owner from the chosen company so every year carries it.
+      const seed = buildSeed(selectedCompany());
 
       // 3. One filing per year, linked to the job. Every row carries the
       //    incorporation date (so an initial-return short year is derived) and
@@ -294,6 +327,35 @@ export function MultiYearStart() {
           <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
             <strong>Years are locked.</strong> One or more years in this catch-up have already been paid,
             so the set of years can no longer be changed. Continue from your dashboard to finish or download.
+          </div>
+        )}
+
+        {/* Only when there is a real choice to make. With one saved company the
+            question is noise, and with none there is nothing to list. Every
+            year in the catch-up is seeded from this one answer. */}
+        {companies.length > 1 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.375rem' }}>
+              Which company is this catch-up for?
+            </label>
+            <select
+              value={selectedEin}
+              onChange={(e) => {
+                setSelectedEin(e.target.value);
+                const co = companies.find((c) => c.ein === e.target.value);
+                if (co?.date_of_incorporation) setIncorpDate(String(co.date_of_incorporation));
+              }}
+              style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-surface)', color: 'var(--tf-text)', fontSize: '0.9375rem' }}
+            >
+              {companies.map((c) => (
+                <option key={c.ein ?? ''} value={c.ein ?? ''}>
+                  {(c.llc_name?.trim() || 'Unnamed company')} · EIN {formatEin(c.ein)}
+                </option>
+              ))}
+            </select>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.375rem', lineHeight: 1.5 }}>
+              Every year you select below is prepared for this company.
+            </p>
           </div>
         )}
 
