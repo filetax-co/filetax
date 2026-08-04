@@ -170,7 +170,11 @@ if (bottom <= top) throw new Error('Argument region resolved to an empty or inve
 // recoverable. A blur can sometimes be partially inverted; downsampling to
 // blocks and scaling back up discards the information outright.
 const bandH = Math.ceil(bottom - top);
-const BLOCK = 7;
+// Proportional to the page, matching obscureBand in src/lib/rasterizePdf.ts.
+// A fixed 7 meant this sample was rendered at SCALE 2 with blocks tuned for a
+// 1.5 render, so it was already finer than the in-app gate. Same expression in
+// both places now, so raising either scale cannot loosen the obscuring.
+const BLOCK = Math.max(7, Math.round(canvas.width / 131));
 const small = createCanvas(Math.ceil(canvas.width / BLOCK), Math.ceil(bandH / BLOCK));
 const sctx = small.getContext('2d');
 sctx.imageSmoothingEnabled = true;

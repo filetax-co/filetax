@@ -31,9 +31,9 @@ export interface RasterPage {
 
 export interface RasterizeOptions {
   /**
-   * Render scale. 1.5 is legible on a phone at full width and keeps a 10-page
-   * package under a few MB of canvas; the text is a picture either way, so
-   * there is nothing to gain from going higher than the screen can show.
+   * Render scale. Defaults to `defaultScale()`, which accounts for the display.
+   *
+   * Pass a number only to pin it, for a test or a fixture.
    */
   scale?: number;
   /** Burned-in diagonal watermark. */
@@ -55,6 +55,24 @@ export interface RasterizeOptions {
   gateArgument?: boolean;
   /** Called after each page renders, for a progress line. */
   onPage?: (done: number, total: number) => void;
+}
+
+/**
+ * Render scale for this display.
+ *
+ * The preview is shown at `width: 100%` in a modal, so the pixels the browser
+ * needs are CSS width TIMES devicePixelRatio. Rendering at a flat 1.5 gave a
+ * 918px-wide page, which a 2x display upscales to fill an 800px column, and
+ * upscaled 8pt form text is exactly as soft as it sounds. This is the single
+ * most reported complaint about the preview.
+ *
+ * Capped at 3. Beyond that the gain is invisible and the cost is not: each page
+ * is held as a PNG data URL for the life of the modal, and a ten-year catch-up
+ * package is a lot of pages on a phone. A 3x Letter page is 1836x2376.
+ */
+export function defaultScale(): number {
+  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  return Math.min(3, Math.max(1.5, 1.5 * dpr));
 }
 
 type PdfjsModule = typeof import('pdfjs-dist');
@@ -112,7 +130,11 @@ function obscureBand(
 ) {
   const h = Math.ceil(bottom - top);
   if (h <= 0) return;
-  const BLOCK = 7;
+  // Proportional to the page, NOT a fixed pixel count. A fixed 7 was tuned at
+  // one render scale, and raising the scale would have made the blocks finer
+  // relative to the text, quietly handing back some of the argument this is
+  // here to withhold. 7/918 is that original coarseness, held at any scale.
+  const BLOCK = Math.max(7, Math.round(canvas.width / 131));
   const small = document.createElement('canvas');
   small.width = Math.max(1, Math.ceil(canvas.width / BLOCK));
   small.height = Math.max(1, Math.ceil(h / BLOCK));
@@ -182,7 +204,7 @@ export async function rasterizePdf(
   bytes: Uint8Array,
   opts: RasterizeOptions = {},
 ): Promise<RasterPage[]> {
-  const { scale = 1.5, watermark = 'DRAFT', gateArgument = false, onPage } = opts;
+  const { scale = defaultScale(), watermark = 'DRAFT', gateArgument = false, onPage } = opts;
   const pdfjs = await loadPdfjs();
 
   const task = pdfjs.getDocument({
