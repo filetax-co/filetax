@@ -5,13 +5,16 @@
 # 301s must sit above the SPA catch-all, which would otherwise swallow them.
 /resources/pro-forma-1120-every-field-foreign-owned-de  /resources/pro-forma-1120-explained  301
 
-# /filing/:id is the one private route with a DYNAMIC segment, so postbuild
-# cannot write it a 200 shell the way it does for /dashboard and /intake: there
-# is no file to write, the id is different every time. Cloudflare then answers
-# it out of 404.html, which is how a filer returning from Dodo checkout, whose
-# return URL is exactly this path, ended up watching a tab titled "Page not
-# found" while verify-payment ran behind it. The page itself always rendered.
-# Above the catch-all because rules are matched in order.
-/filing/:id   /index.html   200
-
+# DO NOT add a `/filing/:id  /index.html  200` rule here. It was tried on
+# 5 August 2026 and it broke the payment return path within one deploy:
+# Cloudflare canonicalises the /index.html destination to /, and a placeholder
+# source turns the intended rewrite into a REDIRECT, so
+# /filing/<id>?payment_id=... answered 308 to /?payment_id=..., landing a filer
+# who had just paid on the homepage with verify-payment never running. The
+# 404 status it was meant to fix is cosmetic; that was money.
+#
+# The visible symptom, a tab reading "Page not found" on a page that renders
+# perfectly, is fixed in FilingWizard with usePageMeta instead. If the status
+# itself ever has to be 200, test it on a Cloudflare PREVIEW deployment, not
+# here.
 /*    /index.html   200
