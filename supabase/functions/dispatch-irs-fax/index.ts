@@ -17,6 +17,14 @@ const SINCH_FAX_NUMBER = Deno.env.get('SINCH_FAX_NUMBER');
 const TEST_DESTINATION = '+19898989898';
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
+// How long a row may sit in `dispatching` before another attempt may claim it.
+// A run that dies between the insert and the Sinch response (network drop, wall
+// clock or CPU limit, a crashed isolate) leaves the row claimed by nobody. With
+// no reclaim, every later attempt sees a live dispatch, returns `duplicate`, and
+// the paid fax can never be sent again. Comfortably longer than the worst
+// observed Sinch call, so this cannot overlap a request still in flight.
+const STALE_DISPATCH_MS = 5 * 60 * 1000;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -32,6 +40,10 @@ function json(body: unknown, status = 200) {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  // Set once a transmission row is claimed by this request. Everything before
+  // that point owns no row and has nothing to release.
+  let releaseClaim: ((reason: string) => Promise<void>) | null = null;
 
   try {
     if (
@@ -69,17 +81,47 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .single();
     if (filingErr || !filing) return json({ error: 'Filing not found.' }, 404);
-    if (!['paid', 'completed'].includes(filing.status) || filing.include_irs_fax !== true) {
+    if (!['paid', 'completed'].includes(filing.status)) {
+      return json({ error: 'This filing does not have paid IRS fax delivery.' }, 403);
+    }
+
+    // Entitlement is JOB-WIDE, because the fee is. `create-checkout-session`
+    // charges one $9 fax if ANY filing in the job has the flag, and
+    // `verify-payment` re-derives the same cart. Reading only the row the filer
+    // happens to be standing on contradicted both: on a catch-up the flag lives
+    // on whichever year's intake screen the filer ticked it, nothing mirrors it
+    // to the sibling years, and the bundle can be generated from any year's
+    // screen. Paying from the 2022 screen and generating from the 2024 one
+    // bought a transmission that was then refused here, silently, with the $9
+    // already taken. The idempotency key is job-scoped, so the entitlement has
+    // to be too.
+    let entitled = filing.include_irs_fax === true;
+    if (!entitled && filing.job_id) {
+      const { data: siblings } = await supabase
+        .from('filings')
+        .select('include_irs_fax')
+        .eq('job_id', filing.job_id)
+        .eq('user_id', user.id);
+      entitled = (siblings ?? []).some((row) => row.include_irs_fax === true);
+    }
+    if (!entitled) {
       return json({ error: 'This filing does not have paid IRS fax delivery.' }, 403);
     }
     const dispatchKey = filing.job_id ? `job:${filing.job_id}` : `filing:${filing.id}`;
 
     const { data: existing } = await supabase
       .from('fax_transmissions')
-      .select('id, status, provider_fax_id, attempts')
+      .select('id, status, provider_fax_id, attempts, updated_at')
       .eq('dispatch_key', dispatchKey)
       .maybeSingle();
-    if (existing && existing.status !== 'failed') {
+
+    // An abandoned claim is not a live one. Only `dispatching` can go stale:
+    // `submitted` and `delivered` are settled, and `failed` is already claimable.
+    const stale = !!existing
+      && existing.status === 'dispatching'
+      && Date.now() - new Date(existing.updated_at).getTime() > STALE_DISPATCH_MS;
+
+    if (existing && existing.status !== 'failed' && !stale) {
       return json({
         status: existing.status,
         fax_id: existing.provider_fax_id,
@@ -94,6 +136,10 @@ serve(async (req) => {
     let attempts: number;
     if (existing) {
       attempts = Number(existing.attempts) + 1;
+      // Claim on the state we read, and on `updated_at` being untouched since we
+      // read it. Two racing attempts on the same stale row both see the same
+      // timestamp; the first update changes it, so the second matches no row and
+      // backs off rather than dispatching a second fax.
       const { data: claimed, error: claimErr } = await supabase
         .from('fax_transmissions')
         .update({
@@ -103,7 +149,8 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id)
-        .eq('status', 'failed')
+        .eq('status', existing.status)
+        .eq('updated_at', existing.updated_at)
         .select('id')
         .single();
       if (claimErr || !claimed) return json({ status: 'dispatching', duplicate: true }, 202);
@@ -150,23 +197,44 @@ serve(async (req) => {
     outbound.set('labels[filingId]', filing.id);
     outbound.set('labels[transmissionId]', transmissionId);
 
+    // Release the claim on ANY outcome that is not a submitted fax, so the row
+    // never outlives the request that owns it. A throw here used to fall through
+    // to the outer catch, which logged and returned 500 with the row still
+    // saying `dispatching`: the attempt counter never advanced, no reason was
+    // recorded, and the filer was left paid, unsent and unable to retry.
+    const markFailed = async (reason: string, providerStatus: string | null = null) => {
+      const { error } = await supabase.from('fax_transmissions').update({
+        status: 'failed',
+        provider_status: providerStatus,
+        failure_reason: reason.slice(0, 500),
+        updated_at: new Date().toISOString(),
+      }).eq('id', transmissionId);
+      if (error) console.error('[dispatch-irs-fax] release claim', transmissionId, error);
+    };
+    // Also reachable from the outer catch, for anything that throws between here
+    // and the `submitted` write.
+    releaseClaim = markFailed;
+
     const basic = btoa(`${SINCH_ACCESS_KEY}:${SINCH_ACCESS_SECRET}`);
-    const response = await fetch(
-      `https://fax.api.sinch.com/v3/projects/${encodeURIComponent(SINCH_PROJECT_ID)}/faxes`,
-      { method: 'POST', headers: { Authorization: `Basic ${basic}` }, body: outbound },
-    );
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://fax.api.sinch.com/v3/projects/${encodeURIComponent(SINCH_PROJECT_ID)}/faxes`,
+        { method: 'POST', headers: { Authorization: `Basic ${basic}` }, body: outbound },
+      );
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Sinch could not be reached.';
+      await markFailed(`Transport error: ${reason}`);
+      console.error('[dispatch-irs-fax] Sinch transport', err);
+      return json({ error: 'Sinch could not be reached. Please try again.' }, 502);
+    }
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok || typeof result.id !== 'string') {
       const reason = typeof result.message === 'string'
-        ? result.message.slice(0, 500)
+        ? result.message
         : `Sinch returned HTTP ${response.status}`;
-      await supabase.from('fax_transmissions').update({
-        status: 'failed',
-        provider_status: typeof result.status === 'string' ? result.status : null,
-        failure_reason: reason,
-        updated_at: new Date().toISOString(),
-      }).eq('id', transmissionId);
+      await markFailed(reason, typeof result.status === 'string' ? result.status : null);
       console.error('[dispatch-irs-fax] Sinch response', response.status, result);
       return json({ error: 'Sinch could not accept the fax. Please try again.' }, 502);
     }
@@ -181,9 +249,15 @@ serve(async (req) => {
     }).eq('id', transmissionId);
     if (updateErr) console.error('[dispatch-irs-fax] metadata update', updateErr);
 
+    releaseClaim = null;
     return json({ status: 'submitted', fax_id: result.id, destination: TEST_DESTINATION });
   } catch (err) {
     console.error('[dispatch-irs-fax]', err);
+    if (releaseClaim) {
+      await releaseClaim(
+        `Unhandled error before submission: ${err instanceof Error ? err.message : String(err)}`,
+      ).catch((releaseErr) => console.error('[dispatch-irs-fax] release on throw', releaseErr));
+    }
     return json({ error: 'Internal server error' }, 500);
   }
 });

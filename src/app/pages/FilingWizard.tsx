@@ -5,6 +5,7 @@ import { startCheckout } from '../../lib/checkout';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { SignaturePad } from '../components/SignaturePad';
 import type { DrawnSignature } from '../../lib/drawnSignature';
+import type { FaxDispatchResult } from '../../lib/faxDispatch';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -221,11 +222,7 @@ export default function FilingWizard() {
         try {
           const { dispatchIrsFax } = await import('../../lib/faxDispatch');
           const result = await dispatchIrsFax(fi.id, pkg.faxPayload);
-          setFaxNotice(
-            result.status === 'delivered'
-              ? 'Fax delivered. Your transmission confirmation is recorded.'
-              : 'Fax submitted. We are waiting for Sinch to confirm delivery.',
-          );
+          setFaxNotice(faxNoticeFor(result));
         } catch (faxErr) {
           setFaxNotice(
             `Your forms downloaded, but the fax was not submitted: ${
@@ -342,10 +339,17 @@ export default function FilingWizard() {
       const jobNarrative =
         (job?.rcl_narrative?.trim() || null) ||
         narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons, years.length);
+      // The $9 fax is one fee for the whole catch-up, and the flag sits on
+      // whichever year's intake screen the filer ticked it on. Reading only the
+      // year whose screen this is meant a bundle generated from a different year
+      // silently skipped the fax the filer had already paid for. Checkout asks
+      // the same question of the whole job, so this does too.
+      const jobWantsFax = yearFilings.some((f) => f.include_irs_fax === true);
+
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
         rclNarrative: jobNarrative,
-        fax: filing.include_irs_fax === true,
+        fax: jobWantsFax,
         // One drawing signs the whole catch-up: the single reasonable cause
         // letter and every year's pro forma 1120.
         drawnSignature,
@@ -378,17 +382,13 @@ export default function FilingWizard() {
       // the job sitting in "Ready to download" with the forms already on disk.
       await markDownloaded(yearFilings as Filing[]);
 
-      if (filing.include_irs_fax === true) {
+      if (jobWantsFax) {
         if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
         setFaxNotice('Submitting your signed multi-year package by fax...');
         try {
           const { dispatchIrsFax } = await import('../../lib/faxDispatch');
           const result = await dispatchIrsFax(filing.id, pkg.faxPayload);
-          setFaxNotice(
-            result.status === 'delivered'
-              ? 'Fax delivered. Your transmission confirmation is recorded.'
-              : 'Fax submitted. We are waiting for Sinch to confirm delivery.',
-          );
+          setFaxNotice(faxNoticeFor(result));
         } catch (faxErr) {
           setFaxNotice(
             `Your forms downloaded, but the fax was not submitted: ${
@@ -932,6 +932,27 @@ const errorBannerStyle: React.CSSProperties = {
   fontSize: '0.875rem',
   marginBottom: '1.25rem',
 };
+
+/**
+ * What to tell the filer about a dispatch result.
+ *
+ * `duplicate` used to be flattened into the success line, so the one case where
+ * nothing was sent, a claim left behind by an attempt that died mid-flight, read
+ * exactly like a fax on its way to the IRS. A filer cannot act on a message that
+ * hides the difference, so each state now says what it is.
+ */
+function faxNoticeFor(result: FaxDispatchResult): string {
+  if (result.status === 'delivered') {
+    return 'Fax delivered. Your transmission confirmation is recorded.';
+  }
+  if (result.duplicate) {
+    return result.status === 'dispatching'
+      ? 'A fax for this filing is already being submitted, so we did not send a second one. '
+        + 'Check back in a few minutes, and email support@filetax.co if it has not moved.'
+      : 'This filing has already been faxed to the IRS. We did not send it twice.';
+  }
+  return 'Fax submitted. We are waiting for Sinch to confirm delivery.';
+}
 
 const infoBannerStyle: React.CSSProperties = {
   background: 'var(--tf-offset)',

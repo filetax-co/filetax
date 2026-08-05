@@ -92,7 +92,7 @@ serve(async (req) => {
     if (anchorErr || !anchor) return json({ error: 'Filing not found' }, 404);
 
     let filings = [anchor];
-    let job: { include_rcl?: boolean; delivery?: string } | null = null;
+    let job: { include_rcl?: boolean } | null = null;
     if (anchor.job_id) {
       const [{ data: jobFilings, error: filingsErr }, { data: jobData, error: jobErr }] =
         await Promise.all([
@@ -103,7 +103,7 @@ serve(async (req) => {
             .eq('user_id', user.id),
           supabase
             .from('filing_jobs')
-            .select('include_rcl, delivery')
+            .select('include_rcl')
             .eq('id', anchor.job_id)
             .eq('user_id', user.id)
             .single(),
@@ -136,7 +136,11 @@ serve(async (req) => {
     }
 
     const includeRcl = job?.include_rcl === true || filings.some((filing) => filing.include_rcl === true);
-    const includeFax = job?.delivery === 'fax' || filings.some((filing) => filing.include_irs_fax === true);
+    // One source for the fax entitlement, matching create-checkout-session and
+    // dispatch-irs-fax. See the note there: `filing_jobs.delivery` was a second
+    // source that nothing ever wrote, and the price re-derived here has to be
+    // computed from exactly what the cart was built from.
+    const includeFax = filings.some((filing) => filing.include_irs_fax === true);
     const additionalParties = filings.reduce(
       (total, filing) => total + relatedPartyCount(filing.related_parties),
       0,
