@@ -62,11 +62,13 @@ async function mutate(mutations) {
  * "What You Need to Know First" to rename) and is skipped by the leading-paren
  * test rather than by hardcoding the slug.
  */
-function parseHeadingTable(md, sectionHeading, oldHeading) {
+function parseHeadingTable(md, sectionHeading, oldHeading, endMarker) {
   const start = md.indexOf(sectionHeading);
   if (start === -1) throw new Error(`section not found: ${sectionHeading}`);
-  const rest = md.slice(start);
-  const end = rest.indexOf('\n---');
+  const rest = md.slice(start + sectionHeading.length);
+  // Section 7 carries two tables under one heading, so callers there pass an
+  // explicit end marker. Elsewhere the horizontal rule ends the section.
+  const end = endMarker ? rest.indexOf(endMarker) : rest.indexOf('\n---');
   const body = rest.slice(0, end === -1 ? undefined : end);
   const rows = [];
   for (const line of body.split('\n')) {
@@ -82,8 +84,9 @@ function parseHeadingTable(md, sectionHeading, oldHeading) {
 
 const md = readFileSync(SOURCE, 'utf8');
 
-if (!['headings', 'faq', 'arithmetic', 'exposure'].includes(pass)) {
-  console.error('Usage: node scripts/applyBlogRewrite.mjs <headings|faq|arithmetic|exposure> [--write]');
+const PASSES = ['headings', 'faq', 'arithmetic', 'exposure', 'drafts', 'dashes'];
+if (!PASSES.includes(pass)) {
+  console.error(`Usage: node scripts/applyBlogRewrite.mjs <${PASSES.join('|')}> [--write]`);
   process.exit(1);
 }
 
@@ -210,6 +213,134 @@ function parseArithmetic(source) {
     out.push({ slug, section, blocks });
   }
   return out;
+}
+
+/* ── The six unpublished drafts, section 7 ────────────────────────────────
+ *
+ * Sections 1 to 6 only ever saw the 30 published posts, because that is all
+ * the unauthenticated API returned. Six more exist, unpublished, and every one
+ * carries both fixed headings: publishing any of them would put the template
+ * straight back. Section 7 gives them the same treatment before they go live.
+ *
+ * `headings` above cannot do this job. It matches one heading block per post
+ * and refuses anything else, and one of these six has its opening heading
+ * split into TWO H2 blocks with a paragraph between them, which that pass
+ * correctly declines to touch.
+ */
+if (pass === 'drafts') {
+  const top = parseHeadingTable(
+    md,
+    '## 7. The six unpublished drafts',
+    'What You Need to Know First',
+    'New H2 for "What this means for your filing"',
+  );
+  const close = parseHeadingTable(md, 'New H2 for "What this means for your filing"', 'What this means for your filing');
+  const wanted = new Map();
+  for (const r of [...top, ...close]) {
+    if (!wanted.has(r.slug)) wanted.set(r.slug, []);
+    wanted.get(r.slug).push(r);
+  }
+  console.log(`Parsed heading pairs for ${wanted.size} unpublished drafts.\n`);
+
+  const posts = await query(
+    `*[_type=="post" && slug.current in ${JSON.stringify([...wanted.keys()])}]{_id, "slug": slug.current, body}`,
+  );
+  const mutations = [];
+  const problems = [];
+
+  for (const post of posts) {
+    const body = [...(post.body ?? [])];
+    let touched = 0;
+    for (const { oldHeading, newHeading } of wanted.get(post.slug) ?? []) {
+      // The split-heading case: "What You Need to Know" and " First" as two
+      // separate H2s. Take the first half, delete the orphan.
+      const exact = body.findIndex(
+        (b) => b._type === 'block' && b.style === 'h2' && norm(textOf(b)) === norm(oldHeading),
+      );
+      if (exact !== -1) {
+        body[exact] = makeBlock('h2', newHeading);
+        touched++;
+        continue;
+      }
+      const head = body.findIndex(
+        (b) => b._type === 'block' && b.style === 'h2' && norm(oldHeading).startsWith(norm(textOf(b))) && norm(textOf(b)).length > 6,
+      );
+      const tail = body.findIndex(
+        (b, i) => i > head && b._type === 'block' && b.style === 'h2' && norm(oldHeading).endsWith(norm(textOf(b))),
+      );
+      if (head !== -1 && tail !== -1) {
+        console.log(`${post.slug}: heading was split across two H2 blocks, joining and deleting the orphan " ${textOf(body[tail]).trim()}"`);
+        body[head] = makeBlock('h2', newHeading);
+        body.splice(tail, 1);
+        touched++;
+        continue;
+      }
+      problems.push(`${post.slug}: no H2 "${oldHeading}"`);
+    }
+    if (!touched) continue;
+    console.log(`${post.slug}: ${touched} headings replaced`);
+    mutations.push({ patch: { id: post._id, set: { body } } });
+  }
+
+  console.log(`\n${mutations.length} drafts to patch.`);
+  for (const p of problems) console.log(`  PROBLEM ${p}`);
+  if (!WRITE) {
+    console.log('\nDry run. Nothing was written. Re-run with --write to apply.');
+    process.exit(0);
+  }
+  const result = await mutate(mutations);
+  console.log(`\nWritten. Transaction ${result.transactionId}, ${result.results.length} documents.`);
+  console.log('These are drafts: nothing is live until someone publishes them.');
+  process.exit(0);
+}
+
+/* ── Em dashes ────────────────────────────────────────────────────────────
+ *
+ * The house style has no em dashes anywhere, including SEO fields. Two exist
+ * in the dataset and both are the same construction: another article's title
+ * quoted in running prose with an em dash, where the article's real title uses
+ * a hyphen. So a hyphen is not a substitution, it is the correction.
+ *
+ * This walks every field and every span rather than the two known cases, so it
+ * stays useful as a check after any future write.
+ */
+if (pass === 'dashes') {
+  const DASH = /[—–]/g;
+  const posts = await query('*[_type=="post"]{_id, "slug": slug.current, title, excerpt, seoTitle, seoDescription, body}');
+  const mutations = [];
+  let found = 0;
+
+  for (const post of posts) {
+    const set = {};
+    for (const field of ['title', 'excerpt', 'seoTitle', 'seoDescription']) {
+      if (typeof post[field] === 'string' && DASH.test(post[field])) {
+        set[field] = post[field].replace(DASH, '-');
+        console.log(`${post.slug} ${field}: ${set[field]}`);
+        found++;
+      }
+    }
+    for (const block of post.body ?? []) {
+      if (block._type !== 'block') continue;
+      for (const span of block.children ?? []) {
+        if (typeof span.text !== 'string' || !DASH.test(span.text)) continue;
+        const next = span.text.replace(DASH, '-');
+        set[`body[_key=="${block._key}"].children[_key=="${span._key}"].text`] = next;
+        console.log(`${post.slug} body: ${next.trim().slice(0, 160)}`);
+        found++;
+      }
+    }
+    if (Object.keys(set).length) mutations.push({ patch: { id: post._id, set } });
+  }
+
+  console.log(`\n${found} dashes in ${mutations.length} posts.`);
+  if (!WRITE) {
+    console.log('\nDry run. Nothing was written. Re-run with --write to apply.');
+    process.exit(0);
+  }
+  if (!mutations.length) process.exit(0);
+  const result = await mutate(mutations);
+  console.log(`\nWritten. Transaction ${result.transactionId}, ${result.results.length} documents.`);
+  process.exit(0);
 }
 
 /* ── Item 15, section 5.2 ─────────────────────────────────────────────────
