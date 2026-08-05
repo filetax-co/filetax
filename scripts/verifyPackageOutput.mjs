@@ -37,6 +37,7 @@ globalThis.fetch = async (url, init) => {
 const {
   generateFilingPackage,
   shouldIncludeReasonableCause,
+  buildFaxConfirmation,
 } = await import('../src/lib/pdfGenerator.ts');
 const { PDFDocument } = await import('pdf-lib');
 
@@ -335,6 +336,92 @@ console.log('\n- drawn signature -');
   check('the fax is the package plus a cover, minus the instructions',
     faxPages.length === combinedPages.length - instructionPageCount(combinedPages) + 1,
     `fax ${faxPages.length} pages, package ${combinedPages.length}`);
+}
+
+// The confirmation is EVIDENCE, so the assertions are about what it may and may
+// not say, not about how it looks. Two of them are negative: the claim it must
+// never make, and the field we cannot honestly produce.
+console.log('\n- fax transmission confirmation -');
+{
+  const record = {
+    id: '11111111-2222-3333-4444-555555555555',
+    provider: 'sinch',
+    provider_fax_id: '01KZ894NVX6457J0F9DMPHH345',
+    // Not IRS_5472_FAX. The receipt states the number the fax actually went to,
+    // which today is the provider's test destination and will one day be Ogden.
+    destination: '+19898989898',
+    sender_fax: '+15005550001',
+    status: 'delivered',
+    attempts: 2,
+    page_count: 9,
+    pages_sent: 7,
+    provider_status: 'COMPLETED',
+    provider_error_code: null,
+    failure_reason: null,
+    submitted_at: '2026-08-05T21:04:11.000Z',
+    delivered_at: '2026-08-05T21:06:48.000Z',
+  };
+
+  const confirmation = await buildFaxConfirmation(baseFiling, record, {
+    formCount: 1, hasRCL: true, has7004: false, taxYears: [2025],
+  });
+  const text = (await pageTexts(confirmation)).join('\n');
+
+  check('the confirmation carries the provider fax id', text.includes(record.provider_fax_id));
+  check('the confirmation states the destination that was actually dialled',
+    text.includes(record.destination));
+  check('the confirmation states the sender recorded at submit time',
+    text.includes(record.sender_fax));
+
+  // The delivered instant, read against the RECEIVING campus's clock. 21:06 UTC
+  // on 5 August is 15:06 Mountain, and printing 21:06 with no zone, or the
+  // filer's own zone, describes a different moment than the one the IRS line
+  // recorded.
+  check('the delivery time is printed in the receiving campus time zone',
+    /15:06:48/.test(text), 'expected 15:06:48 MT for 21:06:48 UTC on 5 August');
+  check('the time zone is named rather than left to be guessed',
+    /Mountain Time/.test(text) && /MT/.test(text));
+  check('the absolute time is printed alongside it',
+    /21:06:48/.test(text) && /UTC/.test(text));
+
+  // The partial send. This is the one fact on the page that changes what a
+  // filer should do, and the benchmark receipt cannot state it at all.
+  check('pages transmitted and pages received are both stated',
+    /Pages transmitted/.test(text) && /Pages received/.test(text));
+  check('a partial send is called out, not left to be inferred',
+    /9 pages were transmitted and 7 were confirmed received/.test(text));
+
+  // The claim that must never appear. A fax confirmation evidences transmission
+  // to a number on a date; timeliness depends on the deadline and acceptance is
+  // the Service's to give.
+  check('the confirmation never claims proof of on-time filing',
+    !/proof of (on-)?time(ly)? filing/i.test(text));
+  check('the confirmation says plainly that it is not an IRS acknowledgement',
+    /not an acknowledgement from the Internal Revenue Service/i.test(text));
+
+  // Sinch does not report call duration, and completedTime - createTime is queue
+  // time plus transmission time, which is a different quantity.
+  check('the confirmation prints no call duration', !/duration/i.test(text));
+
+  // Retention lives here because the filing date starts the clock and this is
+  // the document that carries the filing date.
+  check('the retention rule is on the confirmation',
+    /6038A/.test(text) && /6501\(c\)\(8\)/.test(text) && /six years/.test(text));
+
+  // A failed transmission still renders: a filer disputing a $9 charge, or
+  // showing support what happened, needs the record as much as a delivered one.
+  const failedText = (await pageTexts(await buildFaxConfirmation(
+    baseFiling,
+    { ...record, status: 'failed', delivered_at: null, pages_sent: null, page_count: null,
+      provider_status: 'FAILURE', provider_error_code: '4004', failure_reason: 'No answer at the destination.' },
+    { formCount: 1, hasRCL: true, has7004: false, taxYears: [2025] },
+  ))).join('\n');
+  check('a failed transmission renders a record rather than nothing',
+    /Not delivered/.test(failedText) && /No answer at the destination/.test(failedText));
+  check('a failed transmission carries the provider error code',
+    /4004/.test(failedText));
+  check('a failed transmission does not claim a delivery time',
+    !/Delivered/.test(failedText));
 }
 
 // Form 1120 item E is one of only TWO things the Form 5472 instructions require

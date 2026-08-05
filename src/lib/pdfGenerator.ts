@@ -1597,6 +1597,282 @@ export const buildFaxCoverPage = async (
   return doc;
 };
 
+// ─── Fax transmission confirmation ───────────────────────────────────────────
+//
+// The document the filer keeps. Everything the fax path already recorded, on
+// one page, in a form that can be handed to the IRS in a penalty dispute under
+// IRC 6038A without any further explanation.
+//
+// Three rules govern what may appear on it, and each cost something to settle:
+//
+//   - EVERY FACT COMES FROM THE TRANSMISSION ROW. Not from config, not from
+//     `IRS_5472_FAX`, not from the clock at render time. The sender number
+//     changed once already and the destination will change again when real IRS
+//     routing is enabled; a receipt reprinted after either change must still
+//     describe the fax that was actually sent. That is why `sender_fax` and
+//     `destination` are columns and not constants.
+//
+//   - IT CLAIMS TRANSMISSION, NEVER TIMELINESS. The benchmark competitor prints
+//     that its receipt "constitutes proof of on-time filing". It is not. It is
+//     proof that a document reached a fax number on a date. Whether that date
+//     is timely depends on the deadline, and whether the IRS accepts the return
+//     is a separate question no fax confirmation can speak to. Under the claims
+//     rules this states the transmission and the date and lets the filer draw
+//     the conclusion.
+//
+//   - PAGES TRANSMITTED AND PAGES RECEIVED STAY SEPARATE. Sinch reports
+//     `numberOfPages` and `pagesSentSuccessfully` and they are not the same
+//     number. On a partial send the gap between them is the most important fact
+//     on the page, and collapsing them into one "pages" figure is exactly how
+//     that fact gets lost.
+//
+// Call duration is deliberately absent. Sinch's Fax object does not carry it,
+// and `completedTime - createTime` is queue time plus transmission time, which
+// is a different quantity. Do not print that difference under that label.
+
+/**
+ * The transmission facts a confirmation needs.
+ *
+ * Structural on purpose: `FaxTransmission` from faxTransmissions.ts satisfies
+ * it, and this file stays free of any data-layer import.
+ */
+export interface FaxConfirmationRecord {
+  id: string;
+  provider: string;
+  provider_fax_id: string | null;
+  destination: string;
+  sender_fax: string | null;
+  status: string;
+  attempts: number;
+  page_count: number | null;
+  pages_sent: number | null;
+  provider_status: string | null;
+  provider_error_code: string | null;
+  failure_reason: string | null;
+  submitted_at: string | null;
+  delivered_at: string | null;
+}
+
+export interface FaxConfirmationOpts {
+  /** Forms 5472 transmitted, one per related party. */
+  formCount: number;
+  /** A Reasonable Cause Statement was in the transmission. */
+  hasRCL: boolean;
+  /** A Form 7004 was in the transmission. */
+  has7004: boolean;
+  /** Every tax year the transmission covered. A catch-up sends one fax for all of them. */
+  taxYears: number[];
+  /** Render date, for the footer. Defaults to today. */
+  renderedOn?: Date;
+}
+
+/**
+ * Where the receiving IRS campus is, and therefore whose clock the timestamps
+ * on this receipt are read against.
+ *
+ * Form 5472 for a foreign-owned disregarded entity is faxed to Ogden, Utah,
+ * which is Mountain Time. A bare timestamp is useless as evidence if the reader
+ * has to guess the zone, and a timestamp in the filer's own zone invites the
+ * wrong comparison: the question a receipt answers is when the RECEIVING line
+ * accepted the pages. Both the campus-local time and UTC are printed, so the
+ * document is readable at a glance and still absolute.
+ *
+ * Change both together if the destination campus ever changes.
+ */
+const IRS_CAMPUS_TZ = 'America/Denver';
+const IRS_CAMPUS_TZ_LABEL = 'Ogden, Utah (Mountain Time)';
+
+/**
+ * An instant, printed as evidence: campus-local first, UTC in brackets.
+ *
+ * Intl rather than hand arithmetic because Mountain Time is DST-observing, and
+ * the offset on the day of the fax is the only one that describes that fax.
+ */
+const fmtInstant = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  const local = new Intl.DateTimeFormat('en-US', {
+    timeZone: IRS_CAMPUS_TZ,
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).format(at);
+  const utc = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).format(at);
+  return `${local} MT\n(${utc} UTC)`;
+};
+
+/**
+ * What was in the transmission, named the way the package names it.
+ *
+ * Built from the same three flags the fax cover's enclosure list is built from,
+ * so the receipt and the page Ogden received cannot describe different
+ * contents.
+ */
+const confirmationContents = (opts: FaxConfirmationOpts): string => {
+  const parts: string[] = [];
+  if (opts.hasRCL) parts.push('Reasonable Cause Statement');
+  parts.push('Pro forma Form 1120 (transmittal)');
+  if (opts.has7004) parts.push('Form 7004');
+  parts.push(
+    opts.formCount === 1
+      ? 'Form 5472, with its Part V / Part VI statements'
+      : `${opts.formCount} Forms 5472, one per related party, each with its Part V / Part VI statements`,
+  );
+  return parts.join('\n');
+};
+
+export const buildFaxConfirmation = async (
+  rawFiling: Filing,
+  record: FaxConfirmationRecord,
+  opts: FaxConfirmationOpts,
+): Promise<Uint8Array> => {
+  const filing = normalizeFiling(rawFiling);
+  const doc  = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg  = await doc.embedFont(StandardFonts.Helvetica);
+  const fonts: FontPair = { bold, reg };
+
+  let { page, cursor } = newPage(doc);
+  const entity = filing.llc_name ?? '';
+  const delivered = record.status === 'delivered';
+
+  // ── Title ──────────────────────────────────────────────────────────────────
+  cursor.y = drawWrapped(page, 'Fax Transmission Confirmation', MARGIN, cursor.y,
+    { size: FS_HEADING, font: bold }, fonts);
+  cursor.y -= 2;
+  cursor.y = drawWrapped(page,
+    'Form 5472 and pro forma Form 1120, filed under Internal Revenue Code section 6038A',
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 8;
+  drawRule(page, cursor);
+
+  // ── Rows ───────────────────────────────────────────────────────────────────
+  // A label column and a value column, values allowed to run to several lines.
+  // Nothing is omitted because it is empty: a blank "Pages received" on a
+  // receipt is itself informative, so the row prints "Not recorded" rather than
+  // disappearing and leaving the reader to wonder whether it was ever known.
+  const rows: [string, string][] = [
+    ['Taxpayer', entity],
+    ['EIN', filing.ein ?? ''],
+    ['Owner', filing.owner.full_name ?? ''],
+    ['Tax year(s)', [...opts.taxYears].sort((a, b) => a - b).join(', ')],
+    ['Transmitted', confirmationContents(opts)],
+    ['Sent to', `Internal Revenue Service\nFax ${record.destination}`],
+    ['Sent from', record.sender_fax ? `Fax ${record.sender_fax}` : ''],
+    ['Submitted', fmtInstant(record.submitted_at)],
+    [delivered ? 'Delivered' : 'Delivery', delivered
+      ? fmtInstant(record.delivered_at)
+      : `Not delivered. ${record.failure_reason ?? 'The transmission did not complete.'}`],
+    ['Pages transmitted', record.page_count != null ? String(record.page_count) : ''],
+    ['Pages received', record.pages_sent != null ? String(record.pages_sent) : ''],
+    ['Attempts', String(record.attempts)],
+    ['Transmission ID', record.id],
+    ['Provider reference', record.provider_fax_id
+      ? `${record.provider_fax_id} (${record.provider})`
+      : record.provider],
+  ];
+  if (record.provider_error_code) {
+    rows.push(['Provider error code', record.provider_error_code]);
+  }
+
+  const LABEL_W = 128;
+  for (const [label, value] of rows) {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+    const startY = cursor.y;
+    page.drawText(toFormText(label), {
+      x: MARGIN, y: startY, size: FS_BODY, font: bold, color: rgb(0, 0, 0),
+    });
+    let vy = startY;
+    for (const seg of (value || 'Not recorded').split('\n')) {
+      vy = drawWrapped(page, seg, MARGIN + LABEL_W, vy,
+        { size: FS_BODY, maxWidth: COL_W - LABEL_W }, fonts);
+    }
+    cursor.y = Math.min(vy, startY - 12) - 4;
+  }
+  cursor.y -= 6;
+  drawRule(page, cursor);
+
+  // ── Timestamp basis ────────────────────────────────────────────────────────
+  // Stated once, plainly, immediately under the times it governs. A timestamp
+  // whose zone the reader has to infer is not evidence.
+  cursor.y = drawWrapped(page,
+    `Times are shown in the local time of the receiving IRS campus, ${IRS_CAMPUS_TZ_LABEL}, `
+    + 'with Coordinated Universal Time in brackets. The delivery time is the fax provider\'s own '
+    + 'record of when the transmission completed, not the time this document was produced.',
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 10;
+
+  // ── Partial send, when the two page counts disagree ────────────────────────
+  // The one thing on this page that changes what a filer should DO, so it is
+  // called out rather than left to be inferred from two numbers ten lines
+  // apart.
+  if (
+    delivered &&
+    record.page_count != null && record.pages_sent != null &&
+    record.pages_sent < record.page_count
+  ) {
+    if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+    cursor.y = drawWrapped(page,
+      `Note: ${record.page_count} pages were transmitted and ${record.pages_sent} were confirmed `
+      + 'received. Contact support@filetax.co before relying on this transmission.',
+      MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
+    cursor.y -= 10;
+  }
+
+  // ── What this document is, and is not ──────────────────────────────────────
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  cursor.y = drawWrapped(page, 'What this confirmation shows', MARGIN, cursor.y,
+    { size: FS_BODY, font: bold }, fonts);
+  cursor.y -= 3;
+  cursor.y = drawWrapped(page,
+    'This document records that the pages listed above were transmitted by fax to the number '
+    + 'shown, and that the receiving line confirmed the transmission at the time shown. It does '
+    + 'not establish that the filing was timely, and it is not an acknowledgement from the '
+    + 'Internal Revenue Service. Whether a return is timely depends on the filing deadline that '
+    + 'applies to it, and the Service does not issue a receipt for a faxed Form 5472.',
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 10;
+
+  // ── Record retention ───────────────────────────────────────────────────────
+  // This lives on the confirmation rather than anywhere else in the product
+  // because the filing date is what starts the clock, and this is the document
+  // that carries the filing date.
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  cursor.y = drawWrapped(page, 'Keep this with your records', MARGIN, cursor.y,
+    { size: FS_BODY, font: bold }, fonts);
+  cursor.y -= 3;
+  cursor.y = drawWrapped(page,
+    'Keep this confirmation together with the copy of the pages that were transmitted. Section '
+    + '6038A requires a reporting corporation to maintain records sufficient to establish the '
+    + 'correctness of its Form 5472, and a penalty asserted for a late or missing Form 5472 is '
+    + 'answered with evidence of what was filed and when. Note also that under section 6501(c)(8) '
+    + 'the period for assessing tax stays open until the required information is furnished, so '
+    + 'these records can matter for longer than the ordinary three-year period. We suggest keeping '
+    + 'them for at least six years from the date above. FileTax does not store your completed '
+    + 'forms, so this confirmation and your own copy are the record.',
+    MARGIN, cursor.y, { size: FS_BODY }, fonts);
+  cursor.y -= 14;
+
+  // ── Footer ─────────────────────────────────────────────────────────────────
+  if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
+  const renderedOn = opts.renderedOn ?? new Date();
+  const renderedISO = `${renderedOn.getFullYear()}-`
+    + `${String(renderedOn.getMonth() + 1).padStart(2, '0')}-`
+    + `${String(renderedOn.getDate()).padStart(2, '0')}`;
+  drawWrapped(page,
+    `Produced by FileTax on ${fmtDate(renderedISO)} from the transmission record identified above. `
+    + 'FileTax is a document preparation service and does not provide legal or tax advice.',
+    MARGIN, cursor.y, { size: FS_FOOTER, color: rgb(0.35, 0.35, 0.35) }, fonts);
+
+  return doc.save();
+};
+
 // ─── Form 5472 filler ───────────────────────────────────────────────────────────────────────────
 
 interface Fill5472Opts {
@@ -2440,6 +2716,16 @@ export const generateFilingPackage = async (
     /** Sending fax number, printed in the cover page's From block. */
     senderFax?: string;
     /**
+     * Date printed on the fax cover. Defaults to today, which is right when the
+     * package is being built to be sent.
+     *
+     * Passed explicitly when REBUILDING the copy of a fax already transmitted,
+     * from `fax_transmissions.submitted_at`. A filer's copy that carries today's
+     * date is a different document from the one Ogden holds, and the difference
+     * is on the page whose whole job is stating when the transmission happened.
+     */
+    sentOn?: Date;
+    /**
      * Drawn signature, a PNG data URL from the on-screen canvas. Applied to the
      * reasonable cause letter and to the pro forma 1120 signature line.
      *
@@ -2572,6 +2858,7 @@ export const generateFilingPackage = async (
       // column, no intake question, no UI. FaxCoverOpts.isAmended exists so the
       // cover is ready if that changes, but nothing can set it today.
       senderFax: opts.senderFax,
+      sentOn: opts.sentOn,
       drawnSignature: opts.drawnSignature,
     };
     const probe = await buildFaxCoverPage(filing, period, coverOpts);
@@ -2653,6 +2940,8 @@ export const generateMultiYearPackage = async (
     fax?: boolean;
     /** Sending fax number printed on the cover page. */
     senderFax?: string;
+    /** See the single-year option of the same name: set when rebuilding a sent copy. */
+    sentOn?: Date;
     /**
      * Drawn signature, applied to the single reasonable cause letter and to the
      * pro forma 1120 of EVERY year in the catch-up. One drawing signs the whole
@@ -2778,6 +3067,7 @@ export const generateMultiYearPackage = async (
       has7004: sorted.some((item) => wants7004(item.filing)),
       pageCount: 0,
       senderFax: opts.senderFax,
+      sentOn: opts.sentOn,
       taxYears,
       drawnSignature: opts.drawnSignature,
     };

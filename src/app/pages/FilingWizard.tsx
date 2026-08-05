@@ -4,8 +4,8 @@ import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { SignaturePad } from '../components/SignaturePad';
+import FaxPanel, { type FaxBuild } from '../components/FaxPanel';
 import type { DrawnSignature } from '../../lib/drawnSignature';
-import type { FaxDispatchResult } from '../../lib/faxDispatch';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +49,6 @@ export default function FilingWizard() {
   const [loading,      setLoading]      = useState(true);
   const [generating,   setGenerating]   = useState(false);
   const [genErr,       setGenErr]       = useState<string | null>(null);
-  const [faxNotice,    setFaxNotice]    = useState<string | null>(null);
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
@@ -171,7 +170,6 @@ export default function FilingWizard() {
     if (!id || !filing || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
-    setFaxNotice(null);
     try {
       const { data: fi, error: fiErr } = await supabase
         .from('filings').select('*').eq('id', id).single();
@@ -186,9 +184,12 @@ export default function FilingWizard() {
       // disclosed in Part VI, and filing on time avoids the $25,000 penalty
       // even when no Part IV/V transaction occurred.
       const { generateFilingPackage, refuseUnsupportedText } = await import('../../lib/pdfGenerator');
+      // No `fax: true` here. This path produces the filer's own copy, and
+      // building the transmission payload alongside it would run
+      // faxSignatureBlocker, which refuses an unsigned package: correct before
+      // a fax, wrong before a download the filer intends to print and sign.
       const pkg = await generateFilingPackage(fi, txns ?? [], undefined, {
         drawnSignature,
-        fax: fi.include_irs_fax === true,
       });
 
       // The IRS forms are rendered with WinAnsi-encoded fonts. Anything outside
@@ -211,26 +212,11 @@ export default function FilingWizard() {
       triggerDownload(pkg.combined, filename);
       await markDownloaded([fi]);
 
-      // The signed fax bytes exist only in this tab. Relay them after the filer
-      // has safely received their own download; a provider outage must never
-      // take the customer's forms away. The edge function re-checks ownership,
-      // paid status and the purchased add-on, and its unique filing row makes a
-      // repeated click idempotent.
-      if (fi.include_irs_fax === true) {
-        if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
-        setFaxNotice('Submitting your signed package by fax...');
-        try {
-          const { dispatchIrsFax } = await import('../../lib/faxDispatch');
-          const result = await dispatchIrsFax(fi.id, pkg.faxPayload);
-          setFaxNotice(faxNoticeFor(result));
-        } catch (faxErr) {
-          setFaxNotice(
-            `Your forms downloaded, but the fax was not submitted: ${
-              faxErr instanceof Error ? faxErr.message : 'please try again'
-            }`,
-          );
-        }
-      }
+      // Generating no longer faxes. It used to: one button produced the filer's
+      // PDF and transmitted a return to the IRS in the same click, so a filer
+      // who regenerated to redraw a signature dispatched a second time, and
+      // nobody could download their own forms without sending. A transmission
+      // cannot be recalled, so it gets its own deliberate click in FaxPanel.
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -304,33 +290,45 @@ export default function FilingWizard() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
+  /**
+   * Everything a catch-up job needs to be rebuilt: the job row, every year's
+   * filing, and every year's transactions.
+   *
+   * Extracted because the fax path needs exactly the same load as the download
+   * path, and two copies of a query that decides which years go to the IRS is
+   * one copy too many.
+   */
+  const loadJobYears = async (jobId: string) => {
+    const { data: job } = await supabase
+      .from('filing_jobs').select('include_rcl, rcl_narrative, reasonable_cause_reasons').eq('id', jobId).single();
+
+    const { data: yearFilings, error: yfErr } = await supabase
+      .from('filings').select('*').eq('job_id', jobId);
+    if (yfErr || !yearFilings || yearFilings.length === 0) {
+      throw new Error(yfErr?.message ?? 'No filings found for this catch-up job.');
+    }
+
+    // Load every year's transactions in parallel.
+    const years = await Promise.all(
+      yearFilings.map(async (f) => {
+        const { data: txns } = await supabase
+          .from('reportable_transactions').select('*').eq('filing_id', f.id);
+        return {
+          taxYear: Number(f.tax_year),
+          filing: f as Filing,
+          transactions: (txns ?? []) as Transaction[],
+        };
+      }),
+    );
+    return { job, yearFilings: yearFilings as Filing[], years };
+  };
+
   const handleGenerateJob = async (mode: 'bundle' | 'per-year') => {
     if (!filing?.job_id || !isPaid) return;
     setGenerating(true);
     setGenErr(null);
-    setFaxNotice(null);
     try {
-      const { data: job } = await supabase
-        .from('filing_jobs').select('include_rcl, rcl_narrative, reasonable_cause_reasons').eq('id', filing.job_id).single();
-
-      const { data: yearFilings, error: yfErr } = await supabase
-        .from('filings').select('*').eq('job_id', filing.job_id);
-      if (yfErr || !yearFilings || yearFilings.length === 0) {
-        throw new Error(yfErr?.message ?? 'No filings found for this catch-up job.');
-      }
-
-      // Load every year's transactions in parallel.
-      const years = await Promise.all(
-        yearFilings.map(async (f) => {
-          const { data: txns } = await supabase
-            .from('reportable_transactions').select('*').eq('filing_id', f.id);
-          return {
-            taxYear: Number(f.tax_year),
-            filing: f as Filing,
-            transactions: (txns ?? []) as Transaction[],
-          };
-        }),
-      );
+      const { job, yearFilings, years } = await loadJobYears(filing.job_id);
 
       const { generateMultiYearPackage, narrativeFromReasonCodes, refuseUnsupportedText } =
         await import('../../lib/pdfGenerator');
@@ -339,17 +337,11 @@ export default function FilingWizard() {
       const jobNarrative =
         (job?.rcl_narrative?.trim() || null) ||
         narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons, years.length);
-      // The $9 fax is one fee for the whole catch-up, and the flag sits on
-      // whichever year's intake screen the filer ticked it on. Reading only the
-      // year whose screen this is meant a bundle generated from a different year
-      // silently skipped the fax the filer had already paid for. Checkout asks
-      // the same question of the whole job, so this does too.
-      const jobWantsFax = yearFilings.some((f) => f.include_irs_fax === true);
 
+      // No `fax: true`: see handleGenerate. This is the filer's copy.
       const pkg = await generateMultiYearPackage(years, {
         includeRCL: !!job?.include_rcl,
         rclNarrative: jobNarrative,
-        fax: jobWantsFax,
         // One drawing signs the whole catch-up: the single reasonable cause
         // letter and every year's pro forma 1120.
         drawnSignature,
@@ -381,27 +373,89 @@ export default function FilingWizard() {
       // year is marked. Marking only the anchor filing would leave the rest of
       // the job sitting in "Ready to download" with the forms already on disk.
       await markDownloaded(yearFilings as Filing[]);
-
-      if (jobWantsFax) {
-        if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
-        setFaxNotice('Submitting your signed multi-year package by fax...');
-        try {
-          const { dispatchIrsFax } = await import('../../lib/faxDispatch');
-          const result = await dispatchIrsFax(filing.id, pkg.faxPayload);
-          setFaxNotice(faxNoticeFor(result));
-        } catch (faxErr) {
-          setFaxNotice(
-            `Your forms downloaded, but the fax was not submitted: ${
-              faxErr instanceof Error ? faxErr.message : 'please try again'
-            }`,
-          );
-        }
-      }
+      // As on the single-year path, the fax is its own click now. See
+      // handleGenerate.
     } catch (err) {
       setGenErr(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setGenerating(false);
     }
+  };
+
+  /**
+   * Build the transmission-ready package, for FaxPanel.
+   *
+   * The same function serves three callers, deliberately: sending the fax,
+   * rebuilding the filer's copy of what was sent, and telling the confirmation
+   * what the package contained. One builder means the receipt cannot describe a
+   * different set of documents from the one that went to Ogden.
+   *
+   * `sentOn` dates the cover page. Omitted when sending; passed as the recorded
+   * submit time when reproducing a fax already sent, so the filer's copy is the
+   * document the IRS holds and not a fresh one wearing today's date.
+   */
+  const buildFax = async (opts?: { sentOn?: Date }): Promise<FaxBuild> => {
+    if (!filing) throw new Error('This filing is still loading.');
+
+    const { refuseUnsupportedText } = await import('../../lib/pdfGenerator');
+
+    if (filing.job_id) {
+      const { job, yearFilings, years } = await loadJobYears(filing.job_id);
+      const { generateMultiYearPackage, narrativeFromReasonCodes } =
+        await import('../../lib/pdfGenerator');
+      const jobNarrative =
+        (job?.rcl_narrative?.trim() || null) ||
+        narrativeFromReasonCodes((job as any)?.reasonable_cause_reasons, years.length);
+
+      const pkg = await generateMultiYearPackage(years, {
+        includeRCL: !!job?.include_rcl,
+        rclNarrative: jobNarrative,
+        fax: true,
+        sentOn: opts?.sentOn,
+        drawnSignature,
+      });
+      const refusal = refuseUnsupportedText(pkg.unsupportedText);
+      if (refusal) throw new Error(refusal);
+      if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
+
+      return {
+        payload: pkg.faxPayload,
+        formCount: pkg.perYear.reduce((sum, y) => sum + y.formCount, 0),
+        hasRCL: !!pkg.reasonableCauseLetter,
+        // Mirrors wants7004() in pdfGenerator, which is what actually decides
+        // whether a 7004 is in the package. Any year carrying one puts one in
+        // the transmission, because the transmission is the whole job.
+        has7004: yearFilings.some((f) => f.include_7004 === true || f.extension_filed === true),
+        taxYears: pkg.taxYears,
+      };
+    }
+
+    // Single year. Re-read rather than using the loaded copy: a correcting edit
+    // in another tab must not be faxed away.
+    const { data: fi, error: fiErr } = await supabase
+      .from('filings').select('*').eq('id', filing.id).single();
+    if (fiErr || !fi) throw new Error(fiErr?.message ?? 'This filing could not be loaded.');
+    const { data: txns, error: txErr } = await supabase
+      .from('reportable_transactions').select('*').eq('filing_id', filing.id);
+    if (txErr) throw txErr;
+
+    const { generateFilingPackage } = await import('../../lib/pdfGenerator');
+    const pkg = await generateFilingPackage(fi, txns ?? [], undefined, {
+      drawnSignature,
+      fax: true,
+      sentOn: opts?.sentOn,
+    });
+    const refusal = refuseUnsupportedText(pkg.unsupportedText);
+    if (refusal) throw new Error(refusal);
+    if (!pkg.faxPayload) throw new Error('The IRS fax package could not be assembled.');
+
+    return {
+      payload: pkg.faxPayload,
+      formCount: pkg.formCount,
+      hasRCL: !!pkg.reasonableCauseLetter,
+      has7004: !!pkg.form7004,
+      taxYears: [Number(fi.tax_year)],
+    };
   };
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -648,9 +702,6 @@ export default function FilingWizard() {
             {genErr && (
               <div style={{ ...errorBannerStyle, marginBottom: '1rem' }}>{genErr}</div>
             )}
-            {faxNotice && (
-              <div style={{ ...infoBannerStyle, marginBottom: '1rem' }}>{faxNotice}</div>
-            )}
             {paymentNotice && (
               <div
                 style={{
@@ -846,6 +897,16 @@ export default function FilingWizard() {
                 </div>
               </div>
             )}
+
+            {/* ── IRS fax ──────────────────────────────────────────────────
+                Last on the page, and that is the ladder: pay, generate and
+                download your own copy, then send it, then take the
+                confirmation away. Each rung is its own click and each one is
+                only reachable once the rung below it is done. The panel renders
+                nothing at all unless the filer bought fax delivery. */}
+            {isPaid && filing?.include_irs_fax && (
+              <FaxPanel filing={filing} build={buildFax} busy={generating} />
+            )}
           </>
         )}
       </div>
@@ -933,36 +994,10 @@ const errorBannerStyle: React.CSSProperties = {
   marginBottom: '1.25rem',
 };
 
-/**
- * What to tell the filer about a dispatch result.
- *
- * `duplicate` used to be flattened into the success line, so the one case where
- * nothing was sent, a claim left behind by an attempt that died mid-flight, read
- * exactly like a fax on its way to the IRS. A filer cannot act on a message that
- * hides the difference, so each state now says what it is.
- */
-function faxNoticeFor(result: FaxDispatchResult): string {
-  if (result.status === 'delivered') {
-    return 'Fax delivered. Your transmission confirmation is recorded.';
-  }
-  if (result.duplicate) {
-    return result.status === 'dispatching'
-      ? 'A fax for this filing is already being submitted, so we did not send a second one. '
-        + 'Check back in a few minutes, and email support@filetax.co if it has not moved.'
-      : 'This filing has already been faxed to the IRS. We did not send it twice.';
-  }
-  return 'Fax submitted. We are waiting for Sinch to confirm delivery.';
-}
-
-const infoBannerStyle: React.CSSProperties = {
-  background: 'var(--tf-offset)',
-  color: 'var(--tf-text)',
-  border: '1px solid var(--tf-border)',
-  borderRadius: '0.5rem',
-  padding: '0.75rem 1rem',
-  fontSize: '0.875rem',
-  marginBottom: '1.25rem',
-};
+// faxNoticeFor() lived here and told the filer what a dispatch had just done.
+// It is gone with the transient banner it fed: the dispatch result is no longer
+// the only thing the page knows about the fax. FaxPanel reads the transmission
+// row itself and says what the transmission IS, which survives a refresh.
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: '0.6rem 1.5rem',
