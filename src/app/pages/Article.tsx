@@ -111,18 +111,40 @@ function buildTOC(body: any[]): { text: string; anchor: string }[] {
 // Pull question/answer pairs out of the FAQ section for FAQPage structured data.
 //
 // The corpus stores FAQs as an H3 question followed by one or more body blocks,
-// all sitting under an H2 whose text is "Frequently Asked Questions". Scoping to
-// that section matters: articles also use H3 for ordinary subheads, and marking
-// those up as questions would be misleading structured data.
+// under a closing H2. Scoping to that section matters: articles also use H3 for
+// ordinary subheads, and marking those up as questions would be misleading
+// structured data.
+//
+// This USED TO match the H2 text against "Frequently Asked Questions", which
+// was true of all 30 posts because all 30 were assembled from one template.
+// Handoff item 14 renamed that heading on 20 of them ("What Nigerian founders
+// ask", "Questions about writing the letter"), and a literal match would have
+// silently dropped the FAQPage schema from two thirds of the corpus, on posts
+// that still very much have an FAQ. So the section is found by SHAPE instead:
+// the last H2 whose H3s are questions. That survives the next rename too.
+function findFaqStart(body: any[]): number {
+  let best = -1;
+  for (let i = 0; i < body.length; i++) {
+    const block = body[i];
+    if (block?._type !== "block" || block.style !== "h2") continue;
+    const questions: string[] = [];
+    for (let j = i + 1; j < body.length; j++) {
+      const next = body[j];
+      if (next?._type !== "block") continue;
+      if (next.style === "h2") break;
+      if (next.style === "h3") questions.push(extractBlockText(next).trim());
+    }
+    // A section of subheads is not an FAQ. A section where every subhead is
+    // phrased as a question is, whatever the heading above it says.
+    if (questions.length >= 3 && questions.every((q) => q.endsWith("?"))) best = i;
+  }
+  return best;
+}
+
 function buildFAQ(body: any[]): { question: string; answer: string }[] {
   if (!Array.isArray(body)) return [];
 
-  const start = body.findIndex(
-    (block) =>
-      block?._type === "block" &&
-      block.style === "h2" &&
-      /frequently asked questions/i.test(extractBlockText(block))
-  );
+  const start = findFaqStart(body);
   if (start === -1) return [];
 
   const faqs: { question: string; answer: string }[] = [];

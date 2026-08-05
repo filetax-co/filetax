@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 
 /**
@@ -34,6 +34,12 @@ import { Info } from "lucide-react";
  */
 export function InfoTip({ text, label }: { text: string; label?: string }) {
   const [open, setOpen] = useState(false);
+  // The bubble was reachable by keyboard and still never read out: nothing tied
+  // it to the trigger, so a screen reader announced the button's label and
+  // stopped, and the explanation itself, which is the whole point of the
+  // control, was never spoken. useId keeps that association unique when several
+  // tips sit on one page, as they do on the pricing cards.
+  const tipId = useId();
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const [box, setBox] = useState<{ left: number; top: number; width: number; below: boolean } | null>(null);
 
@@ -66,6 +72,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
         ref={btnRef}
         aria-label={label ?? "More information"}
         aria-expanded={open}
+        aria-describedby={open ? tipId : undefined}
         onClick={() => setOpen((o) => !o)}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
@@ -86,6 +93,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
       </button>
       {open && box && (
         <span
+          id={tipId}
           role="tooltip"
           style={{
             position: "fixed",

@@ -86,7 +86,12 @@ export function Services() {
 
           <div style={{ background: "var(--tf-bg)", border: "1px solid var(--tf-border)", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "1rem" }}>
             <p style={{ fontWeight: 600, fontSize: "0.9375rem", color: "var(--tf-text)", marginBottom: "0.25rem" }}>Transaction entry: Manual</p>
-            <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>Enter transactions manually. No bank login required.</p>
+            {/* Handoff item 23. The position was already on Home, Compare and
+                Privacy and was missing from the one block on this site that is
+                actually about how transactions get in. It is a statement of
+                what we do not ask for, so it stays true only as long as that
+                is true: if an upload is ever added, this line goes with it. */}
+            <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>Enter transactions manually. No bank login required, and we never ask you to upload bank statements.</p>
           </div>
 
           <div style={{ background: "rgba(2,132,199,0.04)", border: "1px solid rgba(2,132,199,0.25)", borderRadius: "0.75rem", padding: "1.25rem 1.5rem", marginBottom: "1.75rem" }}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { InfoTip } from "../components/InfoTip";
@@ -126,7 +126,12 @@ const INITIAL_SUB: SubAnswers = {};
 function ProgressBar({ current }: { current: number }) {
   return (
     <div style={{ marginBottom: "2rem" }}>
-      <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.5rem" }}>
+      {/* The four bars carry no information the line below does not, so they
+          are hidden from assistive tech rather than announced as four empty
+          divs. The line itself is a live region: this component is not
+          remounted between steps, only its text changes, so a step change is
+          spoken instead of happening silently. */}
+      <div aria-hidden="true" style={{ display: "flex", gap: "0.375rem", marginBottom: "0.5rem" }}>
         {Array.from({ length: totalSteps }, (_, i) => (
           <div
             key={i}
@@ -139,7 +144,11 @@ function ProgressBar({ current }: { current: number }) {
           />
         ))}
       </div>
-      <p style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400 }}>
+      <p
+        role="status"
+        aria-live="polite"
+        style={{ color: "var(--tf-muted)", fontSize: "0.8125rem", fontWeight: 400 }}
+      >
         Step {current} of {totalSteps}
       </p>
     </div>
@@ -174,6 +183,7 @@ function OptionButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       style={{
         display: "block",
@@ -226,6 +236,14 @@ function YesNoButtons({
         return (
           <button
             key={val}
+            type="button"
+            // The pair is inside a role="group" labelled by its own question
+            // heading, so a screen reader reads the question before "Yes".
+            // Without that, every one of these nine pairs announced as a bare
+            // "Yes" "No" with no way to tell which question was being answered.
+            // aria-pressed carries the selection, which until now existed only
+            // as a background colour.
+            aria-pressed={active}
             onClick={isYes ? onYes : onNo}
             style={{
               padding: "0.625rem 2rem",
@@ -309,6 +327,7 @@ function StepNav({
     <div style={{ marginTop: "1.5rem" }}>
       {showContinue && onContinue && (
         <button
+          type="button"
           onClick={onContinue}
           disabled={continueDisabled}
           style={{
@@ -333,6 +352,7 @@ function StepNav({
       <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
         {onBack && (
           <button
+            type="button"
             onClick={onBack}
             style={{
               background: "none",
@@ -348,6 +368,7 @@ function StepNav({
           </button>
         )}
         <button
+          type="button"
           onClick={onReset}
           style={{
             background: "none",
@@ -381,8 +402,28 @@ export function EligibilityCheck() {
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [referReason, setReferReason] = useState("");
 
+  /**
+   * Where focus lands after a step change or an outcome. Every screen in this
+   * flow replaces the one before it in place, with no navigation, so scrolling
+   * to the top moved the SIGHTED user and nobody else: keyboard focus stayed on
+   * the button that had just been replaced, and a screen reader was told
+   * nothing at all. That is worst on the refer screen, where the visitor has
+   * just been told we cannot serve them and would not hear it.
+   *
+   * `outline: none` on these targets is deliberate and is not removing a focus
+   * indicator from anything operable: they are headings and a card, focusable
+   * only programmatically (tabIndex -1), never reachable by Tab.
+   */
+  const focusRef = useRef<HTMLElement | null>(null);
+  // A callback ref, so the one ref can serve an h1 on two screens and a div on
+  // the third without fighting the element-specific ref types.
+  const setFocusRef = (el: HTMLElement | null) => {
+    focusRef.current = el;
+  };
+
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    focusRef.current?.focus();
   }, [step, outcome]);
 
   const setSub = (key: keyof SubAnswers, val: YesNo) =>
@@ -432,7 +473,11 @@ export function EligibilityCheck() {
             >
               You are a fit
             </span>
-            <h1 style={{ fontSize: "clamp(1.375rem, 4vw, 1.875rem)", marginBottom: "0.75rem" }}>
+            <h1
+              ref={setFocusRef}
+              tabIndex={-1}
+              style={{ fontSize: "clamp(1.375rem, 4vw, 1.875rem)", marginBottom: "0.75rem", outline: "none" }}
+            >
               We can prepare this filing for you.
             </h1>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
@@ -585,7 +630,11 @@ export function EligibilityCheck() {
             >
               Outside our current scope
             </span>
-            <h1 style={{ fontSize: "clamp(1.375rem, 4vw, 1.75rem)", marginBottom: "0.75rem" }}>
+            <h1
+              ref={setFocusRef}
+              tabIndex={-1}
+              style={{ fontSize: "clamp(1.375rem, 4vw, 1.75rem)", marginBottom: "0.75rem", outline: "none" }}
+            >
               This is one case our platform does not currently cover.
             </h1>
             <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
@@ -632,6 +681,7 @@ export function EligibilityCheck() {
 
             <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
               <button
+                type="button"
                 onClick={() => {
                   setOutcome(null);
                   setReferReason("");
@@ -649,6 +699,7 @@ export function EligibilityCheck() {
                 &#8592; Go back and change my answer
               </button>
               <button
+                type="button"
                 onClick={resetAll}
                 style={{
                   background: "none",
@@ -682,6 +733,8 @@ export function EligibilityCheck() {
         </p>
 
         <div
+          ref={setFocusRef}
+          tabIndex={-1}
           style={{
             background: "var(--tf-surface)",
             border: "1px solid var(--tf-border)",
@@ -689,6 +742,7 @@ export function EligibilityCheck() {
             padding: "2rem",
             boxShadow:
               "0 1px 2px oklch(0.2 0.01 80 / 0.06), 0 4px 16px oklch(0.2 0.01 80 / 0.04)",
+            outline: "none",
           }}
         >
           <ProgressBar current={step} />
@@ -696,10 +750,10 @@ export function EligibilityCheck() {
           {step === 1 && (
             <div>
               <SectionLabel text="Entity Type" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "1.25rem" }}>
+              <h2 id="q-entity-type" style={{ fontSize: "1.125rem", marginBottom: "1.25rem" }}>
                 What type of U.S. entity are you filing for?
               </h2>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3" role="group" aria-labelledby="q-entity-type">
                 <OptionButton
                   label="Single-member LLC (I am the only owner)"
                   onClick={() => setStep(2)}
@@ -737,10 +791,16 @@ export function EligibilityCheck() {
             <div>
               <SectionLabel text="LLC Setup" />
 
-              <div>
-                <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+              {/* Each question is a labelled group around its own heading, and
+                  the headings are h3 under the step's h2 rather than a second
+                  flat run of h2s. Both are invisible: every heading here sets
+                  its own font-size inline, and the only global difference
+                  between h2 and h3 is a font-size that the inline style
+                  overrides. */}
+              <div role="group" aria-labelledby="q-llc-ein">
+                <h3 id="q-llc-ein" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                   Has the IRS issued an Employer Identification Number (EIN) for this LLC?
-                </h2>
+                </h3>
                 <YesNoButtons
                   selected={subAnswers.llcEIN}
                   onYes={() => setSub("llcEIN", "yes")}
@@ -756,14 +816,14 @@ export function EligibilityCheck() {
               {subAnswers.llcEIN === "yes" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-llc-residency">
+                    <h3 id="q-llc-residency" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Is the person who owns this LLC a non-U.S. individual?
                       <InfoTip
                         label="What counts as non-U.S."
                         text="This means you do not hold U.S. citizenship or a U.S. Green Card, and have not met the IRS Substantial Presence Test. The test is based on days you spent in the U.S. over the past three years."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.llcResidency}
                       onYes={() => setSub("llcResidency", "yes")}
@@ -781,14 +841,14 @@ export function EligibilityCheck() {
               {subAnswers.llcResidency === "yes" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-llc-tax-treatment">
+                    <h3 id="q-llc-tax-treatment" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Is the LLC taxed the same way it was when it was first formed, with no elections filed to change that?
                       <InfoTip
                         label="What counts as an election"
                         text="Answer Yes if you have not submitted Form 8832 or Form 2553 to the IRS. Most single-member LLCs have never filed either form and remain on the default treatment as a disregarded entity."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.llcTaxTreatment}
                       onYes={() => setSub("llcTaxTreatment", "yes")}
@@ -816,23 +876,22 @@ export function EligibilityCheck() {
           {step === 3 && (
             <div>
               <SectionLabel text="Your Dealings" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
+              {/* The explanatory line under this heading was removed at the
+                  owner's instruction 5 Aug 2026. The heading carries the
+                  spacing the paragraph used to. */}
+              <h2 style={{ fontSize: "1.125rem", marginBottom: "1.25rem" }}>
                 Five questions about who you deal with.
               </h2>
-              <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.5rem" }}>
-                Form 5472 asks about a few specific arrangements that need a professional to
-                report properly. Almost everyone answers No to all five.
-              </p>
 
-              <div>
-                <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+              <div role="group" aria-labelledby="q-cost-sharing">
+                <h3 id="q-cost-sharing" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                   Does the LLC share the cost of developing intellectual property with a
                   related party, under a written cost sharing agreement?
                   <InfoTip
                     label="What counts as cost sharing"
                     text="A cost sharing arrangement is a formal written agreement to split the cost of developing intangible property, such as software or a patent, in exchange for a share of the rights. Almost no small LLC has one. Paying a related party for work, or for the use of software, is not cost sharing."
                   />
-                </h2>
+                </h3>
                 <YesNoButtons
                   selected={subAnswers.costSharing}
                   onYes={() => {
@@ -848,15 +907,15 @@ export function EligibilityCheck() {
               {subAnswers.costSharing === "no" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-imported-goods">
+                    <h3 id="q-imported-goods" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Does the LLC buy physical goods from a related party and bring them into
                       the United States?
                       <InfoTip
                         label="What counts here"
                         text="This is about goods you import into the U.S. that you bought from someone related to you, such as your own company abroad or a company owned by your family. Buying from an unrelated supplier does not count, and neither does buying goods that never enter the U.S. Services, software and digital products are not physical goods."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.importedGoods}
                       onYes={() => {
@@ -874,15 +933,15 @@ export function EligibilityCheck() {
               {subAnswers.importedGoods === "no" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-non-owner-loan">
+                    <h3 id="q-non-owner-loan" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Has the LLC lent money to, or borrowed money from, a related party who is
                       not you personally?
                       <InfoTip
                         label="What counts here"
                         text="Money you put into or took out of your own LLC does not count, however you label it: you and a single-member LLC are the same taxpayer. This is about a loan involving someone else you are related to, such as another company you own or a family member's business. Charging no interest does not take it out of scope."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.nonOwnerLoan}
                       onYes={() => {
@@ -900,15 +959,15 @@ export function EligibilityCheck() {
               {subAnswers.nonOwnerLoan === "no" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-hybrid-payment">
+                    <h3 id="q-hybrid-payment" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       Does the LLC pay interest or royalties to a related party under an
                       arrangement that the two countries involved tax differently?
                       <InfoTip
                         label="What counts here"
                         text="This is about an arrangement where a payment is treated as one thing in the U.S. and as something else in the other country, so it is deducted in one place and not taxed in the other. It comes from deliberate structuring and it is rare. Ordinary interest on a loan, or an ordinary royalty for using someone's intellectual property, is not this."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.hybridPayment}
                       onYes={() => {
@@ -926,15 +985,15 @@ export function EligibilityCheck() {
               {subAnswers.hybridPayment === "no" && (
                 <>
                   <Divider />
-                  <div>
-                    <h2 style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
+                  <div role="group" aria-labelledby="q-loan-and-payout">
+                    <h3 id="q-loan-and-payout" style={{ fontSize: "1.0625rem", marginBottom: "0.25rem" }}>
                       In the last three years, has the LLC had a loan with a related COMPANY and
                       also paid money out or bought a business?
                       <InfoTip
                         label="What counts here"
                         text="Both halves have to be true, the related party has to be a company rather than a person, and the three years run across tax years rather than within the one you are filing. If the only loans were between you and your own LLC, answer No."
                       />
-                    </h2>
+                    </h3>
                     <YesNoButtons
                       selected={subAnswers.loanAndPayout}
                       onYes={() => {
@@ -961,7 +1020,7 @@ export function EligibilityCheck() {
           {step === 4 && (
             <div>
               <SectionLabel text="Filing Years" />
-              <h2 style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
+              <h2 id="q-year-count" style={{ fontSize: "1.125rem", marginBottom: "0.5rem" }}>
                 How many tax years do you need to file?
               </h2>
               <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, marginBottom: "1.25rem" }}>
@@ -969,7 +1028,7 @@ export function EligibilityCheck() {
                 years in the portal, where we check them against the date your LLC was formed and
                 work out which ones are late.
               </p>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3" role="group" aria-labelledby="q-year-count">
                 {[1, 2, 3].map((n) => (
                   <OptionButton
                     key={n}

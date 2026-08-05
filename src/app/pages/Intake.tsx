@@ -975,6 +975,15 @@ export function Intake() {
   const stepTopRef = useRef<HTMLDivElement | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement | null>(null);
   const transactionDetailsRef = useRef<HTMLElement | null>(null);
+  /**
+   * The top of the transactions step: the running total, then the blank Add
+   * form beside the list. Adding a transaction leaves the page scrolled to
+   * wherever the amount and date fields were, several screens down, with a form
+   * that has just been cleared. The filer's next move is either to add another
+   * one or to check the total, and both live up here, so that is where they are
+   * put back.
+   */
+  const transactionsTopRef = useRef<HTMLDivElement | null>(null);
   // Per-accordion-section anchors, keyed by step ('1','1b','2','3','4','5'),
   // so "Save & continue" can scroll to the next section.
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -1240,6 +1249,11 @@ export function Intake() {
   const scrollToTransactionDetails = () => {
     requestAnimationFrame(() => {
       transactionDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+  const scrollToTransactionsTop = () => {
+    requestAnimationFrame(() => {
+      transactionsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
   const txCategory = getCategoryForTxType(txType, txRelatedPartyIdx === 0);
@@ -2686,6 +2700,9 @@ export function Intake() {
     clearTxForm();
     setStepErrors([]);
     setNoTransactionsConfirmed(false);
+    // Back to the total and the empty form, for an add and for a saved edit
+    // alike. Both end with the same cleared form and the same next move.
+    scrollToTransactionsTop();
   };
 
   // Load an existing transaction into the left-hand form for editing.
@@ -4177,7 +4194,9 @@ export function Intake() {
               </div>
             </label>
 
-            <TxSummaryPanel summary={txSummary} count={transactions.length} />
+            <div ref={transactionsTopRef}>
+              <TxSummaryPanel summary={txSummary} count={transactions.length} />
+            </div>
 
             {/* Two-column split: the Add/Edit form on the left, and the live
                 Transactions list on the right. Stacks (form first) on narrow
