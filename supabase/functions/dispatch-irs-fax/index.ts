@@ -10,7 +10,6 @@ const SINCH_PROJECT_ID = Deno.env.get('SINCH_PROJECT_ID');
 const SINCH_ACCESS_KEY = Deno.env.get('SINCH_ACCESS_KEY');
 const SINCH_ACCESS_SECRET = Deno.env.get('SINCH_ACCESS_SECRET');
 const SINCH_FAX_SERVICE_ID = Deno.env.get('SINCH_FAX_SERVICE_ID');
-const SINCH_FAX_NUMBER = Deno.env.get('SINCH_FAX_NUMBER');
 
 // Sinch's documented no-charge outbound test destination. Keep this hardcoded
 // until the production destination is deliberately enabled in a later change.
@@ -139,7 +138,10 @@ serve(async (req) => {
     outbound.set('to', TEST_DESTINATION);
     outbound.set('file', file, `filetax-${filing.id}.pdf`);
     outbound.set('serviceId', SINCH_FAX_SERVICE_ID);
-    if (SINCH_FAX_NUMBER) outbound.set('from', SINCH_FAX_NUMBER);
+    // Deliberately omit `from` during simulator testing. The saved UK test
+    // number is voice/SMS-only and is not assigned to the Fax service; sending
+    // it here would make every request invalid. Sinch uses the service default
+    // when `from` is absent. A Fax-capable sender is a production prerequisite.
     outbound.set('maxRetries', '2');
     outbound.set('retryDelaySeconds', '60');
     outbound.set('resolution', 'FINE');
