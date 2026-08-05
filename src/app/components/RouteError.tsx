@@ -54,8 +54,8 @@ export function RouteError() {
         </p>
         <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.6, marginBottom: "2rem" }}>
           If it keeps happening, email{" "}
-          <a href="mailto:hello@filetax.co" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
-            hello@filetax.co
+          <a href="mailto:support@filetax.co" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
+            support@filetax.co
           </a>{" "}
           and we will sort it out. We respond within 1 business day.
         </p>

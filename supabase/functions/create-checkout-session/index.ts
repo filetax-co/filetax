@@ -62,6 +62,118 @@ function relatedPartyCount(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
+// ─── Billing address prefill ──────────────────────────────────────────────────
+//
+// The address sent to Dodo is the OWNER'S FOREIGN address, not the LLC's US
+// one. The filing is about the entity, but the checkout is about whoever is
+// holding the card, and our filers are non-US persons by definition: their card
+// is issued abroad and its billing address is their own. Prefilling a Wyoming
+// registered-agent address would fail AVS at the one moment in the funnel where
+// a decline costs the whole sale, and it would misstate the buyer's country to
+// Dodo, who are merchant of record and determine tax from it.
+//
+// Every field is left editable (allow_customer_editing_*). The payer is not
+// guaranteed to be the owner at all: an accountant, an agent or a family member
+// may be paying, in which case no address on the filing is theirs. A prefill
+// that cannot be corrected would be worse than no prefill.
+
+/** Country name (as intake stores it) → ISO 3166-1 alpha-2, or null. */
+let alpha2ByName: Map<string, string> | null = null;
+function alpha2For(country: unknown): string | null {
+  const raw = typeof country === 'string' ? country.trim() : '';
+  if (!raw) return null;
+  // Already a code.
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
+
+  // Built by reversing Intl's own country list rather than shipping a table:
+  // intake stores full English names ("Singapore", "United Arab Emirates") and
+  // a hand-maintained map would drift from the intake country list, which has
+  // drifted before. Unknown names return null and the address is omitted
+  // entirely, because `country` is REQUIRED in a Dodo billing_address and a
+  // wrong or missing one fails the whole checkout, not just the prefill.
+  if (!alpha2ByName) {
+    alpha2ByName = new Map();
+    try {
+      const names = new Intl.DisplayNames(['en'], { type: 'region' });
+      for (let a = 65; a <= 90; a++) {
+        for (let b = 65; b <= 90; b++) {
+          const code = String.fromCharCode(a, b);
+          const name = names.of(code);
+          // FIRST code wins. Several names have more than one code that
+          // resolves to them and only one is ISO 3166-1: "United Kingdom" is
+          // both GB and the ICU alias UK, and last-wins would send Dodo "UK",
+          // which is not a valid alpha-2.
+          const key = name?.toLowerCase();
+          if (key && name !== code && !alpha2ByName.has(key)) alpha2ByName.set(key, code);
+        }
+      }
+    } catch {
+      /* no ICU: every lookup below misses and the prefill is skipped */
+    }
+    // Names our intake uses that ICU spells differently, and the handful ICU
+    // resolves to a WRONG code. These OVERRIDE the derived map: "Vietnam"
+    // otherwise lands on VD, the withdrawn North Vietnam code, because VD
+    // sorts before VN and first-wins keeps it.
+    for (const [alias, code] of [
+      ['united states of america', 'US'], ['usa', 'US'], ['u.s.a.', 'US'],
+      ['uk', 'GB'], ['united kingdom of great britain and northern ireland', 'GB'],
+      ['vietnam', 'VN'], ['viet nam', 'VN'],
+      ['hong kong', 'HK'], ['macau', 'MO'], ['macao', 'MO'], ['taiwan', 'TW'],
+      ['south korea', 'KR'], ['north korea', 'KP'], ['russia', 'RU'],
+      ['uae', 'AE'], ['ivory coast', 'CI'], ['czech republic', 'CZ'],
+      ['turkey', 'TR'], ['syria', 'SY'], ['laos', 'LA'],
+      ['cape verde', 'CV'], ['east timor', 'TL'], ['swaziland', 'SZ'],
+      ['moldova', 'MD'], ['bolivia', 'BO'], ['tanzania', 'TZ'],
+      ['venezuela', 'VE'], ['brunei', 'BN'], ['palestine', 'PS'],
+      ['cabo verde', 'CV'], ['myanmar', 'MM'], ['burma', 'MM'],
+      ['congo (democratic republic)', 'CD'], ['congo (republic)', 'CG'],
+      ['sao tome and principe', 'ST'],
+      // ICU abbreviates these to "St. ..."; our list writes them out.
+      ['saint kitts and nevis', 'KN'], ['saint lucia', 'LC'],
+      ['saint vincent and the grenadines', 'VC'],
+    ] as const) {
+      alpha2ByName.set(alias, code);
+    }
+  }
+
+  const key = raw.toLowerCase();
+  // Our list spells conjunctions out ("Antigua and Barbuda"); ICU uses "&".
+  return alpha2ByName.get(key)
+    ?? alpha2ByName.get(key.replace(/ and /g, ' & '))
+    ?? null;
+}
+
+/** One string from whichever address shape the wizard happened to write. */
+function addressField(address: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = address[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/**
+ * The owner's address as a Dodo `billing_address`, or null if we cannot resolve
+ * a country code. Handles both address shapes the wizard has written over time
+ * ({street, city, state, zip} and {line1, region, postal_code}).
+ */
+function ownerBillingAddress(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const address = raw as Record<string, unknown>;
+  const country = alpha2For(address.country);
+  if (!country) return null;
+  const out: Record<string, string> = { country };
+  const street = addressField(address, 'street', 'line1', 'address_line1');
+  const city = addressField(address, 'city');
+  const state = addressField(address, 'state', 'region', 'province');
+  const zipcode = addressField(address, 'zip', 'postal_code', 'zipcode');
+  if (street) out.street = street;
+  if (city) out.city = city;
+  if (state) out.state = state;
+  if (zipcode) out.zipcode = zipcode;
+  return out;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -84,7 +196,7 @@ serve(async (req) => {
 
     const { data: anchor, error: anchorErr } = await supabase
       .from('filings')
-      .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties, paid_related_party_count')
+      .select('id, job_id, status, llc_name, tax_year, user_id, include_rcl, include_irs_fax, related_parties, paid_related_party_count, owner_full_name, owner_foreign_address, owner_address')
       .eq('id', filing_id)
       .eq('user_id', user.id)
       .single();
@@ -157,6 +269,10 @@ serve(async (req) => {
         ];
     if (productCart.length === 0) return json({ already_paid: true });
 
+    const billingAddress =
+      ownerBillingAddress(anchor.owner_foreign_address) ??
+      ownerBillingAddress(anchor.owner_address);
+
     const response = await fetch(`${dodoBaseUrl()}/checkouts`, {
       method: 'POST',
       headers: {
@@ -167,8 +283,24 @@ serve(async (req) => {
         product_cart: productCart,
         customer: {
           email: user.email,
-          name: anchor.llc_name || user.email || 'FileTax customer',
+          // The person paying, with the entity named after them, rather than
+          // the entity alone: the card and the receipt belong to a human.
+          name: anchor.owner_full_name
+            ? (anchor.llc_name ? `${anchor.owner_full_name} (${anchor.llc_name})` : anchor.owner_full_name)
+            : anchor.llc_name || user.email || 'FileTax customer',
         },
+        ...(billingAddress
+          ? {
+              billing_address: billingAddress,
+              feature_flags: {
+                allow_customer_editing_country: true,
+                allow_customer_editing_city: true,
+                allow_customer_editing_state: true,
+                allow_customer_editing_street: true,
+                allow_customer_editing_zipcode: true,
+              },
+            }
+          : {}),
         return_url: `${PUBLIC_SITE_URL}/filing/${filing_id}?payment=return`,
         cancel_url: `${PUBLIC_SITE_URL}/filing/${filing_id}?payment=cancelled`,
         metadata: {

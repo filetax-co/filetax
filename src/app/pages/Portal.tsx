@@ -438,7 +438,7 @@ export function Portal() {
       <section style={{ background: 'var(--tf-bg)', padding: '2rem 1rem 3rem' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>
-            Questions first? Email us at <a href="mailto:hello@filetax.co" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>. We respond within 1 business day.
+            Questions first? Email us at <a href="mailto:support@filetax.co" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}>support@filetax.co</a>. We respond within 1 business day.
           </p>
         </div>
       </section>

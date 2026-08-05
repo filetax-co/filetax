@@ -65,7 +65,7 @@ const faqs = [
   },
   {
     q: "Is my transaction data safe?",
-    a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Form data you enter through the portal is stored encrypted on Supabase. We do not currently delete data after your session, and there is no automatic data-deletion schedule. If you would like your data removed, contact us at hello@filetax.co.",
+    a: "FileTax.co does not store your bank credentials. You enter transactions manually. No bank connection is required. Form data you enter through the portal is stored encrypted on Supabase. We do not currently delete data after your session, and there is no automatic data-deletion schedule. If you would like your data removed, contact us at support@filetax.co.",
   },
   {
     q: "Do I need to create an account to use FileTax.co?",

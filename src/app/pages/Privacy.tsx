@@ -4,8 +4,8 @@ import { usePageMeta } from "../hooks/usePageMeta";
 // 👉 Update once incorporated and reviewed by an attorney.
 const COMPANY_NAME = "FileTax.co";
 const COMPANY_LEGAL_NAME = "FileTax.co"; // TODO: replace with registered legal entity once incorporated
-const SUPPORT_EMAIL = "hello@filetax.co";
-const PRIVACY_EMAIL = "hello@filetax.co"; // Same inbox for now; split later if you set up a dedicated address.
+const SUPPORT_EMAIL = "support@filetax.co";
+const PRIVACY_EMAIL = "support@filetax.co"; // Same inbox for now; split later if you set up a dedicated address.
 const LAST_UPDATED = "August 3, 2026";
 
 const styles = {

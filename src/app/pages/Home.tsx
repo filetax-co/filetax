@@ -532,10 +532,10 @@ export function Home() {
             Have a question before you start?
           </h2>
           <a
-            href="mailto:hello@filetax.co"
+            href="mailto:support@filetax.co"
             style={{ color: "var(--tf-accent)", fontWeight: 600, fontSize: "1.125rem", display: "block", marginBottom: "0.375rem" }}
           >
-            hello@filetax.co
+            support@filetax.co
           </a>
           <p style={{ color: "var(--tf-muted)", fontSize: "0.9375rem", fontWeight: 400 }}>
             We respond within 1 business day.

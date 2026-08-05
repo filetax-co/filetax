@@ -5,7 +5,7 @@ import { usePageMeta } from "../hooks/usePageMeta";
 const COMPANY_NAME = "FileTax.co";
 const COMPANY_LEGAL_NAME = "FileTax.co"; // TODO: replace with registered legal entity once incorporated
 const GOVERNING_JURISDICTION = "the State of Delaware, United States"; // TODO: confirm with attorney
-const SUPPORT_EMAIL = "hello@filetax.co";
+const SUPPORT_EMAIL = "support@filetax.co";
 const LAST_UPDATED = "April 29, 2026";
 
 const styles = {

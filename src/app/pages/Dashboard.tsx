@@ -732,7 +732,7 @@ export function Dashboard() {
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <p style={{ color: 'var(--tf-muted)', fontSize: '0.9375rem', fontWeight: 400 }}>
             Need help? Email us at{' '}
-            <a href="mailto:hello@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>hello@filetax.co</a>. We respond within 1 business day.
+            <a href="mailto:support@filetax.co" style={{ color: 'var(--tf-accent)', fontWeight: 600, textDecoration: 'none' }}>support@filetax.co</a>. We respond within 1 business day.
           </p>
         </div>
       </section>

@@ -1223,6 +1223,39 @@ export function Intake() {
     });
   }, [step, loadingFiling]);
 
+  // The "have you already filed for earlier years?" prompt appears when the
+  // incorporation date turns out to precede the tax year being filed. It is
+  // rendered further down step 1, so typing a 2019 date into the date field
+  // could open a question the filer never saw, leaving them looking at a form
+  // that seemingly did nothing. Scroll to it the first time it appears.
+  //
+  // Only on APPEARANCE, and never on load: a saved filing that already has an
+  // early incorporation date renders the prompt on mount, and hijacking the
+  // scroll position of a page someone has just reopened is its own annoyance.
+  const earlierYearsRef = useRef<HTMLDivElement | null>(null);
+  const earlierYearsSeen = useRef(false);
+  const earlierYearsShown =
+    !jobId && !isPaidLocked && !!entityDOI && !!taxYear &&
+    Number(entityDOI.slice(0, 4)) < Number(taxYear) &&
+    Number(taxYear) === new Date().getUTCFullYear() - 1;
+  const earlierYearsHydrated = useRef(false);
+  useEffect(() => {
+    if (loadingFiling) return;
+    // First settle after the filing loads: record whether the prompt is
+    // already on screen, and scroll for neither case.
+    if (!earlierYearsHydrated.current) {
+      earlierYearsHydrated.current = true;
+      earlierYearsSeen.current = earlierYearsShown;
+      return;
+    }
+    if (!earlierYearsShown) { earlierYearsSeen.current = false; return; }
+    if (earlierYearsSeen.current) return;
+    earlierYearsSeen.current = true;
+    requestAnimationFrame(() => {
+      earlierYearsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [earlierYearsShown, loadingFiling]);
+
   // When validation fails, jump straight to the error summary so the user sees
   // exactly what needs fixing instead of a form that silently did not advance.
   useEffect(() => {
@@ -3348,7 +3381,7 @@ export function Intake() {
               // Situation A: latest year, incorporated earlier → ask first.
               if (isLatest && incorpBefore) {
                 return (
-                  <div className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
+                  <div ref={earlierYearsRef} className="cat-banner-amber" style={{ marginBottom: '1.5rem' }}>
                     <strong>Have you already filed for earlier years?</strong>{' '}
                     Your LLC was formed in {doiYear}, so Form 5472 may be due for
                     each year since.
@@ -4541,8 +4574,17 @@ export function Intake() {
           anchorRef={(el) => { sectionRefs.current['5'] = el; }}
         >
           <div>
-            <h2 style={stepHeadingStyle}>Review & submit</h2>
-            <p style={stepSubheadStyle}>Check everything below before we start preparing your forms.</p>
+            {/* "Submit" was the wrong word for what this step does. Nothing is
+                filed here and nothing is sent to the IRS: the next thing that
+                happens is payment, and only then are the forms prepared. A
+                filer who reads "submit" on the last step reasonably believes
+                they have just filed. */}
+            <h2 style={stepHeadingStyle}>Review & continue to payment</h2>
+            <p style={stepSubheadStyle}>
+              Check everything below. Nothing is filed yet, and nothing is sent to the IRS.
+              Next you pay, then we prepare your forms. You can still correct anything on this
+              page until you pay.
+            </p>
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>LLC details</h3>
@@ -4771,7 +4813,7 @@ export function Intake() {
               )}
               <button type="button" style={primaryBtnStyle} onClick={handleSubmit} disabled={saving || previewBusy}>
                 {saving
-                  ? 'Submitting…'
+                  ? 'Saving…'
                   : isPaidLocked
                     ? (relatedParties.length > paidRelatedPartyCount
                         ? 'Save & continue to additional-party payment'
@@ -4783,8 +4825,13 @@ export function Intake() {
                           // years came next; handleSubmit routes to the earliest
                           // remaining draft, so mirror that exact choice here.
                           ? `Save ${taxYear} & continue to ${nextDraftYear ?? 'the next year'} →`
-                          : 'Finish & generate all years →')
-                      : 'Submit & generate my forms →'}
+                          // The last year of a catch-up, and the single-year
+                          // case: both land on the filing page, where the next
+                          // action is paying. Generation happens after that,
+                          // so promising forms here overstates what the click
+                          // does.
+                          : 'Finish & continue to payment →')
+                      : 'Continue to payment →'}
               </button>
             </div>
           </div>

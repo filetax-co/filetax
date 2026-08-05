@@ -623,8 +623,8 @@ export function EligibilityCheck() {
                   our Form 5472 library
                 </Link>
                 , or email{" "}
-                <a href="mailto:hello@filetax.co" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
-                  hello@filetax.co
+                <a href="mailto:support@filetax.co" style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}>
+                  support@filetax.co
                 </a>{" "}
                 and we will point you at the right reading. We cannot give you tax advice.
               </p>

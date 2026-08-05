@@ -4,7 +4,7 @@ import { PRICE_FAX } from "../../lib/pricing";
 
 // 👉 Review with an attorney before launch, alongside Terms.
 const COMPANY_NAME = "FileTax.co";
-const SUPPORT_EMAIL = "hello@filetax.co";
+const SUPPORT_EMAIL = "support@filetax.co";
 const LAST_UPDATED = "August 1, 2026";
 
 const styles = {
