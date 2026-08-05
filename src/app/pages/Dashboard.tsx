@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { supabase, type Filing, type ServiceType } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
-import { FILING_DUE_DATES } from './intake/constants';
+import { FILING_DUE_DATES, filingDueDates, effectivePeriodEnd } from './intake/constants';
 import { PRICE_PER_YEAR, PRICE_RCL, unavailableServices, serviceWithPrice } from '../../lib/pricing';
 import {
   normalizeEin, formatEin, listCompanies, updateCompany, deleteCompany,
@@ -63,18 +63,48 @@ function hasExtension(f: Filing): boolean {
 }
 
 /**
+ * The period end this filing's deadline actually runs from.
+ *
+ * The deadline follows the PERIOD, not the label on it, and a final return's
+ * period ends on the dissolution date. An LLC dissolved 30 June 2025 is due 15
+ * October 2025, not 15 April 2026, so keying the dashboard on the tax year
+ * alone could show a deadline six months later than the real one and, through
+ * dueState's tone, call a late filing on time.
+ *
+ * This mirrors resolvePeriod() in pdfGenerator.ts, including the comparison
+ * operators: the closure date is taken only when it falls strictly inside the
+ * nominal period, so a closure on the first or last day leaves the period
+ * unchanged rather than producing a one-day year, and a dissolution recorded
+ * against a later year cannot extend this one. The generator already truncates
+ * the printed period this way; this is the dashboard catching up with it.
+ */
+function periodEndOf(f: Filing): string | null {
+  return effectivePeriodEnd(
+    f.tax_year,
+    f.tax_period_begin,
+    f.tax_period_end,
+    f.final_return,
+    f.date_of_closure,
+  );
+}
+
+/**
  * Compute the deadline state, using the extension date only for a filed 7004.
  *
  * Without a 7004 the extended date is not this filer's deadline at all, so
  * showing "Extension due 15 October" to someone who never filed one told them
  * they had six months they did not have.
+ *
+ * Takes the whole filing rather than the tax year, because a final return's
+ * dates come off its own period end. FILING_DUE_DATES is still the fallback
+ * for a row with no usable period, since it is the same calendar-year table
+ * filingDueDates() generates.
  */
-function dueState(
-  taxYear: string | null | undefined,
-  extensionFiled: boolean,
-): DueState {
+function dueState(f: Filing, extensionFiled: boolean): DueState {
+  const taxYear = f.tax_year;
   if (!taxYear) return null;
-  const dates = FILING_DUE_DATES[Number(taxYear)];
+  const periodEnd = periodEndOf(f);
+  const dates = periodEnd ? filingDueDates(periodEnd) : FILING_DUE_DATES[Number(taxYear)];
   if (!dates) return null;
   const today = new Date();
   const original = new Date(dates.original);
@@ -468,10 +498,21 @@ export function Dashboard() {
     const formation = profile.date_of_incorporation
       ?? group.filings.find((f) => f.date_of_incorporation)?.date_of_incorporation
       ?? null;
+    // A company that has filed a final return is closed, and a closed LLC owes
+    // nothing for any later year. Taken only from a filing marked final_return,
+    // not from a stray date_of_closure: a dissolution date can sit on an
+    // earlier year's row in a catch-up job without that year being the final
+    // one. The earliest such date wins, so a wrongly re-opened later year
+    // cannot push the prompt back out past the closure.
+    const dissolution = group.filings
+      .filter((f) => f.final_return === true && f.date_of_closure)
+      .map((f) => f.date_of_closure as string)
+      .sort()[0] ?? null;
     return missingTaxYears({
       formationDate: formation,
       filedYears: group.filings.map((f) => f.tax_year),
       dismissedYears: profile.years_filed_elsewhere ?? [],
+      dissolutionDate: dissolution,
     });
   }
 
@@ -551,7 +592,7 @@ export function Dashboard() {
               // missed deadline, October 15 2021" over two LLCs names neither.
               const pending = filings
                 .filter((f) => BUCKET_OF[f.status] !== 'done')
-                .map((f) => ({ f, d: dueState(f.tax_year, hasExtension(f)) }))
+                .map((f) => ({ f, d: dueState(f, hasExtension(f)) }))
                 .filter((x): x is { f: Filing; d: NonNullable<DueState> } => !!x.d)
                 .sort((a, b) => a.d.due.localeCompare(b.d.due));
               const overdue = pending.filter((x) => x.d.tone === 'late')[0];
@@ -1378,7 +1419,7 @@ function DeleteCardButton({
 function FilingCard({ f, faxed, onDelete, deleting }: { f: Filing; faxed?: boolean; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted')
-    ? dueState(f.tax_year, hasExtension(f))
+    ? dueState(f, hasExtension(f))
     : null;
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.

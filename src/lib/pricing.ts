@@ -13,9 +13,10 @@
  * Returning customers: the next two filings after the first are guaranteed at
  * the same USD 99 base. Counted in filings, not calendar years.
  *
- * NOTE: this file is duplicated in the product app repo (CNL 5472/5472) because
- * the two repos share no package. The copies must stay identical, if you change
- * a price here, change it there in the same commit.
+ * This file used to carry a parity note: it was duplicated in the old product
+ * repo and the two copies had to be changed together. That repo is RETIRED, its
+ * GitHub Pages deploy is off and the repo itself is gone, so this is now the
+ * only copy and there is nothing left to mirror. Handoff item 7.
  */
 
 export const PRICE_PER_YEAR = 99;
@@ -30,6 +31,26 @@ export const PRICE_CLASSIFICATION_CHANGE = 50;
 
 /** Number of subsequent filings guaranteed at the same base price. */
 export const RENEWAL_GUARANTEE_FILINGS = 2;
+
+/**
+ * ONE canonical name per situation, used wherever a page names the thing being
+ * bought: Pricing, Compare, Home, Services.
+ *
+ * The same $99 product was sold under four names ("Past Year", "Current Year",
+ * "Multi-Year Past Filing Package", and a fifth phrasing on Home), which made
+ * one decision look like a catalogue. The cards were collapsed to two
+ * situations; these constants are what stops the NAMES drifting apart again on
+ * four pages that each restate them. Handoff item 46.
+ *
+ * There are two situations, not two products. The price and the output are
+ * identical; what differs is how many years the filer is buying at once.
+ */
+export const PRODUCT_NAMES = {
+  /** One year, current or missed. */
+  singleYear: 'Filing one tax year',
+  /** Several missed years bought as one job. */
+  catchUp: 'Catching up on missed years',
+} as const;
 
 /* ─── What can actually be bought ──────────────────────────────────────────
  *

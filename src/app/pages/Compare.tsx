@@ -6,6 +6,7 @@ import {
   PRICE_RCL,
   PRICE_ADDITIONAL_PARTY,
   computeTotal,
+  PRODUCT_NAMES,
 } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------
@@ -57,7 +58,10 @@ const ROWS: Row[] = [
     cpa: `$${CPA_LOW} to $${CPA_HIGH}`,
   },
   {
-    label: "Catching up several missed years",
+    // Named from PRODUCT_NAMES so the comparison table calls the situation what
+    // /pricing calls it. It read "Catching up several missed years" here and
+    // something different on every other page. Handoff item 46.
+    label: PRODUCT_NAMES.catchUp,
     tip:
       "A reasonable cause statement is what asks the IRS to abate the penalty. " +
       "One letter can cover every late year in the same request, so we charge for " +

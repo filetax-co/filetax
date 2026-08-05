@@ -7,6 +7,7 @@ import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
 import { listCompanies, loadCompany, saveProfileFromFiling, type FilingProfile } from '../../lib/filingProfile';
 import { startCheckout } from '../../lib/checkout';
+import { loadFaxTransmission } from '../../lib/faxTransmissions';
 import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
 import {
   asksDirection,
@@ -1265,6 +1266,27 @@ export function Intake() {
   // Payment-integrity state: a paid filing locks only the identity fields that
   // define what was purchased. Genuine corrections remain unlimited.
   const [isPaidLocked, setIsPaidLocked] = useState(false);
+  /**
+   * The pages have gone to the IRS, so nothing here may change any more.
+   *
+   * Payment freezes IDENTITY and leaves corrections open, which is right while
+   * the filer still holds the package: they have bought a filing for one
+   * company and one year, but the numbers on it are theirs to fix. A fax ends
+   * that. Once a transmission exists, the document the IRS holds and the
+   * document this page would regenerate can no longer be the same one, and a
+   * filer editing a transaction after the fact quietly produces a second,
+   * different return that was never sent. Editing is refused outright rather
+   * than merged, because there is nothing to merge into.
+   *
+   * A FAILED transmission does not lock. Nothing was received, the row itself
+   * allows re-dispatch, and the correction the filer needs to make may be the
+   * reason it failed.
+   *
+   * The SIGNATURE stays open, which is the one deliberate exception: it is
+   * drawn on the filing page after payment, does not run through this page's
+   * write path, and a filer re-signing does not change what was transmitted.
+   */
+  const [isFaxLocked, setIsFaxLocked] = useState(false);
   // Pre-payment draft preview. The rendered docs are held here rather than in
   // the modal so closing it throws the raster away: these are the filer's own
   // forms and there is no reason to keep them in memory afterwards.
@@ -1469,6 +1491,21 @@ export function Intake() {
       // while all genuine corrections remain unlimited. Surface the identity
       // lock in the UI rather than blocking the whole filing.
       setIsPaidLocked(f.status === 'paid' || f.status === 'completed');
+      // A dispatched fax locks this filing harder than payment does. Read after
+      // the row rather than beside it, because the dispatch key is job-scoped
+      // when the filing belongs to a catch-up: one transmission covers every
+      // year in the job, so every year in it locks together. Best-effort, and
+      // deliberately so: loadFaxTransmission returns null on error, and a lock
+      // that fails open leaves a filer editing a sent filing, which is why the
+      // write path checks the flag rather than assuming this ran.
+      const tx = await loadFaxTransmission({ id: f.id as string, job_id: (f as any).job_id ?? null });
+      if (tx && tx.status !== 'failed') {
+        setIsFaxLocked(true);
+        // Everything the paid lock disables, a sent filing disables too, so the
+        // fields inherit it instead of every `disabled` prop growing a second
+        // condition. The banner below tells the two apart.
+        setIsPaidLocked(true);
+      }
       setPaidRelatedPartyCount(Number((f as any).paid_related_party_count ?? 0));
       // A filing that has moved past 'draft' has been through every step once,
       // so allow free step navigation on return visits.
@@ -2277,6 +2314,17 @@ export function Intake() {
     patch: Partial<Filing> & Record<string, unknown>,
     propagateShared: boolean,
   ): Promise<string | null> => {
+    // The one write path, so this is the one place the fax lock has to hold.
+    // Refused before `saving` is set: a silent no-op would leave the filer
+    // watching a spinner finish and believing the change was kept.
+    if (isFaxLocked) {
+      setError(
+        'This filing has already been faxed to the IRS, so it can no longer be edited. '
+        + 'The IRS holds the pages exactly as they were sent. If something on them is wrong, '
+        + 'email support@filetax.co: a correction is a new filing, not an edit to this one.',
+      );
+      return filingId;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -3334,7 +3382,21 @@ export function Intake() {
         {/* Scroll anchor kept for error-summary focus. */}
         <div ref={stepTopRef} aria-hidden="true" />
 
-        {isPaidLocked && (
+        {/* Two locks, two banners, and the sent one REPLACES the paid one
+            rather than stacking on it. A filer whose pages are at the IRS does
+            not need to be told which fields payment froze; they need to be told
+            that none of them can move now. Showing both would end on the paid
+            banner's promise that corrections can be re-downloaded as often as
+            needed, which is exactly what is no longer true. */}
+        {isFaxLocked ? (
+          <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
+            <strong>This filing has been faxed to the IRS.</strong> It can no longer be edited. The
+            IRS holds the pages exactly as they were transmitted, and changing them here would
+            leave you with a return that differs from the one they received.{' '}
+            If something on it is wrong, email support@filetax.co. You can still download your copy
+            and your transmission confirmation from the filing page.
+          </div>
+        ) : isPaidLocked && (
           <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
             <strong>This filing has been paid.</strong> Your company and owner identity (EIN, LLC name, tax year, owner name &amp; tax ID, incorporation date) are locked. To file for a different company or year, start a new filing.{' '}
             You can correct other details and transactions, then re-download, as often as needed.

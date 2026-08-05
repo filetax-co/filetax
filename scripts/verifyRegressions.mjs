@@ -17,7 +17,7 @@ import {
   resolveUiTxType,
 } from '../src/lib/filingMapping.ts';
 import {
-  RP_NAICS, resolveBizPreset, TX_TYPES, filingDueDates,
+  RP_NAICS, resolveBizPreset, TX_TYPES, filingDueDates, effectivePeriodEnd,
   defaultDirectionFor, OWNER_ONLY_TX_TYPES, PART_V_TYPES,
   NON_OWNER_BLOCKED_TX_TYPES, SIMPLE_TX, RELATED_PARTY_TX,
 } from '../src/app/pages/intake/constants.ts';
@@ -257,6 +257,25 @@ check('dismissing everything silences the prompt',
 check('null years are ignored rather than counted',
   mt({ formationDate: '2025-01-01', filedYears: [null, undefined, ''] }), [2025]);
 
+// A dissolved LLC owes nothing for any year after the one it closed in. Without
+// the ceiling, a company wound up in 2024 was still being told in 2026 that its
+// 2025 return was missing, for an entity that no longer exists and a year the
+// wizard would refuse to build.
+check('a dissolved company is not asked about years after it closed',
+  mt({ formationDate: '2021-01-01', filedYears: ['2024'], dissolutionDate: '2024-06-30' }),
+  [2023, 2022, 2021]);
+// The dissolution year itself stays in range: the final return covers the short
+// year ending on the dissolution date, and it is exactly the year most likely
+// to be unfiled.
+check('the year of dissolution is still asked about',
+  mt({ formationDate: '2021-01-01', filedYears: [], dissolutionDate: '2024-06-30' })[0], 2024);
+// No dissolution date is the ordinary case and must not change.
+check('an undissolved company still runs to last year',
+  mt({ formationDate: '2021-01-01', filedYears: [], dissolutionDate: null })[0], 2025);
+// Dissolved before the earliest year we prepare: nothing to offer at all.
+check('a company dissolved before 2019 is asked nothing',
+  mt({ formationDate: '2016-01-01', filedYears: [], dissolutionDate: '2018-09-01' }), []);
+
 console.log('\n- how the years are described -');
 check('a run of years collapses', describeYears([2021, 2022, 2023, 2024]), '2021 to 2024');
 check('one year stands alone', describeYears([2023]), '2023');
@@ -449,6 +468,52 @@ for (const [periodEnd, original, extended] of ALL_FISCAL_MONTHS) {
 // as on time for ever, which is what the missing-key branch used to do.
 check('a year past the end of the old table still has a deadline',
   filingDueDates('2027-12-31'), { original: '2028-04-15', extended: '2028-10-15' });
+
+// ── Risk 4b: a FINAL return's deadline runs from the dissolution date ───────
+// The 1120 instructions put a dissolved corporation's return on the 15th day of
+// the 4th month after it dissolved, and the 5472 rides on that return. The
+// generator truncated the printed period at the dissolution date from the
+// start; nothing that computed a DEADLINE did, so a dissolved LLC was shown the
+// ordinary calendar-year date, up to six months late, and the same wrong date
+// fed the lateness verdict behind the reasonable cause letter.
+console.log('\n- final-return period end -');
+
+const CY = (y) => [`${y}-01-01`, `${y}-12-31`];
+
+check('a mid-year dissolution ends the period on that date',
+  effectivePeriodEnd(2025, ...CY(2025), true, '2025-06-30'), '2025-06-30');
+check('and its deadline is 15 October, not 15 April',
+  filingDueDates(effectivePeriodEnd(2025, ...CY(2025), true, '2025-06-30')),
+  { original: '2025-10-15', extended: '2026-04-15' });
+
+// Not a final return: the same date on the row must not shorten the year. A
+// dissolution date can sit on an earlier year's row in a catch-up job.
+check('a dissolution date without final_return leaves the period alone',
+  effectivePeriodEnd(2025, ...CY(2025), false, '2025-06-30'), '2025-12-31');
+
+// Strictly inside, both ends. A closure on the last day is the ordinary year,
+// not a period ending one day early; a closure on the first day would otherwise
+// print a one-day year.
+check('a closure on the period end is the ordinary year',
+  effectivePeriodEnd(2025, ...CY(2025), true, '2025-12-31'), '2025-12-31');
+check('a closure on the period start does not make a one-day year',
+  effectivePeriodEnd(2025, ...CY(2025), true, '2025-01-01'), '2025-12-31');
+
+// A dissolution recorded in a later year cannot extend this one.
+check('a later dissolution cannot extend the period',
+  effectivePeriodEnd(2024, ...CY(2024), true, '2025-03-31'), '2024-12-31');
+
+// Fiscal year plus dissolution: the truncation applies to the real period.
+check('a fiscal filer dissolving mid-period is truncated too',
+  effectivePeriodEnd(2025, '2025-04-01', '2026-03-31', true, '2025-09-30'), '2025-09-30');
+check('and is then due 15 January',
+  filingDueDates(effectivePeriodEnd(2025, '2025-04-01', '2026-03-31', true, '2025-09-30')),
+  { original: '2026-01-15', extended: '2026-07-15' });
+
+// No period columns saved: fall back to the calendar year rather than null,
+// which is what older rows carry.
+check('a row with no period columns falls back to the calendar year',
+  effectivePeriodEnd(2023, null, null, true, null), '2023-12-31');
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'}`);
 process.exit(failures === 0 ? 0 : 1);

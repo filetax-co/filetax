@@ -35,6 +35,16 @@ export interface MissingYearsInput {
   filedYears: Array<string | null | undefined>;
   /** Years the filer told us are filed somewhere else. */
   dismissedYears?: Array<string | null | undefined>;
+  /**
+   * ISO date the LLC was dissolved, when a final return has been filed for it.
+   *
+   * A dissolved LLC owes nothing for any year after the one it closed in: there
+   * is no entity to report. Without this the prompt kept counting forward, so a
+   * company wound up in 2025 was told in January 2027 that its 2026 return was
+   * missing, which is both wrong and alarming, and the years it named could
+   * never be filed through this product.
+   */
+  dissolutionDate?: string | null;
   now?: Date;
 }
 
@@ -52,8 +62,12 @@ export interface MissingYearsInput {
  *           formed in 2016 is never asked about 2018, because we would refuse
  *           to prepare it; a company formed in 2023 is never asked about 2022,
  *           because it did not exist.
- *   ceiling the most recent filable year. Asking about the current year would
- *           be asking for a return that cannot be filed yet.
+ *   ceiling the most recent filable year, pulled back to the DISSOLUTION year
+ *           when the company has closed. Asking about the current year would be
+ *           asking for a return that cannot be filed yet; asking about a year
+ *           after dissolution asks for a return on an entity that no longer
+ *           exists. The year of dissolution itself is still in range, since the
+ *           final return covers the short year ending on that date.
  *
  * A DRAFT counts as filed for this purpose. The year is already on the
  * dashboard as its own card, so listing it again as missing would show the same
@@ -64,7 +78,10 @@ export function missingTaxYears(input: MissingYearsInput): number[] {
   if (formationYear === null) return [];
 
   const floor = Math.max(EARLIEST_TAX_YEAR, formationYear);
-  const ceiling = mostRecentFilableYear(input.now);
+  const dissolutionYear = yearOf(input.dissolutionDate);
+  const ceiling = dissolutionYear === null
+    ? mostRecentFilableYear(input.now)
+    : Math.min(mostRecentFilableYear(input.now), dissolutionYear);
   if (floor > ceiling) return [];
 
   const covered = new Set<number>();

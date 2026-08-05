@@ -3,7 +3,7 @@ import { IRSClock } from "../components/IRSClock";
 import { InfoTip } from "../components/InfoTip";
 import { usePageMeta } from "../hooks/usePageMeta";
 import { useJsonLd } from "../hooks/useJsonLd";
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE, SERVICES } from "../../lib/pricing";
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_ADDITIONAL_PARTY, PRICE_FAX, PRICE_CLASSIFICATION_CHANGE, SERVICES, PRODUCT_NAMES } from "../../lib/pricing";
 import type { ServiceId } from "../../lib/pricing";
 
 const CHECK_URL = "/check";
@@ -64,7 +64,7 @@ interface PricingCard {
 // new card. See handoff item 46.
 const PRIMARY: PricingCard[] = [
   {
-    title: "Filing one tax year",
+    title: PRODUCT_NAMES.singleYear,
     serviceId: "filing",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",
@@ -86,7 +86,7 @@ const PRIMARY: PricingCard[] = [
     highlight: true,
   },
   {
-    title: "Catching up on multiple missed years",
+    title: PRODUCT_NAMES.catchUp,
     serviceId: "filing",
     price: `$${PRICE_PER_YEAR}`,
     priceNote: "per year",

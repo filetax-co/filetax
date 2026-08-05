@@ -79,6 +79,42 @@ export function filingDueDates(periodEndISO: string): { original: string; extend
 }
 
 /**
+ * The period end a saved filing's deadline actually runs from.
+ *
+ * A final return's period ends on the dissolution date, so its deadline is the
+ * 15th day of the 4th month after THAT, not after 31 December. An LLC dissolved
+ * 30 June 2025 is due 15 October 2025, not 15 April 2026, and a dashboard
+ * keyed on the tax year alone showed the later date and called a late filing
+ * on time.
+ *
+ * Mirrors resolvePeriod() in pdfGenerator.ts and effectiveTaxPeriodWindow() in
+ * Intake.tsx, including the comparison operators: the closure date is taken
+ * only when it falls STRICTLY inside the nominal period, so a closure on the
+ * first or last day leaves the period unchanged rather than printing a one-day
+ * year, and a dissolution recorded against a later year cannot extend this one.
+ * The generator already truncated the printed period this way; nothing that
+ * computes a deadline did.
+ *
+ * Takes loose values rather than a Filing so the regression suite can call it
+ * without pulling a React page into Node.
+ */
+export function effectivePeriodEnd(
+  taxYear: number | string | null | undefined,
+  nominalBeginISO: string | null | undefined,
+  nominalEndISO: string | null | undefined,
+  finalReturn: boolean | null | undefined,
+  dissolutionISO: string | null | undefined,
+): string | null {
+  const year = Number(taxYear);
+  if (!year) return null;
+  const begin = nominalBeginISO || `${year}-01-01`;
+  const end = nominalEndISO || `${year}-12-31`;
+  return finalReturn === true && dissolutionISO && dissolutionISO > begin && dissolutionISO < end
+    ? dissolutionISO
+    : end;
+}
+
+/**
  * Calendar-year due dates by tax year, kept for the dashboard, which shows a
  * deadline per year and has no period to hand. Fiscal filers must go through
  * filingDueDates() with their real period end.
