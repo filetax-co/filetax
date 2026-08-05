@@ -12,6 +12,7 @@
  * Anything else is a message safe to show the filer.
  */
 import { supabase } from './supabase';
+import { edgeFunctionError } from './edgeErrors';
 
 export async function startCheckout(filingId: string): Promise<string | null> {
   const { data, error } = await supabase.functions.invoke('create-checkout-session', {
@@ -25,14 +26,7 @@ export async function startCheckout(filingId: string): Promise<string | null> {
 
   // The edge function's own message is the useful one ("this filing is already
   // paid", "no products in the cart"). It arrives in the response body rather
-  // than in error.message, so it has to be read back off the context.
-  let functionMessage = data?.error as string | undefined;
-  const context = (error as { context?: Response } | null)?.context;
-  if (!functionMessage && context) {
-    try {
-      const body = await context.clone().json();
-      functionMessage = body?.error;
-    } catch { /* retain the safe fallback below */ }
-  }
-  return functionMessage || error?.message || 'Unable to start checkout. Please try again.';
+  // than in error.message, so it has to be read back off the context. Shared
+  // with faxDispatch and the payment screen: see lib/edgeErrors.ts.
+  return edgeFunctionError(data, error, 'Unable to start checkout. Please try again.');
 }

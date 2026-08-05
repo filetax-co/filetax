@@ -3216,8 +3216,18 @@ export function Intake() {
                 announce itself afterwards, which is how a second-LLC filer
                 ended up with the wrong EIN on a filing that freezes it at
                 payment. */}
+            {/* Same fill as "Before you start this year" directly below it.
+                This box had no background, so it inherited the page and read as
+                a different kind of surface from its neighbour, which is the
+                same card at the same width with the same border. */}
             {showCompanyPicker && savedCompanies.length > 0 && (
-              <div style={{ border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1.125rem 1.25rem', marginBottom: '1.5rem' }}>
+              <div style={{
+                border: '1px solid var(--tf-border)',
+                borderRadius: '0.625rem',
+                padding: '1.125rem 1.25rem',
+                marginBottom: '1.5rem',
+                background: 'var(--tf-bg)',
+              }}>
                 <h3 style={{ ...sectionLabelStyle, marginTop: 0 }}>Which company is this filing for?</h3>
                 <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', margin: '0 0 0.875rem', lineHeight: 1.55 }}>
                   Pick a company to bring its details across, or start blank. Check the EIN is the right one: it is locked once this filing is paid for.
@@ -4827,12 +4837,16 @@ export function Intake() {
                       </span>
                     </span>
                   </label>
-                  {includeIrsFax && (
-                    <div style={infoBoxStyle}>
-                      We fax after your forms are generated, and you keep the transmission
-                      confirmation as your proof of filing.
-                    </div>
-                  )}
+                  {/* A follow-up note used to appear here once the fax was
+                      ticked. Removed twice over. It repeated what the option
+                      above it already says, and it called the confirmation
+                      "your proof of filing", which is the one claim this
+                      product does not make: the confirmation evidences
+                      TRANSMISSION on a date. Timeliness depends on the
+                      deadline and acceptance is the IRS's to give, which is
+                      why the confirmation document itself refuses that wording
+                      and why it is the competitor claim §4 singles out as the
+                      one not to copy. Do not reinstate it. */}
                 </>
               )}
             </section>

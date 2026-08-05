@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
+import { edgeFunctionError } from '../../lib/edgeErrors';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
@@ -125,7 +126,14 @@ export default function FilingWizard() {
         setPaymentNotice(
           data?.status === 'processing'
             ? 'Your payment is still processing. Refresh this page in a moment.'
-            : data?.error || error?.message || 'We could not confirm the payment. Please contact support.',
+            // `error.message` on a non-2xx is the generic "Edge Function
+            // returned a non-2xx status code", which is what a filer saw here
+            // after paying. edgeFunctionError digs out verify-payment's own
+            // sentence instead. See lib/edgeErrors.ts.
+            : await edgeFunctionError(
+                data, error,
+                'We could not confirm the payment. Please contact support@filetax.co and we will sort it out.',
+              ),
         );
         setCheckoutBusy(false);
         return;
