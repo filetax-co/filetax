@@ -191,8 +191,15 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
 
-    const { filing_id } = await req.json() as { filing_id?: string };
+    const { filing_id, addon } = await req.json() as {
+      filing_id?: string;
+      addon?: string;
+    };
     if (!filing_id) return json({ error: 'filing_id is required' }, 400);
+    if (addon !== undefined && addon !== 'fax') {
+      return json({ error: 'Unknown add-on.' }, 400);
+    }
+    const faxAddon = addon === 'fax';
 
     const { data: anchor, error: anchorErr } = await supabase
       .from('filings')
@@ -255,7 +262,36 @@ serve(async (req) => {
     );
     const additionalPartyDelta = Math.max(0, additionalParties - paidAdditionalParties);
 
-    const productCart = supplemental
+    // ─── The fax bought after the filing was paid ────────────────────────────
+    //
+    // The entitlement is set on the intake screen and then FROZEN by
+    // `filings_freeze_when_paid()`, so a filer who skipped the tick had no route
+    // to the $9 at all: not a second checkout, not the filing page, nothing but
+    // an email to support. This is that route, and it is deliberately a cart of
+    // exactly one item rather than a re-derivation of the whole order, so it
+    // cannot re-charge for the filing, the letter or a party.
+    //
+    // Still not a standalone product. It is only offered against a filing that
+    // is already paid, which is what keeps "fax cannot be bought on its own"
+    // true on Home, Pricing and Services.
+    if (faxAddon) {
+      if (!supplemental) {
+        return json({ error: 'Pay for the filing first, then fax delivery can be added.' }, 409);
+      }
+      // One $9 covers the whole job however many years it holds, so an
+      // entitlement anywhere in the job means there is nothing to sell. A
+      // sentence rather than `already_paid: true`, which the browser renders as
+      // the generic "Unable to start checkout": the likely cause is a stale tab
+      // offering something a second tab already bought, and that filer needs to
+      // be told to refresh, not told to try again.
+      if (includeFax) {
+        return json({ error: 'Fax delivery is already on this filing. Refresh the page to send it.' }, 409);
+      }
+    }
+
+    const productCart = faxAddon
+      ? [{ product_id: PRODUCTS.fax, quantity: 1 }]
+      : supplemental
       ? (additionalPartyDelta > 0
         ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalPartyDelta }]
         : [])
@@ -307,7 +343,9 @@ serve(async (req) => {
           filing_id,
           filing_job_id: anchor.job_id ?? '',
           user_id: user.id,
-          checkout_type: supplemental ? 'additional_party' : 'initial',
+          checkout_type: faxAddon
+            ? 'fax_addon'
+            : supplemental ? 'additional_party' : 'initial',
         },
       }),
     });

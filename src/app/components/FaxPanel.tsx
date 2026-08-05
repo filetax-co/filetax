@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { edgeFunctionError } from '../../lib/edgeErrors';
+import { PRICE_FAX } from '../../lib/pricing';
 import {
   loadFaxTransmission,
   pollFaxTransmission,
@@ -64,7 +65,7 @@ interface Props {
 export default function FaxPanel({ filing, build, busy }: Props) {
   const [transmission, setTransmission] = useState<FaxTransmission | null>(null);
   const [loaded,   setLoaded]   = useState(false);
-  const [working,  setWorking]  = useState<null | 'send' | 'confirm' | 'copy' | 'check'>(null);
+  const [working,  setWorking]  = useState<null | 'send' | 'confirm' | 'copy' | 'check' | 'buy'>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [notice,   setNotice]   = useState<string | null>(null);
 
@@ -201,6 +202,30 @@ export default function FaxPanel({ filing, build, busy }: Props) {
     }
   };
 
+  // ── Buy it after the fact ──────────────────────────────────────────────────
+  /**
+   * A cart of exactly one $9 item against a filing that is already paid. It
+   * cannot re-charge for the filing, the letter or a party, because the cart is
+   * built server-side from the add-on name rather than re-derived from the
+   * filing. On return, `verify-payment` sets `include_irs_fax` and this panel
+   * comes back as the send panel.
+   */
+  const handleBuy = async () => {
+    if (working || busy) return;
+    setWorking('buy');
+    setError(null);
+    setNotice(null);
+    const { startCheckout } = await import('../../lib/checkout');
+    const failure = await startCheckout(filingId, 'fax');
+    // A null return means the tab is already navigating to the provider, so
+    // clearing the working state here would flash the button back to idle on
+    // the way out.
+    if (failure) {
+      setError(failure);
+      setWorking(null);
+    }
+  };
+
   // ── Copy of what was transmitted ───────────────────────────────────────────
   const handleCopy = async () => {
     if (!transmission || working || busy) return;
@@ -218,7 +243,79 @@ export default function FaxPanel({ filing, build, busy }: Props) {
     }
   };
 
-  if (!filing.include_irs_fax) return null;
+  // ── Not bought yet ─────────────────────────────────────────────────────────
+  //
+  // The offer, one step back from the panel above. The entitlement is set on the
+  // intake screen and frozen at payment, so a filer who did not tick it there
+  // had no way to buy it afterwards: the panel simply did not render, and the
+  // product silently had no answer for "I want this faxed after all". The most
+  // likely person to want it is the one who has just seen the package and
+  // realised they have no fax machine.
+  //
+  // Only offered on a filing that is PAID. Before payment the fax belongs in the
+  // main cart, where it is a tick box and not a second checkout.
+  if (!filing.include_irs_fax) {
+    if (filing.status !== 'paid' && filing.status !== 'completed') return null;
+    return (
+      <section style={wrap}>
+        <h3 style={{ fontSize: '1rem', margin: '0 0 0.25rem' }}>IRS fax delivery</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.55, margin: '0 0 0.9rem' }}>
+          Not added. You can mail the package yourself, or we can fax it to the IRS for you and give
+          you a transmission confirmation to keep.
+        </p>
+
+        {/* The homepage marker treatment, a green tick and a rule per row,
+            rather than the fact grid the sent states use. Those grids report a
+            transmission that exists; this is the only state on this panel that
+            has something to sell, and the site sells in this shape. */}
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem' }}>
+          {[
+            `$${PRICE_FAX} once, however many years this filing covers`,
+            'We fax the signed package for you, exactly as you generate it',
+            'You get a dated transmission confirmation to download and keep',
+            'Nothing is sent until you press send, so paying faxes nothing on its own',
+          ].map((item) => (
+            <li
+              key={item}
+              style={{
+                padding: '0.5rem 0',
+                borderBottom: '1px solid var(--tf-border)',
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.75rem',
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ color: 'var(--tf-success)', fontWeight: 700, fontSize: '1rem', flexShrink: 0 }}>
+                &#10003;
+              </span>
+              {item}
+            </li>
+          ))}
+        </ul>
+
+        {error && <div style={errBox}>{error}</div>}
+
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleBuy}
+            disabled={!!working || !!busy}
+            style={btn(!!working || !!busy, true)}
+          >
+            {working === 'buy' ? 'Opening checkout…' : `Add fax delivery, $${PRICE_FAX}`}
+          </button>
+        </div>
+
+        <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.75rem 0 0', lineHeight: 1.5 }}>
+          If the transmission cannot be completed after three attempts, the {`$${PRICE_FAX}`} is
+          refundable. See our <a href="/refunds" style={{ color: 'var(--tf-accent)' }}>refund policy</a>.
+        </p>
+      </section>
+    );
+  }
+
   if (!loaded) return null;
 
   const sendable = canDispatch(transmission);

@@ -145,7 +145,11 @@ export default function FilingWizard() {
         .eq('id', id)
         .single();
       if (refreshed) setFiling(refreshed);
-      setPaymentNotice('Payment confirmed. You can now sign and download your filing package.');
+      setPaymentNotice(
+        data.added === 'fax'
+          ? 'Fax delivery added. Send your package to the IRS from the fax section below.'
+          : 'Payment confirmed. You can now sign and download your filing package.',
+      );
       setCheckoutBusy(false);
       window.history.replaceState({}, '', `/filing/${id}`);
     })();

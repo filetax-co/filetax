@@ -14,9 +14,19 @@
 import { supabase } from './supabase';
 import { edgeFunctionError } from './edgeErrors';
 
-export async function startCheckout(filingId: string): Promise<string | null> {
+/**
+ * `addon` buys ONE thing against a filing that is already paid, rather than
+ * re-deriving the whole cart. Today that is the $9 fax, which a filer who did
+ * not tick it at intake could otherwise never buy: the entitlement is set on
+ * the intake screen and frozen at payment, so the only routes to it were a new
+ * filing or an email to support.
+ */
+export async function startCheckout(
+  filingId: string,
+  addon?: 'fax',
+): Promise<string | null> {
   const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-    body: { filing_id: filingId },
+    body: { filing_id: filingId, ...(addon ? { addon } : {}) },
   });
 
   if (!error && data?.url) {

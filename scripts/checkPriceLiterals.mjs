@@ -46,6 +46,9 @@ const FILES = [
   'src/app/pages/Dashboard.tsx',
   'src/app/pages/FilingWizard.tsx',
   'src/app/pages/Guide.tsx',
+  // Quotes the fax price twice, in a panel that sells it after the filing is
+  // paid. Added when that offer shipped.
+  'src/app/components/FaxPanel.tsx',
 ];
 
 /** Read the prices out of pricing.ts rather than restating them here, so this

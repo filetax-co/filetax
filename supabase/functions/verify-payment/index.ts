@@ -150,8 +150,16 @@ serve(async (req) => {
       0,
     );
     const supplemental = payment.metadata?.checkout_type === 'additional_party';
+    // The $9 fax bought against an already-paid filing. Its expected cart is a
+    // CONSTANT, not a re-derivation: this handler runs again on every refresh of
+    // the return URL, and by the second run the entitlement it granted is
+    // already true, so anything derived from `includeFax` would stop matching
+    // the cart Dodo holds and start answering 409 to a filer who paid.
+    const faxAddon = payment.metadata?.checkout_type === 'fax_addon';
     const additionalPartyDelta = Math.max(0, additionalParties - paidAdditionalParties);
-    const expectedCart = supplemental
+    const expectedCart = faxAddon
+      ? [{ product_id: PRODUCTS.fax, quantity: 1 }]
+      : supplemental
       ? [{ product_id: PRODUCTS.additionalParty, quantity: additionalPartyDelta }]
       : [
           { product_id: PRODUCTS.filing, quantity: filings.length },
@@ -215,12 +223,33 @@ serve(async (req) => {
       const { error: updateErr } = await supabase
         .from('filings')
         .update({
-          status: 'paid',
+          // Never walk a COMPLETED filing back to `paid`. A supplemental
+          // checkout (a party, or now the fax) is usually bought AFTER the
+          // package has been generated, and this line used to demote the row on
+          // every one of them: the dashboard card flipped from "Downloaded"
+          // back to "Ready to download" because a filer paid us more money.
+          status: filing.status === 'completed' ? 'completed' : 'paid',
           paid_at: filing.status === 'paid' || filing.status === 'completed' ? undefined : now,
           payment_id: payment.payment_id,
           payment_amount_cents: nextAmount,
           payment_currency: currencyChanged ? null : (currency ?? priorCurrency),
-          paid_related_party_count: relatedPartyCount(filing.related_parties),
+          // Only advanced when the cart actually paid for the parties. A fax
+          // add-on cart contains one $9 item and nothing else, so marking the
+          // current party count as paid here would hand the filer every party
+          // they had added since their last payment for free, and the delta
+          // that `create-checkout-session` bills from would be gone.
+          paid_related_party_count: faxAddon
+            ? filing.paid_related_party_count
+            : relatedPartyCount(filing.related_parties),
+          // What the $9 actually buys. Written here rather than at intake
+          // because this is the only moment we know it was paid for.
+          //
+          // This UPDATE is what `filings_freeze_when_paid()` exists to stop,
+          // and it gets through because the trigger exempts `service_role` on
+          // its first line and this client holds the service key. That is the
+          // sanctioned route and the only one: the guard still refuses the
+          // browser, the SQL editor and anything else without that role.
+          ...(faxAddon ? { include_irs_fax: true } : {}),
         })
         .eq('id', filing.id);
       if (updateErr) {
@@ -229,7 +258,15 @@ serve(async (req) => {
       }
     }
 
-    return json({ status: 'paid', payment_id: payment.payment_id });
+    // `added` tells the page what this particular checkout bought, so it can say
+    // so. Without it the return screen thanked a filer who had just bought fax
+    // delivery by inviting them to sign and download a package they generated
+    // days ago.
+    return json({
+      status: 'paid',
+      payment_id: payment.payment_id,
+      ...(faxAddon ? { added: 'fax' } : {}),
+    });
   } catch (err) {
     console.error('[verify-payment]', err);
     return json({ error: 'Internal server error' }, 500);

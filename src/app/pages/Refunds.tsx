@@ -111,7 +111,16 @@ export function Refunds() {
             <li style={styles.li}>if a transmission fails, we retry automatically, at least twice</li>
             <li style={styles.li}>if every attempt fails, we refund the ${PRICE_FAX} in full, without you having to ask</li>
             <li style={styles.li}>the transmission receipt is stored against your filing and stays re-downloadable</li>
+            <li style={styles.li}>
+              if you added fax delivery to a filing you had already paid for, and you never send the
+              fax, the ${PRICE_FAX} is refundable on request
+            </li>
           </ul>
+          <p style={styles.p}>
+            Fax delivery can be added at any time from your filing page, including after you have
+            paid for the filing and downloaded your package. It is charged once for the whole
+            filing, however many tax years it covers, and it is never sold on its own.
+          </p>
           <p style={styles.p}>
             A transmission receipt is proof that the IRS received the fax. It is not proof that
             the IRS has accepted or processed your filing, and no preparer can give you that. We
