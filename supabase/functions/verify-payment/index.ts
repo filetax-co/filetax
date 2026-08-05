@@ -24,7 +24,7 @@ const PRODUCT_CATALOGS = {
     filing: 'pdt_0Nkbxx2xSSs7jLmJQmosC',
     reasonableCause: 'pdt_0Nkc0poiJMr11hpCS3HEn',
     additionalParty: 'pdt_0Nkc0ybQ8bH5AtobUGp8Q',
-    fax: 'pdt_0Nkc18kU619ajN7I9LMuB',
+    fax: 'pdt_0Nkc18kU619ajN7l9LMuB',
   },
 } as const;
 const PRODUCTS =
