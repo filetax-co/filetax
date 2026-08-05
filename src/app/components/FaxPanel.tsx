@@ -6,6 +6,7 @@ import {
   canConfirm,
   canDispatch,
   faxStatusLine,
+  isStale,
   type FaxTransmission,
 } from '../../lib/faxTransmissions';
 
@@ -88,6 +89,8 @@ export default function FaxPanel({ filing, build, busy }: Props) {
   useEffect(() => {
     if (!transmission) return;
     if (transmission.status !== 'dispatching' && transmission.status !== 'submitted') return;
+    // Nothing is coming for a stale submission, so polling it is noise.
+    if (isStale(transmission)) return;
     return pollFaxTransmission({ id: filingId, job_id: jobId }, setTransmission);
   }, [filingId, jobId, transmission?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -184,7 +187,9 @@ export default function FaxPanel({ filing, build, busy }: Props) {
   if (!loaded) return null;
 
   const sendable = canDispatch(transmission);
-  const inFlight = transmission?.status === 'dispatching' || transmission?.status === 'submitted';
+  const inFlight = !!transmission
+    && (transmission.status === 'dispatching' || transmission.status === 'submitted')
+    && !isStale(transmission);
 
   return (
     <section style={wrap}>
@@ -240,7 +245,14 @@ export default function FaxPanel({ filing, build, busy }: Props) {
           </button>
         )}
 
-        {transmission && !inFlight && (
+        {/* Available as soon as a fax has actually been submitted, in flight or
+            not. It was gated on the transmission having settled, which withheld
+            the filer's own copy of pages that had ALREADY gone to the IRS while
+            we waited on a provider callback. Found on the live 5 August test
+            row, which is stuck at `submitted` because that fax predates the
+            webhook and will never receive one: the copy would have been
+            unreachable forever. */}
+        {transmission?.submitted_at && (
           <button
             type="button"
             onClick={handleCopy}

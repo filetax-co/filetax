@@ -88,6 +88,21 @@ export const canDispatch = (t: FaxTransmission | null): boolean =>
   !t || (t.status === 'failed' && Number(t.attempts) < 3);
 
 /**
+ * A submission old enough that the delivery callback is not coming.
+ *
+ * One hour, against Sinch reporting completion in seconds to minutes. Long
+ * enough that a queued fax and its provider-side retries are still just
+ * "waiting", short enough that a filer is not watching a hopeful message all
+ * day.
+ */
+const STALE_SUBMISSION_MS = 60 * 60_000;
+
+export const isStale = (t: FaxTransmission): boolean =>
+  t.status === 'submitted' &&
+  !!t.submitted_at &&
+  Date.now() - new Date(t.submitted_at).getTime() > STALE_SUBMISSION_MS;
+
+/**
  * One sentence about where the transmission stands, in the filer's terms.
  *
  * Each state says what it is rather than collapsing into "submitted". A filer
@@ -100,7 +115,18 @@ export function faxStatusLine(t: FaxTransmission | null): string {
     case 'dispatching':
       return 'Submitting your package to the fax provider.';
     case 'submitted':
-      return 'Sent to the fax provider. Waiting for confirmation that the IRS line answered.';
+      // A callback that has not arrived within the hour is not late, it is
+      // missing: Sinch reports completion in seconds to minutes. Saying
+      // "waiting" forever is how the 5 August test row would have read for the
+      // rest of time, since that fax was sent before the webhook existed and no
+      // callback is ever coming for it. Derived from the row, so it survives a
+      // refresh, and it never contradicts a later callback: a delivered row
+      // stops taking this branch.
+      return isStale(t)
+        ? 'Sent to the fax provider, but we have had no confirmation back. The pages were '
+          + 'transmitted; what is missing is the delivery record. Email support@filetax.co and we '
+          + 'will confirm it against the provider directly.'
+        : 'Sent to the fax provider. Waiting for confirmation that the IRS line answered.';
     case 'delivered':
       return 'Delivered. Your transmission confirmation is ready to download.';
     case 'failed':
