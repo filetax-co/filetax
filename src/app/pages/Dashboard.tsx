@@ -29,7 +29,12 @@ const BUCKET_TITLE: Record<Bucket, string> = {
   action: 'Needs your attention',
   in_progress: 'In progress',
   ready: 'Ready to download',
-  done: 'Filed & downloaded',
+  // NOT "Filed & downloaded". Downloading is not filing: on the mail path the
+  // filer still has to print, sign and post the package to Ogden, and this
+  // heading was telling them the return was filed when a PDF had merely
+  // reached their Downloads folder. The one case that IS more than a download,
+  // a delivered fax, says so on the card itself.
+  done: 'Downloaded',
 };
 
 const BUCKET_ORDER: Bucket[] = ['action', 'ready', 'in_progress', 'done'];
@@ -219,6 +224,8 @@ export function Dashboard() {
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
 
   const [filings, setFilings] = useState<Filing[]>([]);
+  /** dispatch_key of every transmission that reached `delivered`. */
+  const [faxedKeys, setFaxedKeys] = useState<Set<string>>(new Set());
   const [companies, setCompanies] = useState<FilingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -242,13 +249,21 @@ export function Dashboard() {
       // Both at once. The saved companies are a separate table and neither
       // read depends on the other, so serialising them would only make the
       // dashboard slower to appear.
-      const [filingsRes, companiesRes] = await Promise.all([
+      const [filingsRes, companiesRes, faxRes] = await Promise.all([
         supabase
           .from('filings')
           .select('*')
           .eq('user_id', effectiveUserId)
           .order('updated_at', { ascending: false }),
         listCompanies(effectiveUserId),
+        // Delivered faxes only. RLS already limits this to the caller's own
+        // rows, and `dispatch_key` is the same job:/filing: string the filing
+        // page keys on, so the two surfaces cannot disagree about which
+        // transmission belongs to which filing.
+        supabase
+          .from('fax_transmissions')
+          .select('dispatch_key')
+          .eq('status', 'delivered'),
       ]);
 
       if (cancelled) return;
@@ -262,6 +277,9 @@ export function Dashboard() {
       // an empty companies section rather than blocking the filings list, which
       // is the part of this page the filer actually came for.
       setCompanies(companiesRes);
+      // A failed read here costs a chip, not the page: the filings list is what
+      // the filer came for.
+      setFaxedKeys(new Set((faxRes.data ?? []).map((r: { dispatch_key: string }) => r.dispatch_key)));
 
       setLoading(false);
     }
@@ -615,6 +633,7 @@ export function Dashboard() {
                     {companyGroups[0] && catchUpFor(companyGroups[0])}
                     <FilingGroups
                       filings={filings}
+                      faxedKeys={faxedKeys}
                       onDeleteJob={deleteJob}
                       onDeleteFiling={deleteFiling}
                       busy={busy}
@@ -638,6 +657,7 @@ export function Dashboard() {
                       {catchUpFor(c)}
                       <FilingGroups
                         filings={c.filings}
+                        faxedKeys={faxedKeys}
                         onDeleteJob={deleteJob}
                         onDeleteFiling={deleteFiling}
                         busy={busy}
@@ -1212,15 +1232,21 @@ function groupByCompany(filings: Filing[]): CompanyGroup[] {
  */
 function FilingGroups({
   filings,
+  faxedKeys,
   onDeleteJob,
   onDeleteFiling,
   busy,
 }: {
   filings: Filing[];
+  faxedKeys: Set<string>;
   onDeleteJob: (filings: Filing[]) => void;
   onDeleteFiling: (f: Filing) => void;
   busy: string | null;
 }) {
+  // Job-scoped when the filing belongs to a catch-up, because the $9 fax is:
+  // one transmission covers every year in the job.
+  const wasFaxed = (f: Filing) =>
+    faxedKeys.has(f.job_id ? `job:${f.job_id}` : `filing:${f.id}`);
   // Group standalone filings vs multi-year job filings.
   const jobs = new Map<string, Filing[]>();
   const standalone: Filing[] = [];
@@ -1244,6 +1270,7 @@ function FilingGroups({
         <JobCard
           key={jobId}
           filings={yearFilings}
+          faxed={yearFilings.some(wasFaxed)}
           onDeleteJob={onDeleteJob}
           onDeleteYear={onDeleteFiling}
           busy={busy}
@@ -1260,6 +1287,7 @@ function FilingGroups({
               <FilingCard
                 key={f.id}
                 f={f}
+                faxed={wasFaxed(f)}
                 onDelete={onDeleteFiling}
                 deleting={busy === `del-${f.id}`}
               />
@@ -1347,7 +1375,7 @@ function DeleteCardButton({
   );
 }
 
-function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
+function FilingCard({ f, faxed, onDelete, deleting }: { f: Filing; faxed?: boolean; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted')
     ? dueState(f.tax_year, hasExtension(f))
@@ -1380,6 +1408,7 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
           </p>
           <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
+          {faxed && <Pill bg="var(--tf-banner-green-bg)" fg="var(--tf-banner-green-text)">Faxed to the IRS</Pill>}
           {due && (
             <Pill bg={DUE_TONE[due.tone].bg} fg={DUE_TONE[due.tone].fg}>{due.label}</Pill>
           )}
@@ -1417,11 +1446,13 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
 function JobCard({
   filings,
+  faxed,
   onDeleteJob,
   onDeleteYear,
   busy,
 }: {
   filings: Filing[];
+  faxed?: boolean;
   onDeleteJob?: (filings: Filing[]) => void;
   onDeleteYear?: (f: Filing) => void;
   busy?: string | null;
@@ -1508,6 +1539,7 @@ function JobCard({
                 <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
+          {faxed && <Pill bg="var(--tf-banner-green-bg)" fg="var(--tf-banner-green-text)">Faxed to the IRS</Pill>}
                   <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
                 </span>
               </Link>
