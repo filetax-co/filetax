@@ -11,6 +11,11 @@ const SINCH_ACCESS_KEY = Deno.env.get('SINCH_ACCESS_KEY');
 const SINCH_ACCESS_SECRET = Deno.env.get('SINCH_ACCESS_SECRET');
 const SINCH_FAX_SERVICE_ID = Deno.env.get('SINCH_FAX_SERVICE_ID');
 const SINCH_FAX_NUMBER = Deno.env.get('SINCH_FAX_NUMBER');
+// Shared secret embedded in the per-fax delivery callback URL. Deliberately not
+// in the required-config check below: a missing callback degrades the delivery
+// RECORD, it does not make the fax wrong, and a filer facing a penalty should
+// not be blocked from filing because our reporting plumbing is unconfigured.
+const SINCH_WEBHOOK_TOKEN = Deno.env.get('SINCH_WEBHOOK_TOKEN');
 
 // Sinch's documented no-charge outbound test destination. Keep this hardcoded
 // until the production destination is deliberately enabled in a later change.
@@ -192,10 +197,42 @@ serve(async (req) => {
     outbound.set('from', SINCH_FAX_NUMBER);
     outbound.set('maxRetries', '2');
     outbound.set('retryDelaySeconds', '60');
-    outbound.set('resolution', 'FINE');
+    // SUPERFINE, not FINE. The Instructions for Form 5472 ask for "300 DPI or
+    // higher" on the fax line. No Group 3 fax reaches 300 horizontally: T.4
+    // fixes that axis at 203 in every mode, and only the vertical changes
+    // (standard 98, fine 196, superfine 391). Superfine is therefore the
+    // closest the medium can come, clearing 300 on one axis instead of neither.
+    //
+    // This value OVERRIDES the resolution configured on the Sinch service, so
+    // changing it in the Sinch dashboard does nothing while this line exists.
+    // That surprised us once already.
+    outbound.set('resolution', 'SUPERFINE');
     outbound.set('headerPageNumbers', 'true');
     outbound.set('labels[filingId]', filing.id);
     outbound.set('labels[transmissionId]', transmissionId);
+
+    // Where Sinch reports COMPLETED (or not). Without this the row can only
+    // ever reach `submitted`: the POST below tells us the fax was ACCEPTED, and
+    // acceptance is not delivery. Per-fax, because Sinch only offers a
+    // service-level callback for INCOMING faxes; a completion callback has to
+    // be registered on the send itself.
+    //
+    // The token is in the URL because that is the only channel a per-fax
+    // callback has. It is a Supabase secret, it never appears in the browser,
+    // and `sinch-fax-webhook` compares it in constant time.
+    if (SINCH_WEBHOOK_TOKEN) {
+      const callbackUrl = `${SUPABASE_URL}/functions/v1/sinch-fax-webhook` +
+        `?token=${encodeURIComponent(SINCH_WEBHOOK_TOKEN)}`;
+      outbound.set('callbackUrl', callbackUrl);
+      // JSON rather than the multipart default, so the receiver parses one
+      // shape. Both carry a copy of the transmitted PDF; neither is stored.
+      outbound.set('callbackUrlContentType', 'application/json');
+    } else {
+      // Send anyway. A missing callback costs us the delivery record, which is
+      // recoverable by looking the fax up in Sinch; refusing to send costs the
+      // filer their filing, which is not.
+      console.error('[dispatch-irs-fax] SINCH_WEBHOOK_TOKEN unset, sending with no delivery callback');
+    }
 
     // Release the claim on ANY outcome that is not a submitted fax, so the row
     // never outlives the request that owns it. A throw here used to fall through
