@@ -1444,6 +1444,12 @@ export interface FaxCoverOpts {
   sentOn?: Date;
   /** Multi-year catch-up years. Omit for a single-year transmission. */
   taxYears?: number[];
+  /**
+   * The owner's drawn mark, when they signed rather than typed. The cover is a
+   * letter FROM the owner, so it signs the same way the Reasonable Cause
+   * Statement does; see the signature block below.
+   */
+  drawnSignature?: DrawnSignature | null;
 }
 
 export const buildFaxCoverPage = async (
@@ -1556,12 +1562,34 @@ export const buildFaxCoverPage = async (
   cursor.y -= 16;
 
   // ── Signature block ────────────────────────────────────────────────────────
-  // Matches the pro forma 1120 and the Reasonable Cause Statement: the typed
-  // name of the owner, with their title. No blank signature rule is drawn,
-  // because on the fax path there is no opportunity to pen one in.
+  // Signed the same way as the Reasonable Cause Statement: the drawn mark if
+  // there is one, otherwise the typed name in the script face, and in both
+  // cases the printed name and title beneath it. The cover is a letter from
+  // the owner and it is page 1 of what Ogden reads, so an unsigned one is the
+  // odd document out in a package where everything else carries a signature.
+  // faxSignatureBlocker() has already refused to build this payload if there
+  // is neither a name nor a mark, so one of the two branches always draws.
   if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
   cursor.y = drawWrapped(page, 'Sincerely,', MARGIN, cursor.y, { size: FS_BODY }, fonts);
-  cursor.y -= 24;
+
+  const SIG_BOX_H = 34;
+  const coverSignature = await embedDrawnSignature(doc, opts.drawnSignature);
+  if (cursor.y - SIG_BOX_H < MARGIN) ({ page, cursor } = newPage(doc));
+  cursor.y -= SIG_BOX_H + 2;
+  if (coverSignature) {
+    drawSignatureInBox(page, coverSignature, {
+      x: MARGIN, y: cursor.y, maxWidth: 200, maxHeight: SIG_BOX_H,
+    });
+  } else {
+    const scriptFont = await embedSignatureFont(doc, filing.owner.full_name);
+    if (scriptFont) {
+      drawTypedSignatureInBox(page, scriptFont, filing.owner.full_name ?? '', {
+        x: MARGIN, y: cursor.y, maxWidth: 200, maxHeight: SIG_BOX_H,
+      });
+    }
+  }
+  cursor.y -= 12;
+
   cursor.y = drawWrapped(page, filing.owner.full_name || '', MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   drawWrapped(page, `${filing.signer_title ?? 'Managing Member'}, ${entity}`,
     MARGIN, cursor.y, { size: FS_BODY }, fonts);
@@ -2517,9 +2545,21 @@ export const generateFilingPackage = async (
 
     const body = await PDFDocument.load(combined);
     // Drop the filer-facing instructions, which lead `combined`. It can run to
-    // more than one page, so remove exactly as many as were generated rather
+    // more than one page, so skip exactly as many as were generated rather
     // than assuming one.
-    for (let i = instructions.getPageCount() - 1; i >= 0; i--) body.removePage(i);
+    //
+    // SELECT the pages to keep; do NOT removePage() them. pdf-lib's
+    // removePage updates the catalog page tree (so getPageCount() and save()
+    // both look right) but leaves the array behind getPages()/copyPages()
+    // untouched. Copying `getPageIndices()` off a document that has had pages
+    // removed therefore reads the ORIGINAL order and takes the first N of it:
+    // the instructions page was kept and the LAST page of the package was
+    // silently dropped instead. That shipped, and a real fax reached Sinch
+    // carrying the instructions page and missing the Part VI attachment, with
+    // the cover's page count agreeing with what was sent, so nothing flagged
+    // it. The multi-year path never had the bug because it has always sliced
+    // indices rather than removing pages. Keep both paths on slicing.
+    const bodyIndices = body.getPageIndices().slice(instructions.getPageCount());
 
     // The cover states the total page count, which includes the cover itself ,
     // so build it once to learn its own length, then again with the true total.
@@ -2532,16 +2572,17 @@ export const generateFilingPackage = async (
       // column, no intake question, no UI. FaxCoverOpts.isAmended exists so the
       // cover is ready if that changes, but nothing can set it today.
       senderFax: opts.senderFax,
+      drawnSignature: opts.drawnSignature,
     };
     const probe = await buildFaxCoverPage(filing, period, coverOpts);
     const cover = await buildFaxCoverPage(filing, period, {
       ...coverOpts,
-      pageCount: probe.getPageCount() + body.getPageCount(),
+      pageCount: probe.getPageCount() + bodyIndices.length,
     });
 
     const out = await PDFDocument.create();
     await mergeInto(out, cover);
-    const pages = await out.copyPages(body, body.getPageIndices());
+    const pages = await out.copyPages(body, bodyIndices);
     for (const p of pages) out.addPage(p);
     faxPayload = await out.save();
   }
@@ -2738,6 +2779,7 @@ export const generateMultiYearPackage = async (
       pageCount: 0,
       senderFax: opts.senderFax,
       taxYears,
+      drawnSignature: opts.drawnSignature,
     };
     const probe = await buildFaxCoverPage(coverSource.filing, coverSource.period, coverOpts);
     const cover = await buildFaxCoverPage(coverSource.filing, coverSource.period, {

@@ -40,6 +40,32 @@ const {
 } = await import('../src/lib/pdfGenerator.ts');
 const { PDFDocument } = await import('pdf-lib');
 
+// Text of every page, in order. Assertions about which page is where cannot be
+// made on the bytes: every form is flattened and its content stream compressed,
+// so a byte search for rendered text passes or fails for the wrong reasons.
+const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  '../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+  import.meta.url,
+).href;
+const pageTexts = async (bytes) => {
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(bytes), disableFontFace: true, verbosity: 0,
+  }).promise;
+  const out = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const content = await (await doc.getPage(i)).getTextContent();
+    out.push(content.items.map((item) => item.str).join(' ').replace(/\s+/g, ' ').trim());
+  }
+  return out;
+};
+/** How many leading pages of a package are the filer-facing instructions. */
+const instructionPageCount = (pages) => {
+  let n = 0;
+  while (n < pages.length && /Filing Instructions/.test(pages[n])) n++;
+  return n;
+};
+
 let failures = 0;
 const check = (name, cond, detail = '') => {
   if (!cond) failures++;
@@ -278,6 +304,37 @@ console.log('\n- drawn signature -');
     { fax: true, drawnSignature: PNG_1PX },
   );
   check('a drawn signature unblocks the fax path', !!faxable.faxPayload);
+
+  // What is actually IN the fax payload. Until 5 Aug 2026 nothing asserted
+  // this, and the payload was wrong in both directions at once: pdf-lib's
+  // removePage left the page list behind copyPages() untouched, so the
+  // filer-facing instructions page was transmitted to Ogden AND the last page
+  // of the package, the Part VI attachment, was dropped to make room. The
+  // cover's page count matched what was sent, Sinch reported the transmission
+  // complete, and the whole suite passed. Assert on the pages themselves.
+  const faxPages = await pageTexts(faxable.faxPayload);
+  const combinedPages = await pageTexts(faxable.combined);
+
+  check('the fax leads with the IRS cover page',
+    /Internal Revenue Service, Ogden/.test(faxPages[0]),
+    `page 1 was: ${faxPages[0].slice(0, 80)}`);
+
+  // "Do not staple", the Ogden mailing address and "keep proof of mailing" are
+  // instructions TO THE FILER. Faxing them to the recipient is nonsense.
+  const instructionsPage = faxPages.findIndex((t) => /Filing Instructions/.test(t));
+  check('no filer-facing instructions page is transmitted',
+    instructionsPage === -1,
+    `found on fax page ${instructionsPage + 1}`);
+
+  // The failure mode was losing the END of the package, which is where the
+  // Part V and Part VI statements live. Nothing downstream can detect it.
+  check('the fax carries the whole package through its last page',
+    faxPages[faxPages.length - 1] === combinedPages[combinedPages.length - 1],
+    `fax ended with "${faxPages[faxPages.length - 1].slice(0, 60)}", package ended with "${combinedPages[combinedPages.length - 1].slice(0, 60)}"`);
+
+  check('the fax is the package plus a cover, minus the instructions',
+    faxPages.length === combinedPages.length - instructionPageCount(combinedPages) + 1,
+    `fax ${faxPages.length} pages, package ${combinedPages.length}`);
 }
 
 // Form 1120 item E is one of only TWO things the Form 5472 instructions require
