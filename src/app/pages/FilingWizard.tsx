@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router';
 import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
+import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
 import FaxPanel, { type FaxBuild } from '../components/FaxPanel';
 import type { DrawnSignature } from '../../lib/drawnSignature';
@@ -52,10 +53,6 @@ export default function FilingWizard() {
   const [loadErr,      setLoadErr]      = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
-  // Generated single-year package: kept as a blob URL so the filer can download
-  // the same bytes again without regenerating. Named `preview` from when it fed
-  // an overlay; it now only backs the card and its Download button.
-  const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
   // Drawn signature, held in memory for this tab only. Deliberately NOT written
   // to the filing record or to storage: see the header of lib/drawnSignature.ts
   // for why that is what keeps the "we never store your documents" claim true.
@@ -83,11 +80,6 @@ export default function FilingWizard() {
   useEffect(() => {
     setDrawnSignature(null);
   }, [filingFingerprint]);
-
-  // Revoke the preview blob URL when it changes or the component unmounts.
-  useEffect(() => {
-    return () => { if (preview?.url) URL.revokeObjectURL(preview.url); };
-  }, [preview]);
 
   // ── load filing + transactions ────────────────────────────────────────────
 
@@ -151,6 +143,18 @@ export default function FilingWizard() {
     })();
   }, [id]);
 
+  // The tab title, which nothing set here. Cloudflare answers a hard load of
+  // /filing/:id out of 404.html (see public/_redirects), so the title it
+  // carried, "Page not found", survived into a perfectly working page. The
+  // redirect rule fixes the status; this fixes the title even if a future build
+  // reaches this route through the not-found shell again. noindex because this
+  // is a signed-in surface.
+  usePageMeta({
+    title: 'Your filing package | FileTax.co',
+    description: 'Generate, sign and download your Form 5472 filing package.',
+    noindex: true,
+  });
+
   const handleCheckout = async () => {
     if (!id || checkoutBusy) return;
     setCheckoutBusy(true);
@@ -203,12 +207,8 @@ export default function FilingWizard() {
 
       // Straight to the file. The filer saw the forms in the draft preview
       // before paying, so a second overlay after payment only stands between
-      // them and the download they came for. The card below keeps the object
-      // URL so they can download it again without regenerating.
-      const blob = new Blob([pkg.combined], { type: 'application/pdf' });
-      const url  = URL.createObjectURL(blob);
+      // them and the download they came for.
       const filename = `Form-5472-${fi.llc_name ?? 'filing'}-${fi.tax_year ?? 'draft'}.pdf`;
-      setPreview({ url, filename });
       triggerDownload(pkg.combined, filename);
       await markDownloaded([fi]);
 
@@ -228,20 +228,6 @@ export default function FilingWizard() {
   // When this filing belongs to a catch-up job, build the whole job: one
   // reasonable-cause letter + one print-ready PDF per year + an optional
   // single bundled PDF. `mode` selects which artifact to download.
-
-  // Download the already-generated single-year preview without regenerating.
-  const downloadPreview = () => {
-    if (!preview || !isPaid) return;
-    const a = document.createElement('a');
-    a.href = preview.url;
-    a.download = preview.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    // A re-download is still a download. The status is already 'completed' by
-    // this point, so this only moves the counter, which is what it is for.
-    if (filing) void markDownloaded([filing]);
-  };
 
   /**
    * Record that the filer has the forms.
@@ -817,50 +803,25 @@ export default function FilingWizard() {
                     }}
                     type="button"
                   >
-                    {generating ? 'Generating…' : preview ? 'Regenerate' : 'Generate & download'}
+                    {generating ? 'Generating…' : 'Generate & download'}
                   </button>
                 )}
               </div>}
             </div>
 
-            {/* ── Generated package ───────────────────────────────────────────
-                Generating downloads the file. This card is what remains after
-                it: the name of what was downloaded, and a way to get it again
-                without regenerating.
+            {/* The "Your filing package is ready" card that used to sit here is
+                gone. It named the file just downloaded and offered a second
+                Download PDF button, which put two buttons on screen doing the
+                same thing: the primary one below the signature pad, and the
+                card's. One action, one button. Generating downloads the file,
+                and generating again downloads it again, deterministically from
+                the same saved row.
 
-                It has been an inline 75vh PDF (which handed the page to the
-                browser's own viewer and read as if the app had been replaced by
-                Adobe), then a preview overlay. The overlay went because the
-                filer already reviewed these forms in the draft preview before
-                paying, so it only stood between them and the download. */}
-            {preview && (
-              <div style={{ marginTop: '1.5rem' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  gap: '0.75rem', flexWrap: 'wrap',
-                  padding: '1rem 1.25rem',
-                  border: '1px solid var(--tf-border)', borderRadius: '0.625rem',
-                  background: 'var(--tf-surface)',
-                }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, color: 'var(--tf-text)' }}>
-                      Your filing package is ready
-                    </p>
-                    <p style={{
-                      fontSize: '0.8125rem', color: 'var(--tf-muted)', margin: '0.15rem 0 0',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {preview.filename}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button onClick={downloadPreview} style={primaryBtnStyle} type="button">
-                      Download PDF
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+                Earlier shapes, for anyone tempted to bring it back: an inline
+                75vh PDF, which handed the page to the browser's own viewer and
+                read as if the app had been replaced by Adobe, then a preview
+                overlay, which went because the filer already reviewed these
+                forms before paying. */}
 
             {/* ── Multi-year catch-up: whole-job download ─────────────────── */}
             {filing?.job_id && isPaid && (

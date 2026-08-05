@@ -611,6 +611,7 @@ function Field({
   required,
   tooltip,
   status,
+  locked,
 }: {
   label: string;
   /** Deprecated: longer guidance. Routed into the (i) tooltip, never shown inline. */
@@ -622,6 +623,14 @@ function Field({
   tooltip?: string;
   /** Short always-visible status suffix, e.g. "optional" or "locked". */
   status?: string;
+  /**
+   * Frozen by payment. Draws a padlock instead of the words "locked after
+   * payment", which sat next to six of the densest labels on the page and read
+   * as clutter on every one of them. The meaning survives: the glyph carries a
+   * title and an accessible label, and the field is disabled anyway, so the
+   * lock explains a control the filer has already found they cannot type in.
+   */
+  locked?: boolean;
 }) {
   // Exactly one helper per field: the (i) tooltip carries all guidance. Any
   // legacy `hint` becomes tooltip text (so nothing is duplicated or lost).
@@ -633,11 +642,42 @@ function Field({
       <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)' }}>
         {label}
         {required && <span style={{ color: 'var(--tf-error)', marginLeft: '0.2rem' }}>*</span>}
+        {locked && <LockGlyph />}
         {status && <span style={{ fontWeight: 400, marginLeft: '0.25rem', fontStyle: 'italic' }}>{status}</span>}
         {tip && <InfoTooltip text={tip} label={`About ${label}`} />}
       </label>
       {children}
     </div>
+  );
+}
+
+/**
+ * The padlock that replaced the words "locked after payment".
+ *
+ * Inline SVG rather than the emoji: 🔒 renders as a different picture on every
+ * platform and is coloured by the font, where this inherits the label's colour
+ * and stays the same shape everywhere. `currentColor` is what makes it work in
+ * both themes without a second rule.
+ */
+function LockGlyph() {
+  return (
+    <svg
+      role="img"
+      aria-label="Locked after payment"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ marginLeft: '0.3rem', verticalAlign: '-0.05em', opacity: 0.75 }}
+    >
+      <title>Locked after payment</title>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
   );
 }
 
@@ -3421,10 +3461,10 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
-                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required status={isPaidLocked ? 'locked after payment' : undefined}>
+                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required locked={isPaidLocked}>
                   <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" disabled={isPaidLocked} />
                 </Field>
-                <Field label="EIN" status={isPaidLocked ? 'locked after payment' : undefined} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
+                <Field label="EIN" locked={isPaidLocked} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
                   <input
                     value={ein}
                     onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
@@ -3444,7 +3484,7 @@ export function Intake() {
                 <Field
                   label="Tax year"
                   required
-                  status={isPaidLocked ? 'locked after payment' : jobId ? 'set by your multi-year selection' : undefined}
+                  locked={isPaidLocked} status={!isPaidLocked && jobId ? 'set by your multi-year selection' : undefined}
                 >
                   {/* In a multi-year catch-up each year's filing is created with a
                       fixed tax year, and the intake walks the years in order, so
@@ -3457,7 +3497,7 @@ export function Intake() {
                 <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
                 </Field>
-                <Field label="Date of incorporation" required status={isPaidLocked ? 'locked after payment' : undefined} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
+                <Field label="Date of incorporation" required locked={isPaidLocked} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
                 </Field>
                 <Field label="Main country where the LLC does business" required>
@@ -3784,7 +3824,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your identity</h3>
               <div style={gridStyle}>
-                <Field label="Your full legal name" status={isPaidLocked ? 'locked after payment' : undefined} tooltip="As shown on your government ID / passport." style={{ gridColumn: '1 / -1' }} required>
+                <Field label="Your full legal name" locked={isPaidLocked} tooltip="As shown on your government ID / passport." style={{ gridColumn: '1 / -1' }} required>
                   <input
                     value={ownerName}
                     onChange={(e) => {
@@ -3854,7 +3894,7 @@ export function Intake() {
                     advisory and never blocks the step, see countryTaxIds.ts. */}
                 <Field
                   label={`Your ${ownerTaxIdInfo.label}`}
-                  status={isPaidLocked ? 'locked after payment' : undefined}
+                  locked={isPaidLocked}
                   required
                   tooltip={taxIdTooltip(ownerCountryRes)}
                 >

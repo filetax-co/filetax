@@ -5,4 +5,13 @@
 # 301s must sit above the SPA catch-all, which would otherwise swallow them.
 /resources/pro-forma-1120-every-field-foreign-owned-de  /resources/pro-forma-1120-explained  301
 
+# /filing/:id is the one private route with a DYNAMIC segment, so postbuild
+# cannot write it a 200 shell the way it does for /dashboard and /intake: there
+# is no file to write, the id is different every time. Cloudflare then answers
+# it out of 404.html, which is how a filer returning from Dodo checkout, whose
+# return URL is exactly this path, ended up watching a tab titled "Page not
+# found" while verify-payment ran behind it. The page itself always rendered.
+# Above the catch-all because rules are matched in order.
+/filing/:id   /index.html   200
+
 /*    /index.html   200
