@@ -54,6 +54,12 @@ jobs:
       - name: Check for hardcoded price literals
         run: npm run verify:prices
 
+      # A clicked error message that jumps to a field which is not in the markup
+      # does nothing at all, and doing nothing is indistinguishable from a click
+      # that missed. Cheap, static, so it runs beside the price check.
+      - name: Check every anchored error message has a field
+        run: npm run verify:anchors
+
       # --with-deps needs apt, which is available here but not in Cloudflare's
       # build sandbox. postbuild's own install then becomes a cached no-op.
       - name: Install Playwright browser

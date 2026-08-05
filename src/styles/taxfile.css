@@ -150,6 +150,25 @@ h1, h2, h3 {
   outline: 2px solid var(--tf-accent);
   outline-offset: 3px;
 }
+/* The intake field an error message was clicked through to. The ring fades
+   itself out: a permanent highlight on the field the filer is already looking
+   at becomes a second error state competing with the real one. Applied to the
+   field's wrapper, so the label is inside the ring, and removed from the DOM by
+   a timer as well, so a second click on the same message re-runs it. */
+.tf-field-target {
+  border-radius: 0.5rem;
+  animation: tf-field-target 2.2s ease-out 1;
+}
+@keyframes tf-field-target {
+  0%, 55%  { box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.45); }
+  100%     { box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-field-target {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.45);
+  }
+}
 /* Skip to main */
 .skip-link {
   position: absolute;

@@ -612,6 +612,7 @@ function Field({
   tooltip,
   status,
   locked,
+  anchor,
 }: {
   label: string;
   /** Deprecated: longer guidance. Routed into the (i) tooltip, never shown inline. */
@@ -631,6 +632,12 @@ function Field({
    * lock explains a control the filer has already found they cannot type in.
    */
   locked?: boolean;
+  /**
+   * Target for a clicked error message. Matches the `field` given to `at()` in
+   * the validators. Purely an addressing handle: it changes nothing visually
+   * and a field without one simply cannot be jumped to.
+   */
+  anchor?: string;
 }) {
   // Exactly one helper per field: the (i) tooltip carries all guidance. Any
   // legacy `hint` becomes tooltip text (so nothing is duplicated or lost).
@@ -638,7 +645,7 @@ function Field({
   // "optional", not guidance.
   const tip = tooltip ?? hint;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', ...style }}>
+    <div data-anchor={anchor} style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', ...style }}>
       <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)' }}>
         {label}
         {required && <span style={{ color: 'var(--tf-error)', marginLeft: '0.2rem' }}>*</span>}
@@ -730,10 +737,15 @@ function AddressFields({
   value,
   onChange,
   forceUS,
+  anchor,
 }: {
   value: Address;
   onChange: (a: Address) => void;
   forceUS?: boolean;
+  /** Jump target for "Complete your address." The block is one error, so it is
+   *  one anchor: the jump lands on the street line, which is where a filer with
+   *  an incomplete address starts reading anyway. */
+  anchor?: string;
 }) {
   const set = (k: keyof Address, v: string) => onChange({ ...value, [k]: v });
   const effectiveCountry = forceUS ? 'US' : value.country;
@@ -753,7 +765,7 @@ function AddressFields({
   const rows: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '1.25rem' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div data-anchor={anchor} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Row 1, street */}
       <Field label="Street address" required>
         <input placeholder="Street address" value={value.line1 ?? ''} onChange={(e) => set('line1', e.target.value)} />
@@ -937,6 +949,64 @@ const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'fle
 const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset)', border: '1px solid var(--tf-border)', borderRadius: '0.375rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.75rem' };
 const errorSummaryStyle: React.CSSProperties = { background: 'var(--tf-error-bg)', color: 'var(--tf-error-text)', border: '1px solid var(--tf-error-border)', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
 const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border)', borderRadius: '0.625rem', background: 'var(--tf-surface)', overflow: 'hidden' };
+// A clickable error message. It has to look like the sentence it is, so it
+// carries no button chrome at all: transparent, no padding, inheriting the
+// summary's colour and size, left-aligned because a multi-line message in a
+// button centres itself otherwise.
+const errorLinkStyle: React.CSSProperties = {
+  background: 'none', border: 'none', padding: 0, margin: 0,
+  font: 'inherit', color: 'inherit', textAlign: 'left',
+  textDecoration: 'underline', textUnderlineOffset: '0.15em', cursor: 'pointer',
+};
+
+/**
+ * A validation message, optionally anchored to the field it is about.
+ *
+ * A plain string still works and renders exactly as it always did, which is
+ * what keeps this incremental: a message only becomes clickable once somebody
+ * has both given it a target and put a matching `data-anchor` on screen. An
+ * anchored message that cannot find its field falls back to being ordinary
+ * text rather than a button that does nothing, see `jumpToField`.
+ */
+type StepError = string | { msg: string; section: string; field: string };
+
+/**
+ * Anchor a message to a field. `section` is the accordion key ('1', '1b', '2',
+ * '3', '4'), because the field may be inside a collapsed section and the jump
+ * has to open it first; `field` matches a `data-anchor` in the markup.
+ */
+const at = (section: string, field: string, msg: string): StepError => ({ msg, section, field });
+
+const errText = (e: StepError): string => (typeof e === 'string' ? e : e.msg);
+
+/**
+ * What to focus inside an anchored wrapper, in order of preference.
+ *
+ * The data entry control comes FIRST and this is not cosmetic. A `Field` puts
+ * its (i) tooltip inside the `<label>`, so the tooltip's trigger button precedes
+ * the input in document order: a single "first focusable" query put the cursor
+ * on the help icon of every field that has one, which is most of the dense ones.
+ * Buttons are still worth having as a fallback, because some targets are a
+ * Yes/No pair or a card with an Edit button and no input at all.
+ */
+const FOCUS_PREFERENCE = [
+  'input:not([type="hidden"]):not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'button:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+];
+const FOCUSABLE = FOCUS_PREFERENCE.join(', ');
+
+/** The control a filer should land on inside `el`, or `el` itself if it is one. */
+function focusTarget(el: HTMLElement): HTMLElement | null {
+  if (el.matches(FOCUSABLE)) return el;
+  for (const sel of FOCUS_PREFERENCE) {
+    const hit = el.querySelector<HTMLElement>(sel);
+    if (hit) return hit;
+  }
+  return null;
+}
 
 export function Intake() {
   const navigate = useNavigate();
@@ -965,7 +1035,7 @@ export function Intake() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [einErr, setEinErr] = useState<string | null>(null);
-  const [stepErrors, setStepErrors] = useState<string[]>([]);
+  const [stepErrors, setStepErrors] = useState<StepError[]>([]);
   const [rpErrors, setRpErrors] = useState<string[]>([]);
   const [txErrors, setTxErrors] = useState<string[]>([]);
 
@@ -1309,6 +1379,50 @@ export function Intake() {
       earlierYearsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   }, [earlierYearsShown, loadingFiling]);
+
+  /**
+   * Take the filer from an error message to the field it is about.
+   *
+   * The summary scroll below gets them to the LIST; this gets them to the
+   * field, which is the part that was missing. Three things make it more than
+   * a `scrollIntoView`:
+   *
+   * - **The section is opened first.** An error can name a field inside a
+   *   collapsed accordion section, and on the review step every section is
+   *   collapsed, so without this the jump would find nothing on the most
+   *   common path. `setOpenSections` is used directly rather than
+   *   `toggleSection`, whose gate exists to stop a filer opening a LATER
+   *   section early; every target here is at or behind where they already are.
+   * - **The lookup retries.** The section's body mounts on the next render, so
+   *   the element does not exist in the frame the click happened in.
+   * - **It fails silently and visibly.** If the field is genuinely not on
+   *   screen (a conditional block the filer has since turned off), nothing
+   *   moves and the message stays readable where it is, which is no worse than
+   *   before this existed.
+   */
+  const jumpToField = (section: string, field: string) => {
+    setOpenSections((prev) => (prev.has(section) ? prev : new Set(prev).add(section)));
+    let tries = 0;
+    const find = () => {
+      const el = document.querySelector<HTMLElement>(`[data-anchor="${field}"]`);
+      if (!el) {
+        tries += 1;
+        if (tries < 12) requestAnimationFrame(find);
+        return;
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // The ring is on the wrapper, the focus is on the control: a filer who
+      // clicked the message is looking at the label as much as the input, and
+      // focusing without marking the surround leaves a cursor in a box that
+      // looks like every other box on the page.
+      el.classList.add('tf-field-target');
+      window.setTimeout(() => el.classList.remove('tf-field-target'), 2200);
+      // preventScroll, or the browser's own focus scroll fights the smooth one
+      // above and lands the field under the sticky header.
+      focusTarget(el)?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(find);
+  };
 
   // When validation fails, jump straight to the error summary so the user sees
   // exactly what needs fixing instead of a form that silently did not advance.
@@ -1703,7 +1817,7 @@ export function Intake() {
 
   // Validation status of one accordion section, used for the progress dot.
   function sectionProgress(s: IntakeStep): 'complete' | 'incomplete' {
-    let errs: string[] = [];
+    let errs: StepError[] = [];
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
     else if (s === 2) {
@@ -1736,44 +1850,44 @@ export function Intake() {
     setEinErr(ein ? einProblem(ein) : null);
   };
 
-  function validateStep1(): string[] {
-    const errs: string[] = [];
+  function validateStep1(): StepError[] {
+    const errs: StepError[] = [];
     if (!eligibilityConfirmed) {
-      errs.push('Please confirm the statements about your LLC before continuing. If any of them is no longer true, this flow is not the right one for this year.');
+      errs.push(at('1', 'eligibility', 'Please confirm the statements about your LLC before continuing. If any of them is no longer true, this flow is not the right one for this year.'));
     }
     if (hasUsActivity === null) {
-      errs.push('Please answer whether the LLC had U.S. real estate or work performed inside the U.S. this year.');
+      errs.push(at('1', 'hasUsActivity', 'Please answer whether the LLC had U.S. real estate or work performed inside the U.S. this year.'));
     }
-    if (!llcName.trim()) errs.push('Enter your LLC or corporation name.');
-    if (!ein.trim()) errs.push("Enter your LLC's EIN.");
-    if (ein.trim()) { const p = einProblem(ein); if (p) errs.push(p); }
-    if (!stateOfFormation) errs.push('Select the state where your LLC was formed.');
-    if (!taxYear) errs.push("Select the tax year you're filing for.");
+    if (!llcName.trim()) errs.push(at('1', 'llcName', 'Enter your LLC or corporation name.'));
+    if (!ein.trim()) errs.push(at('1', 'ein', "Enter your LLC's EIN."));
+    if (ein.trim()) { const p = einProblem(ein); if (p) errs.push(at('1', 'ein', p)); }
+    if (!stateOfFormation) errs.push(at('1', 'stateOfFormation', 'Select the state where your LLC was formed.'));
+    if (!taxYear) errs.push(at('1', 'taxYear', "Select the tax year you're filing for."));
     // Total assets is written straight onto the return, so a negative or a
     // non-number must be stopped here rather than printed. Blank is allowed:
     // patchAll already stores null for it.
     if (totalAssets.trim() !== '') {
       const a = amountProblem(totalAssets, 'Total assets');
-      if (a) errs.push(a === 'Total assets cannot be negative.'
+      if (a) errs.push(at('1', 'totalAssets', a === 'Total assets cannot be negative.'
         ? 'Total assets cannot be negative. Enter 0 if the LLC held no assets at the end of the year.'
-        : a);
+        : a));
     }
     // Ticking "fiscal year" without a month leaves the period undefined, and
     // deriveFiscalPeriod is what every date on the return is measured against.
     // Month 0 has to be tested separately from '': it is falsy, so a plain
     // truthiness check reads a real out-of-range value as "not set yet".
     if (isFiscalYear) {
-      if (fiscalEndMonth === '') errs.push('Select the month your fiscal year ends, or untick "My tax year is not the calendar year".');
+      if (fiscalEndMonth === '') errs.push(at('1', 'fiscalEndMonth', 'Select the month your fiscal year ends, or untick "My tax year is not the calendar year".'));
       else if (!Number.isInteger(Number(fiscalEndMonth)) || Number(fiscalEndMonth) < 1 || Number(fiscalEndMonth) > 12) {
-        errs.push('The fiscal year end month must be a month from January to December.');
+        errs.push(at('1', 'fiscalEndMonth', 'The fiscal year end month must be a month from January to December.'));
       }
     }
     // A year that has not finished cannot be filed. The dropdown only offers
     // TAX_YEARS, but a resumed draft or an imported value can hold anything.
     if (taxYear && !TAX_YEARS.includes(Number(taxYear))) {
-      errs.push(`${taxYear} is not a tax year you can file here. Choose one of ${TAX_YEARS[TAX_YEARS.length - 1]} to ${TAX_YEARS[0]}.`);
+      errs.push(at('1', 'taxYear', `${taxYear} is not a tax year you can file here. Choose one of ${TAX_YEARS[TAX_YEARS.length - 1]} to ${TAX_YEARS[0]}.`));
     }
-    if (!entityDOI) errs.push('Enter the date your LLC was formed.');
+    if (!entityDOI) errs.push(at('1', 'entityDOI', 'Enter the date your LLC was formed.'));
     if (entityDOI && taxYear) {
       const doiYear = Number(entityDOI.slice(0, 4));
       const ty = Number(taxYear);
@@ -1782,16 +1896,16 @@ export function Intake() {
         // validate against the derived period end rather than the tax-year number.
         const { end } = deriveFiscalPeriod(taxYear, fiscalEndMonth);
         if (entityDOI > end) {
-          errs.push(`The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the end of the ${ty} fiscal year (${formatDateMMDDYYYY(end)}). An LLC cannot be formed after the period it is filing for. Check the date, the tax year, or the fiscal year-end.`);
+          errs.push(at('1', 'entityDOI', `The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the end of the ${ty} fiscal year (${formatDateMMDDYYYY(end)}). An LLC cannot be formed after the period it is filing for. Check the date, the tax year, or the fiscal year-end.`));
         } else if (doiYear < 1900) {
-          errs.push('Check the date of incorporation. The year does not look right.');
+          errs.push(at('1', 'entityDOI', 'Check the date of incorporation. The year does not look right.'));
         }
       } else {
         // Calendar filer: the LLC must exist during the tax year.
         if (doiYear > ty) {
-          errs.push(`The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the ${ty} tax year. An LLC cannot be formed after the year it is filing for. Check the date or the tax year.`);
+          errs.push(at('1', 'entityDOI', `The date your LLC was formed (${formatDateMMDDYYYY(entityDOI)}) is after the ${ty} tax year. An LLC cannot be formed after the year it is filing for. Check the date or the tax year.`));
         } else if (doiYear < 1900) {
-          errs.push('Check the date of incorporation. The year does not look right.');
+          errs.push(at('1', 'entityDOI', 'Check the date of incorporation. The year does not look right.'));
         }
       }
     }
@@ -1805,50 +1919,50 @@ export function Intake() {
     // filed, and it would print a period the IRS cannot reconcile.
     if (finalReturn) {
       if (!dateOfClosure) {
-        errs.push('Enter the date the LLC was dissolved, or untick "This is my LLC\'s final return".');
+        errs.push(at('1', 'dateOfClosure', 'Enter the date the LLC was dissolved, or untick "This is my LLC\'s final return".'));
       } else {
         const { begin, end } = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
         const periodLabel = `${formatDateMMDDYYYY(begin)} to ${formatDateMMDDYYYY(end)}`;
         if (dateOfClosure < begin) {
-          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the ${taxYear} tax period begins (${periodLabel}). An LLC cannot be dissolved before the period it is filing for. Check the date, or file the final return for the year the LLC actually closed.`);
+          errs.push(at('1', 'dateOfClosure', `The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is before the ${taxYear} tax period begins (${periodLabel}). An LLC cannot be dissolved before the period it is filing for. Check the date, or file the final return for the year the LLC actually closed.`));
         } else if (dateOfClosure > end) {
-          errs.push(`The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return, file the final return for the later year instead.`);
+          errs.push(at('1', 'dateOfClosure', `The dissolution date (${formatDateMMDDYYYY(dateOfClosure)}) is after the ${taxYear} tax period ends (${periodLabel}). If the LLC closed after this period, this is not the final return, file the final return for the later year instead.`));
         } else if (dissolutionDateError) {
           // One wording, from one place. The field renders this same string
           // inline as the filer types; pushing a differently-worded version of
           // the same complaint into the summary read as two separate problems.
-          errs.push(dissolutionDateError);
+          errs.push(at('1', 'dateOfClosure', dissolutionDateError));
         }
       }
     }
-    if (!entityPrincipalCountry) errs.push('Select the main country where the LLC does business.');
+    if (!entityPrincipalCountry) errs.push(at('1', 'entityPrincipalCountry', 'Select the main country where the LLC does business.'));
     // .trim() matters: picking "Other (enter manually)" parks a single space in
     // the activity to reveal the free-text input, and a space is not an answer.
-    if (!entityBizActivity.trim()) errs.push("Select or describe your LLC's type of business.");
-    if (!entityBizCode.trim()) errs.push("Enter your LLC's business code.");
-    else { const n = naicsProblem(entityBizCode, "Your LLC's business code"); if (n) errs.push(n); }
-    if (!isAddressComplete(mailing)) errs.push("Complete your LLC's mailing address.");
+    if (!entityBizActivity.trim()) errs.push(at('1', 'entityBizActivity', "Select or describe your LLC's type of business."));
+    if (!entityBizCode.trim()) errs.push(at('1', 'entityBizCode', "Enter your LLC's business code."));
+    else { const n = naicsProblem(entityBizCode, "Your LLC's business code"); if (n) errs.push(at('1', 'entityBizCode', n)); }
+    if (!isAddressComplete(mailing)) errs.push(at('1', 'mailing', "Complete your LLC's mailing address."));
     return errs;
   }
 
-  function validateStep1b(): string[] {
-    const errs: string[] = [];
-    if (extensionFiled === null) errs.push('Please confirm whether Form 7004 (extension) was filed.');
+  function validateStep1b(): StepError[] {
+    const errs: StepError[] = [];
+    if (extensionFiled === null) errs.push(at('1b', 'extensionFiled', 'Please confirm whether Form 7004 (extension) was filed.'));
     // Reasons are only collected here for a single-year, genuinely-late filing.
     // Multi-year jobs collect the RCL + reasons once at job setup; a filing still
     // within its extension is on time, so the RCL section is not shown.
     if (rclSectionShown && includeReasonableCause && reasonableCauseReasons.length === 0) {
-      errs.push('Select at least one reason for the reasonable cause letter.');
+      errs.push(at('1b', 'rclReasons', 'Select at least one reason for the reasonable cause letter.'));
     }
     return errs;
   }
 
-  function validateStep2(): string[] {
-    const errs: string[] = [];
-    if (!ownerName.trim()) errs.push('Enter your full legal name.');
-    if (!ownerCountry) errs.push('Select the country where you do business.');
-    if (!ownerCountryRes) errs.push('Select the country where you pay taxes.');
-    if (!ownerCountryCitizenship) errs.push('Select your country of citizenship.');
+  function validateStep2(): StepError[] {
+    const errs: StepError[] = [];
+    if (!ownerName.trim()) errs.push(at('2', 'ownerName', 'Enter your full legal name.'));
+    if (!ownerCountry) errs.push(at('2', 'ownerCountry', 'Select the country where you do business.'));
+    if (!ownerCountryRes) errs.push(at('2', 'ownerCountryRes', 'Select the country where you pay taxes.'));
+    if (!ownerCountryCitizenship) errs.push(at('2', 'ownerCountryCitizenship', 'Select your country of citizenship.'));
     // Still required, but no longer required to be a *tax* ID. Plenty of
     // countries issue none at all, and those owners were stuck on this step
     // with nothing they could truthfully type. A passport number is an
@@ -1856,17 +1970,17 @@ export function Intake() {
     if (!ownerForeignTaxId.trim()) {
       // Name the number the way the filer's own country names it, so the error
       // tells them what to go and find rather than restating the field label.
-      errs.push(
+      errs.push(at('2', 'ownerForeignTaxId',
         ownerTaxIdInfo.issues === false
           ? `${ownerCountryRes} issues no personal tax ID. Enter your ${ownerTaxIdInfo.alt ?? 'passport number'} instead.`
           : `Enter your ${ownerTaxIdInfo.label}. If your country does not issue one, enter your passport number instead.`,
-      );
+      ));
     }
-    if (!ownerRefNumber.trim()) errs.push('Enter your reference code.');
-    if (!ownerBizActivity.trim()) errs.push('Select or describe your type of business.');
-    if (!ownerBizCode.trim()) errs.push('Enter your business code.');
-    else { const n = naicsProblem(ownerBizCode, 'Your business code'); if (n) errs.push(n); }
-    if (!isAddressComplete(ownerAddress, false)) errs.push('Complete your address.');
+    if (!ownerRefNumber.trim()) errs.push(at('2', 'ownerRefNumber', 'Enter your reference code.'));
+    if (!ownerBizActivity.trim()) errs.push(at('2', 'ownerBizActivity', 'Select or describe your type of business.'));
+    if (!ownerBizCode.trim()) errs.push(at('2', 'ownerBizCode', 'Enter your business code.'));
+    else { const n = naicsProblem(ownerBizCode, 'Your business code'); if (n) errs.push(at('2', 'ownerBizCode', n)); }
+    if (!isAddressComplete(ownerAddress, false)) errs.push(at('2', 'ownerAddress', 'Complete your address.'));
     return errs;
   }
 
@@ -1878,13 +1992,13 @@ export function Intake() {
    * the filer never made. The date may be today or any past date, never a
    * future one, because a return cannot be signed before it is signed.
    */
-  function validateSignature(): string[] {
-    const errs: string[] = [];
-    if (!signerTitle.trim()) errs.push('Enter the title you are signing under, for example Managing Member.');
+  function validateSignature(): StepError[] {
+    const errs: StepError[] = [];
+    if (!signerTitle.trim()) errs.push(at('2', 'signerTitle', 'Enter the title you are signing under, for example Managing Member.'));
     if (signatureDate) {
       const today = todayISO();
       if (signatureDate > today) {
-        errs.push(`The signature date (${formatDateMMDDYYYY(signatureDate)}) is in the future. Sign with today's date or an earlier one.`);
+        errs.push(at('2', 'signatureDate', `The signature date (${formatDateMMDDYYYY(signatureDate)}) is in the future. Sign with today's date or an earlier one.`));
       }
     }
     return errs;
@@ -1898,17 +2012,22 @@ export function Intake() {
    * checked at all, and every one of these fields is printed on that party's
    * Form 5472.
    */
-  function validateStep3(): string[] {
-    const errs: string[] = [];
+  function validateStep3(): StepError[] {
+    const errs: StepError[] = [];
     relatedParties.forEach((rp, i) => {
       const who = rp.name?.trim() ? `Related party "${rp.name.trim()}"` : `Related party ${i + 1}`;
-      if (!rp.name?.trim()) errs.push(`${who} has no legal name. Every related party on Form 5472 has to be named.`);
-      if (!rp.country) errs.push(`${who} has no country of business.`);
-      if (!rp.country_residence) errs.push(`${who} has no country of tax residence.`);
-      if (!rp.biz_activity?.trim()) errs.push(`${who} has no type of business.`);
-      if (!rp.biz_code?.trim()) errs.push(`${who} has no business code.`);
-      else { const n = naicsProblem(rp.biz_code, `${who}: the business code`); if (n) errs.push(n); }
-      if (!isAddressComplete(rp.address ?? {}, false)) errs.push(`${who} has an incomplete address. It is printed on that party's Form 5472.`);
+      // The anchor is the party's CARD, not the field inside it. A saved party
+      // is a summary row until it is opened for editing, so there is no country
+      // input on screen to jump to; the card is the thing that exists and the
+      // thing the filer has to act on.
+      const card = `rp-${i}`;
+      if (!rp.name?.trim()) errs.push(at('3', card, `${who} has no legal name. Every related party on Form 5472 has to be named.`));
+      if (!rp.country) errs.push(at('3', card, `${who} has no country of business.`));
+      if (!rp.country_residence) errs.push(at('3', card, `${who} has no country of tax residence.`));
+      if (!rp.biz_activity?.trim()) errs.push(at('3', card, `${who} has no type of business.`));
+      if (!rp.biz_code?.trim()) errs.push(at('3', card, `${who} has no business code.`));
+      else { const n = naicsProblem(rp.biz_code, `${who}: the business code`); if (n) errs.push(at('3', card, n)); }
+      if (!isAddressComplete(rp.address ?? {}, false)) errs.push(at('3', card, `${who} has an incomplete address. It is printed on that party's Form 5472.`));
     });
 
     // Two parties with the same legal name are almost always one party entered
@@ -1922,7 +2041,10 @@ export function Intake() {
     byName.forEach((count, key) => {
       if (count > 1) {
         const shown = relatedParties.find((rp) => (rp.name ?? '').trim().toLowerCase() === key)?.name?.trim();
-        errs.push(`"${shown}" is listed ${count} times. Each related party belongs on the return once, listing one twice reports the same amounts to the IRS twice. Remove the duplicate, or give them different legal names if they really are different parties.`);
+        // Jump to the SECOND one. The first is the party they meant to keep, so
+        // landing on it invites deleting the wrong row.
+        const dupIndex = relatedParties.map((rp) => (rp.name ?? '').trim().toLowerCase()).lastIndexOf(key);
+        errs.push(at('3', `rp-${dupIndex}`, `"${shown}" is listed ${count} times. Each related party belongs on the return once, listing one twice reports the same amounts to the IRS twice. Remove the duplicate, or give them different legal names if they really are different parties.`));
       }
     });
 
@@ -1934,7 +2056,10 @@ export function Intake() {
       if (key) byRef.set(key, (byRef.get(key) ?? 0) + 1);
     });
     byRef.forEach((count, key) => {
-      if (count > 1) errs.push(`Reference code ${key} is used by ${count} related parties. Each party needs its own.`);
+      if (count > 1) {
+        const dupIndex = relatedParties.map((rp) => (rp.ref_number ?? '').trim().toUpperCase()).lastIndexOf(key);
+        errs.push(at('3', `rp-${dupIndex}`, `Reference code ${key} is used by ${count} related parties. Each party needs its own.`));
+      }
     });
 
     return errs;
@@ -1949,16 +2074,19 @@ export function Intake() {
    * filer's data disappeared with nothing on screen to say so and the package
    * generated as though the transaction had never been entered.
    */
-  function validateStep4(): string[] {
-    const errs: string[] = [];
+  function validateStep4(): StepError[] {
+    const errs: StepError[] = [];
     if (transactions.length === 0 && !noTransactionsConfirmed) {
-      errs.push('Add at least one reportable transaction, or tick the box confirming this LLC had none this year. Form 5472 has to say which it is.');
+      errs.push(at('4', 'noTransactions', 'Add at least one reportable transaction, or tick the box confirming this LLC had none this year. Form 5472 has to say which it is.'));
     }
     // The confirmation and the list can disagree, and the return can only state
     // one of them. Left alone, the box wins and every listed transaction is
     // dropped from Parts IV to VI without the filer being told.
     if (transactions.length > 0 && noTransactionsConfirmed) {
-      errs.push(`You have ticked "no reportable transactions", but ${transactions.length} ${transactions.length === 1 ? 'is' : 'are'} listed below. Untick the box, or remove the transactions.`);
+      // Anchored to the first transaction, not to the tick box: the box only
+      // renders while the list is empty, so on this exact error it is not on
+      // screen to jump to. The list is what the filer can act on.
+      errs.push(at('4', 'tx-0', `You have ticked "no reportable transactions", but ${transactions.length} ${transactions.length === 1 ? 'is' : 'are'} listed below. Untick the box, or remove the transactions.`));
     }
     const { begin: periodBegin, end: periodEnd } = taxPeriodWindow(taxYear, isFiscalYear, fiscalEndMonth);
 
@@ -1967,13 +2095,15 @@ export function Intake() {
       const known = TX_TYPES.find((x) => x.value === t.transaction_type);
       const label = known?.label ?? humanizeTxType(t.transaction_type);
       const where = `Transaction ${n} (${label})`;
+      // Every message about this transaction lands on its own row in the list.
+      const row = `tx-${i}`;
 
       // An unrecognised or blank type has no line on the return to be reported
       // on, so it would be carried to the generator and dropped there instead.
       if (!t.transaction_type?.trim()) {
-        errs.push(`Transaction ${n} has no type. Choose what kind of transaction it was.`);
+        errs.push(at('4', row, `Transaction ${n} has no type. Choose what kind of transaction it was.`));
       } else if (!known) {
-        errs.push(`Transaction ${n} has a type this form does not recognise ("${t.transaction_type}"). Choose one from the list.`);
+        errs.push(at('4', row, `Transaction ${n} has a type this form does not recognise ("${t.transaction_type}"). Choose one from the list.`));
       }
 
       // A date outside the filing period belongs on a different year's return.
@@ -1981,7 +2111,7 @@ export function Intake() {
       // and a blank one must keep flowing through untouched.
       if (t.transaction_date && taxYear) {
         if (t.transaction_date < periodBegin || t.transaction_date > periodEnd) {
-          errs.push(`${where} is dated ${formatDateMMDDYYYY(t.transaction_date)}, which is outside the tax period being filed (${formatDateMMDDYYYY(periodBegin)} to ${formatDateMMDDYYYY(periodEnd)}). Report it on the return for the year it falls in.`);
+          errs.push(at('4', row, `${where} is dated ${formatDateMMDDYYYY(t.transaction_date)}, which is outside the tax period being filed (${formatDateMMDDYYYY(periodBegin)} to ${formatDateMMDDYYYY(periodEnd)}). Report it on the return for the year it falls in.`));
         }
       }
 
@@ -1989,7 +2119,7 @@ export function Intake() {
       // addresses a row that exists. A stale index silently became the owner.
       if (!Number.isInteger(t.related_party_index) || t.related_party_index < 0
         || t.related_party_index >= allPartyLabels.length) {
-        errs.push(`${where} is attached to a related party that no longer exists. Choose the party it belongs to.`);
+        errs.push(at('4', row, `${where} is attached to a related party that no longer exists. Choose the party it belongs to.`));
       }
 
       // Part V and Part VI belong to the OWNER's Form 5472 and to no other.
@@ -2006,11 +2136,11 @@ export function Intake() {
       // in a statement. It is the one Part V type this must not reject.
       else if (t.related_party_index !== 0 && OWNER_ONLY_TX_TYPES.has(t.transaction_type)) {
         const label = allPartyLabels[t.related_party_index];
-        errs.push(
+        errs.push(at('4', row,
           `${where} is a transaction between the LLC and its owner, so it belongs to ${allPartyLabels[0]}, `
           + `not to ${label}. Reassign it to the owner, or change its type to the one that describes what `
           + `passed between the LLC and ${label}.`,
-        );
+        ));
       }
 
       // Form 5472 Part VII, questions 42a / 42b. A loan with a related party who
@@ -2023,12 +2153,12 @@ export function Intake() {
       // writes rows directly. This is the check that actually holds.
       else if (t.related_party_index !== 0 && NON_OWNER_BLOCKED_TX_TYPES.has(t.transaction_type)) {
         const label = allPartyLabels[t.related_party_index];
-        errs.push(
+        errs.push(at('4', row,
           `${where} is a loan between the LLC and ${label}, who is not the owner. A loan with anyone `
           + `other than the owner has to be answered in Part VII of Form 5472, which we do not prepare, `
           + `and that stays true even if no interest was charged. Reassign it to ${allPartyLabels[0]} if `
           + `the money actually moved between the LLC and its owner, or email support@filetax.co.`,
-        );
+        ));
       }
 
       // Part V and Part VI types describe non-monetary events, so they are the
@@ -2036,7 +2166,7 @@ export function Intake() {
       const monetary = !PART_V_TYPES.has(t.transaction_type) && !PART_VI_TYPES.has(t.transaction_type);
       const amt = (t.amount_usd ?? '').trim();
       if (monetary && amt === '') {
-        errs.push(`${where} needs an amount in US dollars.`);
+        errs.push(at('4', row, `${where} needs an amount in US dollars.`));
       } else if (monetary && Number(amt) === 0) {
         // Zero is what saveTransactions drops. It used to pass validation, so a
         // filer could enter 0, watch the row sit in the list through review, and
@@ -2044,19 +2174,19 @@ export function Intake() {
         // never on the return and nothing said so. Refuse it here instead, where
         // it can still be corrected. A genuinely zero transaction has nothing to
         // report on Form 5472 anyway.
-        errs.push(`${where} has an amount of 0. Form 5472 reports what actually passed between the LLC and the related party, so enter the real amount, or remove the transaction if nothing did.`);
+        errs.push(at('4', row, `${where} has an amount of 0. Form 5472 reports what actually passed between the LLC and the related party, so enter the real amount, or remove the transaction if nothing did.`));
       } else {
         const a = amountProblem(amt, `${where}: the amount`);
         if (a) {
-          errs.push(a.endsWith('cannot be negative.')
+          errs.push(at('4', row, a.endsWith('cannot be negative.')
             ? `${where}: the amount cannot be negative. Form 5472 reports gross amounts, use the paid/received direction to show which way the money went.`
-            : a);
+            : a));
         }
       }
 
       if (LOAN_TYPES.has(t.transaction_type)) {
         const b = amountProblem(t.loan_begin_usd ?? '', `${where}: the beginning balance`);
-        if (b) errs.push(b);
+        if (b) errs.push(at('4', row, b));
       }
     });
     return errs;
@@ -2089,7 +2219,7 @@ export function Intake() {
     return errs;
   }
 
-  function validationForStep(target: IntakeStep): string[] {
+  function validationForStep(target: IntakeStep): StepError[] {
     if (target === 1) return validateStep1();
     if (target === '1b') return validateStep1b();
     if (target === 2) return validateStep2();
@@ -2134,7 +2264,7 @@ export function Intake() {
    * untouched, so validating only the current step let an invalid step-1 or
    * step-4 value reach the return by way of a submit from the review screen.
    */
-  function validateForSubmit(): string[] {
+  function validateForSubmit(): StepError[] {
     if (showRpForm) return ['Finish or cancel the related party form before continuing.'];
     return [...validateStep1(), ...validateStep1b(), ...validateStep2(), ...validateStep3(),
       ...validateStep4(), ...validateSignature()];
@@ -2276,7 +2406,7 @@ export function Intake() {
   const continueFromSection = async (key: string) => {
     const s = key === '1b' ? ('1b' as IntakeStep) : (Number(key) as IntakeStep);
     // Reuse the per-step validators by pointing `step` context at this section.
-    let errs: string[] = [];
+    let errs: StepError[] = [];
     if (s === 1) errs = validateStep1();
     else if (s === '1b') errs = validateStep1b();
     else if (s === 2) errs = validateStep2();
@@ -3217,7 +3347,25 @@ export function Intake() {
             <div style={errorSummaryStyle}>
               <div style={{ fontWeight: 700, marginBottom: '0.45rem' }}>Please complete the following before continuing</div>
               <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
-                {stepErrors.map((msg, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{msg}</li>)}
+                {stepErrors.map((e, i) => (
+                  <li key={i} style={{ marginBottom: '0.25rem' }}>
+                    {typeof e === 'string' ? e : (
+                      // A button, not an anchor: there is no URL for a field
+                      // inside a collapsed accordion section, and an href="#"
+                      // would put a dead entry in the filer's history for every
+                      // message they clicked. Underlined and inheriting the
+                      // error colour, so it reads as the message it is rather
+                      // than as a link bolted onto one.
+                      <button
+                        type="button"
+                        onClick={() => jumpToField(e.section, e.field)}
+                        style={errorLinkStyle}
+                      >
+                        {e.msg}
+                      </button>
+                    )}
+                  </li>
+                ))}
               </ul>
             </div>
           )}
@@ -3321,6 +3469,7 @@ export function Intake() {
                   fixed above, and matching the other opt-in rows also makes
                   this one look like the controls it sits beside. */}
               <label
+                data-anchor="eligibility"
                 className={`confirm-check-row confirm-check-row--neutral${eligibilityConfirmed ? ' is-selected' : ''}`}
                 style={{ cursor: isPaidLocked ? 'not-allowed' : 'pointer', marginTop: 0 }}
               >
@@ -3362,7 +3511,7 @@ export function Intake() {
                     text="Services count as U.S.-source based on where the work was done, not where the customer is. Having U.S. customers, or a U.S. bank account, does not by itself make income U.S.-source."
                   />
                 </p>
-                <div style={{ display: 'flex', gap: '0.625rem' }}>
+                <div data-anchor="hasUsActivity" style={{ display: 'flex', gap: '0.625rem' }}>
                   {[
                     { val: false, label: 'No' },
                     { val: true, label: 'Yes' },
@@ -3507,10 +3656,10 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Company information</h3>
               <div style={gridStyle}>
-                <Field label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required locked={isPaidLocked}>
+                <Field anchor="llcName" label="LLC / Corporation name" style={{ gridColumn: '1 / -1' }} required locked={isPaidLocked}>
                   <input value={llcName} onChange={(e) => setLlcName(e.target.value)} placeholder="e.g. Acme Global LLC" disabled={isPaidLocked} />
                 </Field>
-                <Field label="EIN" locked={isPaidLocked} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
+                <Field anchor="ein" label="EIN" locked={isPaidLocked} required tooltip="Your LLC's 9-digit federal tax ID (format 12-3456789). Find it on your IRS EIN confirmation (CP-575), your formation service dashboard (Stripe Atlas, Doola, Firstbase), or by searching your email for 'EIN'.">
                   <input
                     value={ein}
                     onChange={(e) => { setEin(formatEIN(e.target.value)); setEinErr(null); }}
@@ -3521,13 +3670,14 @@ export function Intake() {
                   />
                   {einErr && <div className="field-error">{einErr}</div>}
                 </Field>
-                <Field label="State of formation" required>
+                <Field anchor="stateOfFormation" label="State of formation" required>
                   <select value={stateOfFormation} onChange={(e) => setStateOfFormation(e.target.value)}>
                     <option value="">Select state</option>
                     {US_STATES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </Field>
                 <Field
+                  anchor="taxYear"
                   label="Tax year"
                   required
                   locked={isPaidLocked} status={!isPaidLocked && jobId ? 'set by your multi-year selection' : undefined}
@@ -3540,19 +3690,19 @@ export function Intake() {
                     {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
                   </select>
                 </Field>
-                <Field label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
+                <Field anchor="totalAssets" label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
                 </Field>
-                <Field label="Date of incorporation" required locked={isPaidLocked} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
+                <Field anchor="entityDOI" label="Date of incorporation" required locked={isPaidLocked} tooltip="The date your LLC was officially formed, shown on your formation documents (Articles of Organization / Certificate of Formation).">
                   <input type="date" value={entityDOI} onChange={(e) => setEntityDOI(e.target.value)} disabled={isPaidLocked} />
                 </Field>
-                <Field label="Main country where the LLC does business" required>
+                <Field anchor="entityPrincipalCountry" label="Main country where the LLC does business" required>
                   <select value={entityPrincipalCountry} onChange={(e) => setEntityPrincipalCountry(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Type of business" required tooltip="Pick the closest match, or choose “Other” to type your own. This sets the IRS business code that describes what your LLC does.">
+                <Field anchor="entityBizActivity" label="Type of business" required tooltip="Pick the closest match, or choose “Other” to type your own. This sets the IRS business code that describes what your LLC does.">
                   {(() => {
                     // The dropdown value is "Other" when the current activity is a
                     // custom entry not in the preset list. Picking a preset also
@@ -3596,7 +3746,7 @@ export function Intake() {
                     />
                   </Field>
                 )}
-                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code that matches what your LLC does. We fill it in automatically when you pick a type of business above, you can also type it yourself.">
+                <Field anchor="entityBizCode" label="Business code" required tooltip="The 6-digit IRS business-activity code that matches what your LLC does. We fill it in automatically when you pick a type of business above, you can also type it yourself.">
                   <input value={entityBizCode} onChange={(e) => setEntityBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
@@ -3620,7 +3770,7 @@ export function Intake() {
               {isFiscalYear && (
                 <>
                   <div style={{ ...gridStyle, marginTop: '0.875rem' }}>
-                    <Field label="Fiscal year-end month" required tooltip="The month your LLC's fiscal year ends. We derive the exact tax period from your tax year, so it always lines up with the year you're filing.">
+                    <Field anchor="fiscalEndMonth" label="Fiscal year-end month" required tooltip="The month your LLC's fiscal year ends. We derive the exact tax period from your tax year, so it always lines up with the year you're filing.">
                       <select value={fiscalEndMonth} onChange={(e) => setFiscalEndMonth(e.target.value ? Number(e.target.value) : '')}>
                         <option value="">Select month</option>
                         {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
@@ -3660,6 +3810,7 @@ export function Intake() {
                 <>
                   <div style={{ ...gridStyle, marginTop: '0.875rem' }}>
                     <Field
+                      anchor="dateOfClosure"
                       label="Date the LLC was dissolved"
                       required
                       tooltip="The date the dissolution took effect with your state of formation, shown on the Certificate of Dissolution or Cancellation the state issued. Not the date you stopped trading, and not the date you closed the bank account."
@@ -3679,7 +3830,12 @@ export function Intake() {
                       {/* Hidden while the summary above is already carrying
                           this exact message, so a failed submit shows it once,
                           not twice. */}
-                      {dissolutionDateError && !stepErrors.includes(dissolutionDateError) && (
+                      {/* Compared on the TEXT, not on the error object: the
+                          summary now carries anchored errors, so an identity
+                          check would stop matching and the same sentence would
+                          be shown twice, which is the duplication the original
+                          check was written to prevent. */}
+                      {dissolutionDateError && !stepErrors.some((e) => errText(e) === dissolutionDateError) && (
                         <span className="field-error" role="alert">{dissolutionDateError}</span>
                       )}
                     </Field>
@@ -3748,7 +3904,7 @@ export function Intake() {
                   abroad, and plenty of countries have no state or region at all.
                   Country is selectable and State/region follows the same
                   US-required / otherwise-optional rule as every other address. */}
-              <AddressFields value={mailing} onChange={setMailing} />
+              <AddressFields anchor="mailing" value={mailing} onChange={setMailing} />
             </section>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -3770,7 +3926,7 @@ export function Intake() {
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Extension</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div data-anchor="extensionFiled" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {[
                   { val: true, label: 'Yes, I filed an extension (Form 7004) before the original deadline' },
                   { val: false, label: "No, I didn't file an extension" },
@@ -3825,7 +3981,7 @@ export function Intake() {
                     Choose only statements that are true for this filing. Your letter will include a
                     declaration under penalties of perjury, and you will sign it before filing.
                   </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div data-anchor="rclReasons" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {REASONABLE_CAUSE_REASONS.map((r) => {
                       const checked = reasonableCauseReasons.includes(r.value);
                       const toggle = () => setReasonableCauseReasons((prev) => checked ? prev.filter((x) => x !== r.value) : [...prev, r.value]);
@@ -3870,7 +4026,7 @@ export function Intake() {
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your identity</h3>
               <div style={gridStyle}>
-                <Field label="Your full legal name" locked={isPaidLocked} tooltip="As shown on your government ID / passport." style={{ gridColumn: '1 / -1' }} required>
+                <Field anchor="ownerName" label="Your full legal name" locked={isPaidLocked} tooltip="As shown on your government ID / passport." style={{ gridColumn: '1 / -1' }} required>
                   <input
                     value={ownerName}
                     onChange={(e) => {
@@ -3883,21 +4039,21 @@ export function Intake() {
                     disabled={isPaidLocked}
                   />
                 </Field>
-                <Field label="Your title / role" tooltip="How you'll sign the return, e.g. Managing Member, Member, President. This prints on the Form 1120 signature block and any reasonable-cause letter. Defaults to Managing Member.">
+                <Field anchor="signerTitle" label="Your title / role" tooltip="How you'll sign the return, e.g. Managing Member, Member, President. This prints on the Form 1120 signature block and any reasonable-cause letter. Defaults to Managing Member.">
                   <input
                     value={signerTitle}
                     onChange={(e) => setSignerTitle(e.target.value)}
                     placeholder="Managing Member"
                   />
                 </Field>
-                <Field label="Signature date" tooltip="We print this as the signature date on the Form 1120 for every year, so your forms are ready to print and mail as-is. Use the date you plan to sign and send them.">
+                <Field anchor="signatureDate" label="Signature date" tooltip="We print this as the signature date on the Form 1120 for every year, so your forms are ready to print and mail as-is. Use the date you plan to sign and send them.">
                   <input
                     type="date"
                     value={signatureDate}
                     onChange={(e) => setSignatureDate(e.target.value)}
                   />
                 </Field>
-                <Field label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">
+                <Field anchor="ownerCountry" label="Country where you do business" required tooltip="The country where you mainly carry out your own work or business activity. For many owners this is where they live and work.">
                   <select
                     value={ownerCountry}
                     onChange={(e) => {
@@ -3922,13 +4078,13 @@ export function Intake() {
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Country where you pay taxes" required tooltip="The country where you are a tax resident, i.e. where you file your personal income taxes.">
+                <Field anchor="ownerCountryRes" label="Country where you pay taxes" required tooltip="The country where you are a tax resident, i.e. where you file your personal income taxes.">
                   <select value={ownerCountryRes} onChange={(e) => setOwnerCountryRes(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Country of citizenship" required tooltip="The country that issued your passport. If you hold more than one, use the one you'll list on the form.">
+                <Field anchor="ownerCountryCitizenship" label="Country of citizenship" required tooltip="The country that issued your passport. If you hold more than one, use the one you'll list on the form.">
                   <select value={ownerCountryCitizenship} onChange={(e) => setOwnerCountryCitizenship(e.target.value)}>
                     <option value="">Select country</option>
                     {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -3939,6 +4095,7 @@ export function Intake() {
                     their NPWP, not for "your foreign tax ID". `taxIdWarning` is
                     advisory and never blocks the step, see countryTaxIds.ts. */}
                 <Field
+                  anchor="ownerForeignTaxId"
                   label={`Your ${ownerTaxIdInfo.label}`}
                   locked={isPaidLocked}
                   required
@@ -3965,7 +4122,7 @@ export function Intake() {
                 <Field label="U.S. tax ID" tooltip="Only if you happen to have a U.S. tax ID (SSN, ITIN, or your own EIN). Most foreign owners don't have one, so leave it blank if so.">
                   <input value={ownerSSN} onChange={(e) => setOwnerSSN(e.target.value)} placeholder="XXX-XX-XXXX or XX-XXXXXXX" />
                 </Field>
-                <Field label="Your reference code" required tooltip="A short code that identifies you. It is printed on Form 5472. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
+                <Field anchor="ownerRefNumber" label="Your reference code" required tooltip="A short code that identifies you. It is printed on Form 5472. We suggest one automatically (e.g. your initials + 001); keep it or change it, it just needs to stay consistent.">
                   <input value={ownerRefNumber} onChange={(e) => setOwnerRefNumber(e.target.value)} placeholder="e.g. RAH001" />
                 </Field>
               </div>
@@ -3973,13 +4130,13 @@ export function Intake() {
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your address</h3>
-              <AddressFields value={ownerAddress} onChange={setOwnerAddress} />
+              <AddressFields anchor="ownerAddress" value={ownerAddress} onChange={setOwnerAddress} />
             </section>
 
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Your type of business</h3>
               <div style={gridStyle}>
-                <Field label="Type of business" tooltip="Your own business, not the LLC's. Pick the closest match, or choose “Other” to type your own activity and code." required>
+                <Field anchor="ownerBizActivity" label="Type of business" tooltip="Your own business, not the LLC's. Pick the closest match, or choose “Other” to type your own activity and code." required>
                   {(() => {
                     // Same manual-entry escape hatch as the LLC's business
                     // activity: the preset list never covers every trade, so
@@ -4025,7 +4182,7 @@ export function Intake() {
                     />
                   </Field>
                 )}
-                <Field label="Business code" required tooltip="The 6-digit IRS business-activity code for your own business. We fill it in when you pick a type above, you can also type it yourself.">
+                <Field anchor="ownerBizCode" label="Business code" required tooltip="The 6-digit IRS business-activity code for your own business. We fill it in when you pick a type above, you can also type it yourself.">
                   <input value={ownerBizCode} onChange={(e) => setOwnerBizCode(e.target.value)} placeholder="e.g. 541511" />
                 </Field>
               </div>
@@ -4048,7 +4205,7 @@ export function Intake() {
             {relatedParties.length > 0 && (
               <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                 {relatedParties.map((rp, i) => (
-                  <div key={i} style={{ ...groupedCardStyle, padding: '0.875rem 1rem' }}>
+                  <div key={i} data-anchor={`rp-${i}`} style={{ ...groupedCardStyle, padding: '0.875rem 1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{rp.name || `Related party ${i + 1}`}</div>
@@ -4596,7 +4753,7 @@ export function Intake() {
                       // amount was USD 123,456."
                       : `${(meta?.sentence ?? humanizeTxType(t.transaction_type)).replace('{party}', partyLabel)}.${amount ? ` The reported amount was ${amount}.` : ''}`;
                     return (
-                      <div key={i} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
+                      <div key={i} data-anchor={`tx-${i}`} style={{ ...groupedCardStyle, padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderColor: isEditing ? 'var(--tf-accent)' : undefined }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: '0.84rem', color: 'var(--tf-text)', lineHeight: 1.5 }}>
                             {sentence}
@@ -4629,7 +4786,7 @@ export function Intake() {
             </div>
 
             {transactions.length === 0 && (
-              <label className={`confirm-check-row${noTransactionsConfirmed ? ' is-selected' : ''}`} style={{ cursor: 'pointer' }}>
+              <label data-anchor="noTransactions" className={`confirm-check-row${noTransactionsConfirmed ? ' is-selected' : ''}`} style={{ cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={noTransactionsConfirmed}
