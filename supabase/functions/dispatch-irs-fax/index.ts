@@ -24,6 +24,36 @@ const SINCH_FAX_NUMBER = Deno.env.get('SINCH_FAX_NUMBER');
 // 5 August 2026, and nothing in either function's code could show it.
 const webhookToken = () => Deno.env.get('SINCH_WEBHOOK_TOKEN');
 
+/**
+ * Signs one transmission id with the shared secret, so the callback URL can
+ * carry proof instead of carrying the secret.
+ *
+ * WHY, and it is not theoretical. The token used to travel as `?token=<secret>`.
+ * A per-fax callback URL is the only channel Sinch offers, so the secret was in
+ * a URL, and Supabase logs the request URL of every edge function call in full.
+ * Anyone who could read the project's logs could read the secret that gates
+ * delivery writes, and rotating it did not help: the new one was logged on the
+ * next fax. Sinch stores the callbackUrl against each fax record too, so it sat
+ * in their system as well.
+ *
+ * What a leaked signature is worth now: one fax, whose callback is idempotent
+ * anyway. It authorises nothing else, because it is bound to a transmission id
+ * the webhook checks against the row the fax id resolves to.
+ *
+ * Hex, not base64url, because it survives a URL with no encoding questions.
+ */
+async function signTransmission(secret: string, transmissionId: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(transmissionId));
+  return Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // Sinch's documented no-charge outbound test destination. Keep this hardcoded
 // until the production destination is deliberately enabled in a later change.
 const TEST_DESTINATION = '+19898989898';
@@ -224,13 +254,16 @@ serve(async (req) => {
     // service-level callback for INCOMING faxes; a completion callback has to
     // be registered on the send itself.
     //
-    // The token is in the URL because that is the only channel a per-fax
-    // callback has. It is a Supabase secret, it never appears in the browser,
-    // and `sinch-fax-webhook` compares it in constant time.
+    // What travels is a SIGNATURE over this transmission id, never the secret
+    // itself. See signTransmission above for why. `sinch-fax-webhook` recomputes
+    // it, compares in constant time, and then checks the signed id is the row
+    // the fax id resolves to, so a signature lifted from a log line cannot be
+    // pointed at a different fax.
     const SINCH_WEBHOOK_TOKEN = webhookToken();
     if (SINCH_WEBHOOK_TOKEN) {
+      const sig = await signTransmission(SINCH_WEBHOOK_TOKEN, transmissionId);
       const callbackUrl = `${SUPABASE_URL}/functions/v1/sinch-fax-webhook` +
-        `?token=${encodeURIComponent(SINCH_WEBHOOK_TOKEN)}`;
+        `?t=${encodeURIComponent(transmissionId)}&sig=${sig}`;
       outbound.set('callbackUrl', callbackUrl);
       // JSON rather than the multipart default, so the receiver parses one
       // shape. Both carry a copy of the transmitted PDF; neither is stored.

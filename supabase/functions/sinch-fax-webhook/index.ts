@@ -10,12 +10,16 @@
 // Ogden, and there was nothing to build a delivery receipt on.
 //
 // PUBLIC ENDPOINT. Deploy with `verify_jwt = false`: Sinch has no Supabase JWT.
-// That makes the shared secret below the ONLY thing standing between a stranger
-// and the ability to mark someone's filing delivered.
+// That makes the signature check below the ONLY thing standing between a
+// stranger and the ability to mark someone's filing delivered.
 //
 // Required Supabase secrets:
-//   SINCH_WEBHOOK_TOKEN   long random string, also embedded in the callbackUrl
-//                         that dispatch-irs-fax registers with each fax
+//   SINCH_WEBHOOK_TOKEN   long random string. NOT sent in the callback URL any
+//                         more: it is the HMAC key, and what dispatch-irs-fax
+//                         puts in the URL is a signature over that one fax's
+//                         transmission id. Supabase logs request URLs in full,
+//                         so anything in a callback URL should be assumed
+//                         readable by everyone with log access
 //
 // WHAT THIS DELIBERATELY THROWS AWAY
 // Sinch attaches the transmitted PDF to the callback (as a multipart part, or
@@ -37,8 +41,8 @@ const webhookToken = () => Deno.env.get('SINCH_WEBHOOK_TOKEN');
 /**
  * Sinch's own notification IPs, published in their docs. Logged, never
  * enforced: an allowlist that silently drops a real delivery notice is worse
- * than no allowlist, and these can change without us noticing. The token is the
- * control that actually gates the write.
+ * than no allowlist, and these can change without us noticing. The signature is
+ * the control that actually gates the write.
  */
 const SINCH_NOTIFICATION_IPS = ['34.232.249.173', '44.226.9.173'];
 
@@ -47,6 +51,24 @@ function json(body: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * Recomputes the signature dispatch-irs-fax put in the callback URL. Must stay
+ * byte-identical to the copy there: same secret, same message (the transmission
+ * id alone), same hex encoding. See the long note in that file for why the
+ * secret itself no longer travels.
+ */
+async function signTransmission(secret: string, transmissionId: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(transmissionId));
+  return Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Length-independent constant-time compare, so the token cannot be probed. */
@@ -113,24 +135,52 @@ serve(async (req) => {
       return json({ error: 'Webhook is not configured.' }, 503);
     }
 
-    // The token travels in the callback URL, which is the only channel Sinch
-    // offers for a per-fax callback. Also accept it as a Basic password, since
-    // Sinch's webhook auth is Basic and a service-level webhook would send it
-    // that way.
+    // PREFERRED: a signature over one transmission id, `?t=<id>&sig=<hmac>`.
+    // The URL is the only channel a per-fax callback has, and Supabase logs
+    // request URLs in full, so what goes in the URL is effectively published to
+    // anyone who can read the project's logs. A signature published that way is
+    // worth one fax; the secret published that way was worth all of them.
     const url = new URL(req.url);
-    let presented = url.searchParams.get('token') ?? '';
-    if (!presented) {
-      const auth = req.headers.get('authorization') ?? '';
-      if (auth.startsWith('Basic ')) {
-        try {
-          presented = atob(auth.slice(6)).split(':').slice(1).join(':');
-        } catch { /* malformed header: presented stays empty and we 401 */ }
+    const signedId = url.searchParams.get('t') ?? '';
+    const presentedSig = url.searchParams.get('sig') ?? '';
+
+    let authorised = false;
+    let legacyAuth = false;
+
+    if (signedId && presentedSig) {
+      authorised = secretsMatch(presentedSig, await signTransmission(WEBHOOK_TOKEN, signedId));
+    } else {
+      // LEGACY, and it is on a clock. Faxes sent before the signed URL shipped
+      // registered `?token=<secret>` and Sinch retries a failed callback for
+      // about three days, so those notices are still arriving and refusing them
+      // would lose real delivery records. Also accepts the secret as a Basic
+      // password, which is how a service-level webhook would send it.
+      //
+      // DELETE THIS BRANCH AFTER 9 AUGUST 2026. Nothing sent with a token URL
+      // can still be retried by then, and leaving it is leaving the whole
+      // exposure in place for anything that skips the `t`/`sig` pair.
+      let presented = url.searchParams.get('token') ?? '';
+      if (!presented) {
+        const auth = req.headers.get('authorization') ?? '';
+        if (auth.startsWith('Basic ')) {
+          try {
+            presented = atob(auth.slice(6)).split(':').slice(1).join(':');
+          } catch { /* malformed header: presented stays empty and we 401 */ }
+        }
       }
+      authorised = secretsMatch(presented, WEBHOOK_TOKEN);
+      legacyAuth = authorised;
     }
-    if (!secretsMatch(presented, WEBHOOK_TOKEN)) {
+
+    if (!authorised) {
       console.warn('[sinch-fax-webhook] rejected callback',
         req.headers.get('x-forwarded-for') ?? 'unknown ip');
       return json({ error: 'Unauthorized' }, 401);
+    }
+    if (legacyAuth) {
+      // Expected until 9 August 2026 and an anomaly after it. If this is still
+      // appearing then, something is minting token URLs and needs finding.
+      console.warn('[sinch-fax-webhook] accepted on the legacy token path');
     }
 
     const sourceIp = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
@@ -185,6 +235,17 @@ serve(async (req) => {
       // it will never become ours.
       console.warn('[sinch-fax-webhook] no transmission for fax', faxId);
       return json({ ignored: 'unknown fax id' });
+    }
+
+    // The signature authorises ONE transmission. Without this check a signature
+    // read out of a log line could be replayed against any other fax by
+    // changing the fax id in the body, which would put the whole exposure back.
+    // Not a 200-and-ignore: this is the shape a forged callback takes, so it
+    // deserves the same refusal as a bad signature.
+    if (signedId && row.id !== signedId) {
+      console.warn('[sinch-fax-webhook] signature is for another transmission',
+        faxId, signedId, req.headers.get('x-forwarded-for') ?? 'unknown ip');
+      return json({ error: 'Unauthorized' }, 401);
     }
 
     const delivered = providerStatus != null && DELIVERED_STATUSES.has(providerStatus);
