@@ -148,6 +148,12 @@ serve(async (req) => {
 
     const providerStatus = typeof fax.status === 'string' ? fax.status.toUpperCase() : null;
     const pages = Number(fax.numberOfPages);
+    // Sinch reports these as two different numbers and they are not the same
+    // fact: numberOfPages is what we sent, pagesSentSuccessfully is what the
+    // far end took. On a partial transmission the gap between them is the most
+    // important thing a receipt can say, so never collapse them into one.
+    const pagesSent = Number(fax.pagesSentSuccessfully);
+    const errorCode = fax.errorCode ?? (fax as Record<string, unknown>).error_code;
     const completedTime = typeof fax.completedTime === 'string' ? fax.completedTime : null;
     const eventTime = typeof body.eventTime === 'string' ? body.eventTime : null;
 
@@ -201,6 +207,8 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     };
     if (Number.isFinite(pages) && pages > 0) patch.page_count = Math.trunc(pages);
+    if (Number.isFinite(pagesSent) && pagesSent >= 0) patch.pages_sent = Math.trunc(pagesSent);
+    if (errorCode != null && errorCode !== '') patch.provider_error_code = String(errorCode).slice(0, 100);
     if (delivered) {
       // Sinch's own completion time, not ours. This timestamp is what a filer
       // would put in front of the IRS in a penalty dispute, so it should be the

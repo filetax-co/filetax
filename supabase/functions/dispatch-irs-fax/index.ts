@@ -281,6 +281,10 @@ serve(async (req) => {
       status: 'submitted',
       provider_fax_id: result.id,
       provider_status: typeof result.status === 'string' ? result.status : 'IN_PROGRESS',
+      // Recorded here, not read from config when a receipt is rendered. The
+      // secret can be changed (it was, on 5 Aug, to a Fax-capable sender); a
+      // transmission record must keep saying who actually sent that fax.
+      sender_fax: SINCH_FAX_NUMBER,
       submitted_at: now,
       updated_at: now,
     }).eq('id', transmissionId);
