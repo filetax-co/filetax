@@ -875,9 +875,15 @@ export default function FilingWizard() {
                 Last on the page, and that is the ladder: pay, generate and
                 download your own copy, then send it, then take the
                 confirmation away. Each rung is its own click and each one is
-                only reachable once the rung below it is done. The panel renders
-                nothing at all unless the filer bought fax delivery. */}
-            {isPaid && filing?.include_irs_fax && (
+                only reachable once the rung below it is done.
+
+                The entitlement is deliberately NOT tested here. It was, and
+                that made the offer state unreachable: the panel decided it had
+                something to sell and this line had already decided there was
+                nothing to render. One fact, two places, which is the failure
+                this codebase keeps repeating. The panel owns it now, and it
+                returns null for an unpaid filing. */}
+            {isPaid && filing && (
               <FaxPanel filing={filing} build={buildFax} busy={generating} />
             )}
           </>
