@@ -38,7 +38,7 @@ import {
   taxIdTooltip,
   taxIdWarning,
 } from './intake/countryTaxIds';
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY } from '../../lib/pricing';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -4105,7 +4105,7 @@ export function Intake() {
             {!showRpForm && isPaidLocked && relatedParties.length > paidRelatedPartyCount && (
               <div className="cat-banner-amber" style={{ marginTop: '0.5rem' }}>
                 The new related party generates another Form 5472. Save your changes, then complete
-                the $25 additional-party payment before downloading the updated package.
+                the ${PRICE_ADDITIONAL_PARTY} additional-party payment before downloading the updated package.
               </div>
             )}
 

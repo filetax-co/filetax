@@ -47,6 +47,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # A bare `$350` sat in live copy on /past-filings after the price became
+      # $99 + $199, and two outside reviews reasoned from that wrong number
+      # before it was caught. This fails on any dollar figure that equals one of
+      # our prices and is not derived from pricing.ts. Cheap, so it runs early.
+      - name: Check for hardcoded price literals
+        run: npm run verify:prices
+
       # --with-deps needs apt, which is available here but not in Cloudflare's
       # build sandbox. postbuild's own install then becomes a cached no-op.
       - name: Install Playwright browser
