@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
+import { edgeFunctionError } from '../../lib/edgeErrors';
 import {
   loadFaxTransmission,
   pollFaxTransmission,
@@ -62,7 +64,7 @@ interface Props {
 export default function FaxPanel({ filing, build, busy }: Props) {
   const [transmission, setTransmission] = useState<FaxTransmission | null>(null);
   const [loaded,   setLoaded]   = useState(false);
-  const [working,  setWorking]  = useState<null | 'send' | 'confirm' | 'copy'>(null);
+  const [working,  setWorking]  = useState<null | 'send' | 'confirm' | 'copy' | 'check'>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [notice,   setNotice]   = useState<string | null>(null);
 
@@ -134,6 +136,39 @@ export default function FaxPanel({ filing, build, busy }: Props) {
       // A failed dispatch writes the row too, and that row is what says whether
       // a retry is still available.
       setTransmission(await loadFaxTransmission({ id: filingId, job_id: jobId }));
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  // ── Ask the provider directly ──────────────────────────────────────────────
+  /**
+   * The delivery record, pulled rather than waited for.
+   *
+   * Sinch's callback is the fast path and it is not a reliable one: on 5 August
+   * a fax the receiving end actually got never reached `delivered`, because the
+   * callback could not connect at all. A filer should not have to email support
+   * to find out what a provider already knows, so this asks.
+   */
+  const handleCheck = async () => {
+    if (!transmission || working || busy) return;
+    setWorking('check');
+    setError(null);
+    setNotice(null);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('reconcile-fax-status', {
+        body: { filing_id: filingId },
+      });
+      if (fnErr || !data) {
+        throw new Error(await edgeFunctionError(data, fnErr, 'We could not reach the fax provider.'));
+      }
+      const row = await loadFaxTransmission({ id: filingId, job_id: jobId });
+      setTransmission(row);
+      if (data.pending) {
+        setNotice('The provider still has this fax in progress. Check again in a few minutes.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not reach the fax provider.');
     } finally {
       setWorking(null);
     }
@@ -252,6 +287,19 @@ export default function FaxPanel({ filing, build, busy }: Props) {
             row, which is stuck at `submitted` because that fax predates the
             webhook and will never receive one: the copy would have been
             unreachable forever. */}
+        {/* Offered whenever the record is not settled, which is the only time
+            it can tell the filer anything they do not already have. */}
+        {transmission?.provider_fax_id && transmission.status !== 'delivered' && (
+          <button
+            type="button"
+            onClick={handleCheck}
+            disabled={!!working || !!busy}
+            style={btn(!!working || !!busy, !canConfirm(transmission))}
+          >
+            {working === 'check' ? 'Checking…' : 'Check with the provider'}
+          </button>
+        )}
+
         {transmission?.submitted_at && (
           <button
             type="button"

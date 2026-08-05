@@ -29,7 +29,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const WEBHOOK_TOKEN = Deno.env.get('SINCH_WEBHOOK_TOKEN');
+// Read per request. See the matching note in dispatch-irs-fax: a module-scope
+// read pins the value to whenever this isolate happened to boot, so a rotated
+// secret silently splits the sender from the receiver until both restart.
+const webhookToken = () => Deno.env.get('SINCH_WEBHOOK_TOKEN');
 
 /**
  * Sinch's own notification IPs, published in their docs. Logged, never
@@ -103,6 +106,7 @@ serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   try {
+    const WEBHOOK_TOKEN = webhookToken();
     if (!WEBHOOK_TOKEN) {
       // Fail CLOSED. An unset secret must never mean "accept anything".
       console.error('[sinch-fax-webhook] SINCH_WEBHOOK_TOKEN is not set');

@@ -1524,8 +1524,24 @@ export function Intake() {
   // LLC therefore got their FIRST company's name and EIN written into the new
   // filing without being asked, and `filings_freeze_when_paid` locks both the
   // moment they pay. Nothing is filled now until the filer picks a company.
+  // GATED ON THE FILING BEING BLANK, not on there being no filing row.
+  //
+  // It used to return early whenever `filing_id` was present, which meant the
+  // picker never appeared for anyone: the Dashboard's "Start filing" INSERTS
+  // the row first and then navigates to /intake?filing_id=..., so every real
+  // filer arrived with an id and a blank form and was never offered their own
+  // saved companies. Only typing /intake by hand reached it, which is why it
+  // looked fine when tested that way.
+  //
+  // What has to be protected is a filing that already HAS company details, not
+  // a row that merely exists. A draft created two seconds ago has nothing worth
+  // protecting, and re-keying an EIN that is already saved is the exact error
+  // this feature exists to prevent, since payment freezes it.
+  const filingIsBlank = !llcName.trim() && !ein.trim();
   useEffect(() => {
-    if (filingId) return; // existing filing is loaded by the effect above
+    if (loadingFiling) return;      // wait for an existing filing to hydrate
+    if (!filingIsBlank) return;     // it has details of its own; leave them alone
+    if (prefilledFromProfile) return; // already answered
     let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -1536,7 +1552,10 @@ export function Intake() {
       setShowCompanyPicker(true);
     })();
     return () => { cancelled = true; };
-  }, [filingId]);
+  // Deliberately not re-running on every keystroke: `filingIsBlank` flips false
+  // on the first character typed and the picker is dismissed by then anyway.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingFiling]);
 
   /** Copy a chosen saved company into the form. Empty fields only. */
   const importCompany = (profile: FilingProfile, withRelatedParties: boolean) => {

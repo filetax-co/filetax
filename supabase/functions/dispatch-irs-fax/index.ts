@@ -15,7 +15,14 @@ const SINCH_FAX_NUMBER = Deno.env.get('SINCH_FAX_NUMBER');
 // in the required-config check below: a missing callback degrades the delivery
 // RECORD, it does not make the fax wrong, and a filer facing a penalty should
 // not be blocked from filing because our reporting plumbing is unconfigured.
-const SINCH_WEBHOOK_TOKEN = Deno.env.get('SINCH_WEBHOOK_TOKEN');
+// READ PER REQUEST, not at module load. `Deno.env.get` at module scope is
+// evaluated once when the isolate boots and then kept for the isolate's whole
+// life, which can be hours. Rotate the secret and this function keeps embedding
+// the OLD token in every callback URL while `sinch-fax-webhook`, booted later,
+// compares the NEW one: every delivery notice is then rejected 401 and no fax
+// can ever be recorded as delivered. That is exactly what happened on
+// 5 August 2026, and nothing in either function's code could show it.
+const webhookToken = () => Deno.env.get('SINCH_WEBHOOK_TOKEN');
 
 // Sinch's documented no-charge outbound test destination. Keep this hardcoded
 // until the production destination is deliberately enabled in a later change.
@@ -220,6 +227,7 @@ serve(async (req) => {
     // The token is in the URL because that is the only channel a per-fax
     // callback has. It is a Supabase secret, it never appears in the browser,
     // and `sinch-fax-webhook` compares it in constant time.
+    const SINCH_WEBHOOK_TOKEN = webhookToken();
     if (SINCH_WEBHOOK_TOKEN) {
       const callbackUrl = `${SUPABASE_URL}/functions/v1/sinch-fax-webhook` +
         `?token=${encodeURIComponent(SINCH_WEBHOOK_TOKEN)}`;
