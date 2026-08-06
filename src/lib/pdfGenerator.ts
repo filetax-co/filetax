@@ -2380,6 +2380,24 @@ const mergeInto = async (dest: PDFDocument, src: PDFDocument): Promise<void> => 
   }
 };
 
+/**
+ * Join already-rendered PDFs into one file, in the order given.
+ *
+ * Exists for the fax record, which used to be two separate downloads: the
+ * confirmation and the pages that were transmitted. They describe one event, so
+ * the filer now gets one file. Empty parts are skipped rather than producing a
+ * blank page.
+ */
+export const concatPdfBytes = async (parts: Uint8Array[]): Promise<Uint8Array> => {
+  const usable = parts.filter((p) => p && p.length > 0);
+  if (usable.length === 1) return usable[0];
+  const merged = await PDFDocument.create();
+  for (const bytes of usable) {
+    await mergeInto(merged, await PDFDocument.load(bytes));
+  }
+  return merged.save();
+};
+
 // ─── public entry point ────────────────────────────────────────────────────────────────────────────
 
 export interface FilingPackage {

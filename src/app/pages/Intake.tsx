@@ -3574,11 +3574,13 @@ export function Intake() {
             needed, which is exactly what is no longer true. */}
         {isFaxLocked ? (
           <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
-            <strong>This filing has been faxed to the IRS.</strong> It can no longer be edited. The
-            IRS holds the pages exactly as they were transmitted, and changing them here would
-            leave you with a return that differs from the one they received.{' '}
-            If something on it is wrong, email support@filetax.co. You can still download your copy
-            and your transmission confirmation from the filing page.
+            <strong>This filing has been faxed to the IRS. You are viewing your answers,
+            read-only.</strong> Everything you entered stays here for you to look back on, which is
+            worth having in front of you when you file next year. Nothing can be changed: the IRS
+            holds the pages exactly as they were transmitted, and editing them here would leave you
+            with a return that differs from the one they received.{' '}
+            If something on it is wrong, email support@filetax.co. You can download the whole fax
+            record, your confirmation and the transmitted pages in one file, from the filing page.
           </div>
         ) : isPaidLocked && (
           <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>

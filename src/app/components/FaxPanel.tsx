@@ -65,7 +65,7 @@ interface Props {
 export default function FaxPanel({ filing, build, busy }: Props) {
   const [transmission, setTransmission] = useState<FaxTransmission | null>(null);
   const [loaded,   setLoaded]   = useState(false);
-  const [working,  setWorking]  = useState<null | 'send' | 'confirm' | 'copy' | 'check' | 'buy'>(null);
+  const [working,  setWorking]  = useState<null | 'send' | 'record' | 'check' | 'buy'>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [notice,   setNotice]   = useState<string | null>(null);
 
@@ -175,33 +175,6 @@ export default function FaxPanel({ filing, build, busy }: Props) {
     }
   };
 
-  // ── Confirmation ───────────────────────────────────────────────────────────
-  const handleConfirmation = async () => {
-    if (!canConfirm(transmission) || working || busy) return;
-    setWorking('confirm');
-    setError(null);
-    try {
-      // Built from the filing and the row, so it needs the package's shape but
-      // not its bytes. `build` is the only thing that knows the form count, and
-      // it is cheap enough next to a transmission the filer already waited for.
-      const shape = await build({
-        sentOn: transmission.submitted_at ? new Date(transmission.submitted_at) : undefined,
-      });
-      const { buildFaxConfirmation } = await import('../../lib/pdfGenerator');
-      const pdf = await buildFaxConfirmation(filing, transmission, {
-        formCount: shape.formCount,
-        hasRCL: shape.hasRCL,
-        has7004: shape.has7004,
-        taxYears: shape.taxYears,
-      });
-      download(pdf, `Fax-Confirmation-${slug}.pdf`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The confirmation could not be produced.');
-    } finally {
-      setWorking(null);
-    }
-  };
-
   // ── Buy it after the fact ──────────────────────────────────────────────────
   /**
    * A cart of exactly one $9 item against a filing that is already paid. It
@@ -227,17 +200,42 @@ export default function FaxPanel({ filing, build, busy }: Props) {
   };
 
   // ── Copy of what was transmitted ───────────────────────────────────────────
-  const handleCopy = async () => {
+  /**
+   * ONE file, not two downloads.
+   *
+   * This was "Download confirmation" beside "Download the pages we faxed", and
+   * the two describe a single event: the confirmation says what went to the
+   * IRS and when, the pages are what went. Two buttons made the filer decide
+   * which one they wanted, and the answer is always both, in that order.
+   *
+   * The confirmation only exists once the transmission is `delivered`, which is
+   * deliberate: a receipt for a fax that can still fail would be describing
+   * something that has not happened. Before then this produces the pages alone,
+   * and the copy under the button says so.
+   */
+  const handleRecord = async () => {
     if (!transmission || working || busy) return;
-    setWorking('copy');
+    setWorking('record');
     setError(null);
     try {
-      const { payload } = await build({
+      const shape = await build({
         sentOn: transmission.submitted_at ? new Date(transmission.submitted_at) : undefined,
       });
-      download(payload, `Faxed-Package-${slug}.pdf`);
+      const parts: Uint8Array[] = [];
+      if (canConfirm(transmission)) {
+        const { buildFaxConfirmation } = await import('../../lib/pdfGenerator');
+        parts.push(await buildFaxConfirmation(filing, transmission, {
+          formCount: shape.formCount,
+          hasRCL: shape.hasRCL,
+          has7004: shape.has7004,
+          taxYears: shape.taxYears,
+        }));
+      }
+      parts.push(shape.payload);
+      const { concatPdfBytes } = await import('../../lib/pdfGenerator');
+      download(await concatPdfBytes(parts), `Fax-Record-${slug}.pdf`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The transmitted copy could not be rebuilt.');
+      setError(err instanceof Error ? err.message : 'The fax record could not be produced.');
     } finally {
       setWorking(null);
     }
@@ -362,28 +360,25 @@ export default function FaxPanel({ filing, build, busy }: Props) {
           </button>
         )}
 
-        {/* The confirmation is the reason the $9 was charged, so it leads once
-            it exists. Deliberately unavailable before `delivered`: a receipt
-            for a fax that has not completed would be describing something that
-            can still fail. */}
-        {canConfirm(transmission) && (
+        {/* One record, one file: the confirmation and the pages it describes.
+            Available as soon as a fax has actually been submitted, in flight or
+            not. It was once gated on the transmission having settled, which
+            withheld the filer's own copy of pages that had ALREADY gone to the
+            IRS while we waited on a provider callback. Found on the live
+            5 August test row, which is stuck at `submitted` because that fax
+            predates the webhook and will never receive one: the copy would have
+            been unreachable forever. */}
+        {transmission?.submitted_at && (
           <button
             type="button"
-            onClick={handleConfirmation}
+            onClick={handleRecord}
             disabled={!!working || !!busy}
             style={btn(!!working || !!busy, true)}
           >
-            {working === 'confirm' ? 'Preparing…' : 'Download confirmation'}
+            {working === 'record' ? 'Preparing…' : 'Download fax record'}
           </button>
         )}
 
-        {/* Available as soon as a fax has actually been submitted, in flight or
-            not. It was gated on the transmission having settled, which withheld
-            the filer's own copy of pages that had ALREADY gone to the IRS while
-            we waited on a provider callback. Found on the live 5 August test
-            row, which is stuck at `submitted` because that fax predates the
-            webhook and will never receive one: the copy would have been
-            unreachable forever. */}
         {/* Offered whenever the record is not settled, which is the only time
             it can tell the filer anything they do not already have. */}
         {transmission?.provider_fax_id && transmission.status !== 'delivered' && (
@@ -391,23 +386,20 @@ export default function FaxPanel({ filing, build, busy }: Props) {
             type="button"
             onClick={handleCheck}
             disabled={!!working || !!busy}
-            style={btn(!!working || !!busy, !canConfirm(transmission))}
-          >
-            {working === 'check' ? 'Checking…' : 'Check with the provider'}
-          </button>
-        )}
-
-        {transmission?.submitted_at && (
-          <button
-            type="button"
-            onClick={handleCopy}
-            disabled={!!working || !!busy}
             style={btn(!!working || !!busy, false)}
           >
-            {working === 'copy' ? 'Rebuilding…' : 'Download the pages we faxed'}
+            {working === 'check' ? 'Checking…' : 'Update status'}
           </button>
         )}
       </div>
+
+      {transmission?.submitted_at && (
+        <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.75rem 0 0', lineHeight: 1.5 }}>
+          {canConfirm(transmission)
+            ? 'One PDF: your confirmation, followed by the exact pages we transmitted.'
+            : 'The exact pages we transmitted. Your confirmation is added to this file once the provider confirms delivery.'}
+        </p>
+      )}
 
       {inFlight && (
         <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.75rem 0 0' }}>

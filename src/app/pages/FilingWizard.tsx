@@ -831,19 +831,24 @@ export default function FilingWizard() {
               borderTop: '1px solid var(--tf-border)',
               flexWrap: 'wrap',
             }}>
-              {faxLocked ? (
-                <span style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', alignSelf: 'center' }}>
-                  Faxed to the IRS, so this filing can no longer be edited. A correction is a new
-                  filing: email support@filetax.co.
+              {/* A faxed filing is read-only, NOT unreachable. Hiding this
+                  button took away the filer's own record of what they told the
+                  IRS, which is exactly what they need in front of them when
+                  they file next year. The intake freezes every field for a
+                  faxed filing (AccordionSection's `frozen`), so this opens the
+                  answers to be read, not edited. */}
+              <button
+                onClick={() => id && navigate(`/intake?filing_id=${id}`)}
+                style={secondaryBtnStyle}
+                type="button"
+              >
+                {faxLocked ? '← View your answers' : '← Edit Filing'}
+              </button>
+              {faxLocked && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', alignSelf: 'center' }}>
+                  Faxed to the IRS, so your answers are read-only. A correction is a new filing:
+                  email support@filetax.co.
                 </span>
-              ) : (
-                <button
-                  onClick={() => id && navigate(`/intake?filing_id=${id}`)}
-                  style={secondaryBtnStyle}
-                  type="button"
-                >
-                  ← Edit Filing
-                </button>
               )}
 
               {isPaid && <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
