@@ -132,12 +132,11 @@ const STATUS_LABEL: Record<Filing['status'], string> = {
   payment_failed: 'Payment failed',
   paid: 'Ready to download',
   completed: 'Downloaded',
-  // "Submitted" said nothing a filer could act on, and next to it sat a second
-  // green chip reading "Faxed to the IRS" driven by a separate read of
-  // fax_transmissions. Two pills, one fact. A delivered fax now advances the
-  // filing itself to `submitted`, so this label carries the meaning and the
-  // chip is gone. If a second submission channel ever exists, this becomes a
-  // generic word again and the channel goes in the card's detail line.
+  // Only ever rendered as a FALLBACK. A filing reaches `submitted` by having
+  // its fax delivered, and on that card the fax pill replaces the status pill
+  // entirely (see faxState). This label shows only if the transmission read
+  // failed, which is exactly the moment the status column is the last thing
+  // still holding the fact.
   submitted: 'Faxed to the IRS',
 };
 
@@ -154,37 +153,102 @@ const STATUS_COLOR: Record<Filing['status'], { bg: string; fg: string }> = {
   submitted:      { bg: 'var(--tf-banner-green-bg)',  fg: 'var(--tf-banner-green-text)' },
 };
 
+/** The `fax_transmissions.dispatch_key` that covers this filing. */
+function dispatchKeyOf(f: Filing): string {
+  return f.job_id ? `job:${f.job_id}` : `filing:${f.id}`;
+}
+
 /**
- * Has this filer bought the $9 IRS fax and not yet had it confirmed at Ogden?
+ * The ONE pill a filing gets once its $9 fax is paid for.
  *
- * The deleted "Faxed to the IRS" chip only ever said something once delivery
- * had happened, which left the gap in between silent: a filer paid $9 for a fax
- * and the dashboard looked identical to one who had not. This fills that gap,
- * and unlike the old chip it needs NO second query. `include_irs_fax` is a
- * column on the filing row the page already has, and `submitted` is the row's
- * own status, so the pill cannot disagree with the pill beside it.
+ * A bought fax has exactly two states worth a word, and they are mutually
+ * exclusive, so they are one pill with two texts. It REPLACES the status pill
+ * rather than sitting beside it: a card reading "Downloaded" next to "Fax
+ * pending" was two pills competing to describe one filing, and the fax is the
+ * more important of the two facts by a wide margin.
  *
- * Deliberately covers both "bought, never dispatched" and "dispatched, not yet
- * confirmed". From the filer's side those are the same fact, and the honest
- * word for both is pending: nothing is at the IRS until a provider says so. The
- * filing page, which does load the transmission, is where the difference is
- * spelled out, along with the send button and the failure reason.
+ * WHERE DELIVERY COMES FROM, AND WHY IT IS BOTH
+ * `fax_transmissions` is the source of truth and is listed FIRST for that
+ * reason. A previous version of this read `filings.status === 'submitted'`
+ * alone and shipped a live mismatch: the filing page said "Delivered" off the
+ * transmission while the dashboard said "Fax pending" off a status column whose
+ * only writer had not been deployed yet. Reading the same table the filing page
+ * reads is what makes the two surfaces incapable of disagreeing.
  *
- * Unpaid filings are excluded. Before payment the fax is a checkbox in the
+ * `submitted` is still consulted, as a union rather than a replacement. It
+ * costs nothing, and it keeps the pill correct in the one case the transmission
+ * read cannot cover: that query failing. Either source saying delivered means
+ * delivered, because nothing else writes `submitted`.
+ *
+ * PENDING COVERS "never dispatched" AND "sent, not yet confirmed", on purpose.
+ * From the filer's side those are one fact, and the honest word for both is
+ * pending: nothing is at the IRS until the provider says so. The filing page,
+ * which loads the whole transmission, is where the difference is spelled out
+ * along with the send button and any failure reason.
+ *
+ * Unpaid filings return null. Before payment the fax is a checkbox in the
  * intake, not a thing owed, and "Fax pending" over a draft would promise a
  * transmission nobody has bought.
  *
  * `owed` is overridable so a multi-year job can pass its own answer: the flag
- * is written on whichever year the filer was looking at when they bought the
- * fax, and the transmission covers all of them.
+ * is written on whichever year was on screen when the box was ticked, and one
+ * transmission covers every year in the job.
  */
-function faxPending(f: Filing, owed: boolean = f.include_irs_fax === true): boolean {
-  return owed
-    && f.status !== 'submitted'
-    && (f.status === 'paid' || f.status === 'completed');
+type FaxState = 'delivered' | 'pending';
+
+function faxState(
+  f: Filing,
+  deliveredKeys: Set<string>,
+  owed: boolean = f.include_irs_fax === true,
+): FaxState | null {
+  if (deliveredKeys.has(dispatchKeyOf(f)) || f.status === 'submitted') return 'delivered';
+  if (!owed) return null;
+  return (f.status === 'paid' || f.status === 'completed') ? 'pending' : null;
 }
 
-const FAX_PENDING_PILL = { bg: 'var(--tf-banner-amber-bg)', fg: 'var(--tf-banner-amber-text)' };
+const FAX_PILL: Record<FaxState, { bg: string; fg: string; label: string }> = {
+  delivered: {
+    bg: 'var(--tf-banner-green-bg)',
+    fg: 'var(--tf-banner-green-text)',
+    label: 'Faxed to the IRS',
+  },
+  pending: {
+    bg: 'var(--tf-banner-amber-bg)',
+    fg: 'var(--tf-banner-amber-text)',
+    label: 'Fax pending',
+  },
+};
+
+/**
+ * The single pill that names what this filing IS right now.
+ *
+ * One pill, never two. A bought fax outranks the download state: "Faxed to the
+ * IRS" already implies the package exists and was paid for, and "Fax pending"
+ * is the thing the filer is actually waiting on. Both are strictly more
+ * informative than "Downloaded", which is why they take its place instead of
+ * crowding in beside it.
+ */
+function primaryPill(f: Filing, fax: FaxState | null): { bg: string; fg: string; label: string } {
+  if (fax) return FAX_PILL[fax];
+  const c = STATUS_COLOR[f.status];
+  return { bg: c.bg, fg: c.fg, label: STATUS_LABEL[f.status] };
+}
+
+/**
+ * Does this card still owe a deadline pill?
+ *
+ * A delivered fax retires it, whatever the filing's status column says. The
+ * deadline is a warning about an unfiled return, and "Past due, file ASAP" in
+ * red beside "Faxed to the IRS" tells a filer whose pages are at Ogden that
+ * they have missed the thing they just did. A PENDING fax keeps it, on the
+ * owner's instruction: until the transmission lands, the deadline is still a
+ * real deadline.
+ */
+function dueFor(f: Filing, fax: FaxState | null): DueState {
+  if (fax === 'delivered') return null;
+  if (f.status === 'completed' || f.status === 'submitted') return null;
+  return dueState(f, hasExtension(f));
+}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -308,6 +372,17 @@ export function Dashboard() {
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
 
   const [filings, setFilings] = useState<Filing[]>([]);
+  /**
+   * `dispatch_key` of every transmission that reached `delivered`.
+   *
+   * This read was briefly deleted, on the theory that `filings.status` would
+   * carry delivery instead. It shipped a mismatch: the filing page said
+   * "Delivered" and the dashboard said "Fax pending" for the same filing,
+   * because the status column's only writer had not deployed. The lesson is
+   * §10 rule 9 in reverse: when a fact must hold on two pages, both pages read
+   * it from the same place, and that place is the table that owns it.
+   */
+  const [faxedKeys, setFaxedKeys] = useState<Set<string>>(new Set());
   const [companies, setCompanies] = useState<FilingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -355,18 +430,23 @@ export function Dashboard() {
       // Both at once. The saved companies are a separate table and neither
       // read depends on the other, so serialising them would only make the
       // dashboard slower to appear.
-      // This used to fetch delivered fax_transmissions as a third read, purely
-      // to decide a "Faxed to the IRS" chip. It is gone: a delivered fax now
-      // advances filings.status to `submitted` at the moment of delivery, so
-      // the fact travels on the filing row this query already returns, and the
-      // dashboard can no longer disagree with the filing page about it.
-      const [filingsRes, companiesRes] = await Promise.all([
+      // All three at once. None depends on the others, so serialising them
+      // would only make the dashboard slower to appear.
+      const [filingsRes, companiesRes, faxRes] = await Promise.all([
         supabase
           .from('filings')
           .select('*')
           .eq('user_id', effectiveUserId)
           .order('updated_at', { ascending: false }),
         listCompanies(effectiveUserId),
+        // Delivered faxes only. RLS already limits this to the caller's own
+        // rows, and `dispatch_key` is the same job:/filing: string the filing
+        // page keys on, which is precisely what stops the two surfaces
+        // disagreeing about whether a return reached Ogden.
+        supabase
+          .from('fax_transmissions')
+          .select('dispatch_key')
+          .eq('status', 'delivered'),
       ]);
 
       if (cancelled) return;
@@ -380,6 +460,9 @@ export function Dashboard() {
       // an empty companies section rather than blocking the filings list, which
       // is the part of this page the filer actually came for.
       setCompanies(companiesRes);
+      // A failed read here does not cost the fact, only its fastest source:
+      // faxState falls back to `filings.status === 'submitted'`.
+      setFaxedKeys(new Set((faxRes.data ?? []).map((r: { dispatch_key: string }) => r.dispatch_key)));
 
       setLoading(false);
     }
@@ -744,6 +827,7 @@ export function Dashboard() {
                     {companyGroups[0] && catchUpFor(companyGroups[0])}
                     <FilingGroups
                       filings={filings}
+                      faxedKeys={faxedKeys}
                       onDeleteJob={deleteJob}
                       onDeleteFiling={deleteFiling}
                       busy={busy}
@@ -767,6 +851,7 @@ export function Dashboard() {
                       {catchUpFor(c)}
                       <FilingGroups
                         filings={c.filings}
+                        faxedKeys={faxedKeys}
                         onDeleteJob={deleteJob}
                         onDeleteFiling={deleteFiling}
                         busy={busy}
@@ -1357,11 +1442,13 @@ function groupByCompany(filings: Filing[]): CompanyGroup[] {
  */
 function FilingGroups({
   filings,
+  faxedKeys,
   onDeleteJob,
   onDeleteFiling,
   busy,
 }: {
   filings: Filing[];
+  faxedKeys: Set<string>;
   onDeleteJob: (filings: Filing[]) => void;
   onDeleteFiling: (f: Filing) => void;
   busy: string | null;
@@ -1389,6 +1476,7 @@ function FilingGroups({
         <JobCard
           key={jobId}
           filings={yearFilings}
+          faxedKeys={faxedKeys}
           onDeleteJob={onDeleteJob}
           onDeleteYear={onDeleteFiling}
           busy={busy}
@@ -1405,6 +1493,7 @@ function FilingGroups({
               <FilingCard
                 key={f.id}
                 f={f}
+                fax={faxState(f, faxedKeys)}
                 onDelete={onDeleteFiling}
                 deleting={busy === `del-${f.id}`}
               />
@@ -1492,11 +1581,9 @@ function DeleteCardButton({
   );
 }
 
-function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
-  const c = STATUS_COLOR[f.status];
-  const due = (f.status !== 'completed' && f.status !== 'submitted')
-    ? dueState(f, hasExtension(f))
-    : null;
+function FilingCard({ f, fax, onDelete, deleting }: { f: Filing; fax: FaxState | null; onDelete?: (f: Filing) => void; deleting?: boolean }) {
+  const pill = primaryPill(f, fax);
+  const due = dueFor(f, fax);
   const headline = f.llc_name?.trim() || SERVICE_LABEL[f.service_type];
   // Unpaid filings (draft / in-progress) can be deleted; paid ones cannot.
   const deletable = f.status === 'draft' || f.status === 'in_progress';
@@ -1524,10 +1611,7 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
           <p style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tf-text)' }}>
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
           </p>
-          <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
-          {faxPending(f) && (
-            <Pill bg={FAX_PENDING_PILL.bg} fg={FAX_PENDING_PILL.fg}>Fax pending</Pill>
-          )}
+          <Pill bg={pill.bg} fg={pill.fg}>{pill.label}</Pill>
           {due && (
             <Pill bg={DUE_TONE[due.tone].bg} fg={DUE_TONE[due.tone].fg}>{due.label}</Pill>
           )}
@@ -1565,11 +1649,13 @@ function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filin
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
 function JobCard({
   filings,
+  faxedKeys,
   onDeleteJob,
   onDeleteYear,
   busy,
 }: {
   filings: Filing[];
+  faxedKeys: Set<string>;
   onDeleteJob?: (filings: Filing[]) => void;
   onDeleteYear?: (f: Filing) => void;
   busy?: string | null;
@@ -1591,14 +1677,14 @@ function JobCard({
   // review/download page (most-recent filing).
   const target = chronological.find((f) => f.status === 'draft' || f.status === 'in_progress') ?? sorted[0];
 
-  // A job with any paid year cannot be deleted; the button is hidden rather than
-  // shown-and-refused, so the only delete a filer can see is one that will work.
   // Job-scoped, because the $9 fax is: one transmission covers every year in
   // the catch-up, and `include_irs_fax` is only written on the year the filer
   // happened to be looking at when they bought it. Per-year here would have put
   // the pill on one row of a job whose whole envelope is waiting to go.
   const jobFaxOwed = sorted.some((f) => f.include_irs_fax === true);
 
+  // A job with any paid year cannot be deleted; the button is hidden rather than
+  // shown-and-refused, so the only delete a filer can see is one that will work.
   const jobDeletable = sorted.every(
     (f) => f.status !== 'paid' && f.status !== 'completed' && f.status !== 'submitted',
   );
@@ -1650,7 +1736,7 @@ function JobCard({
       </div>
       <div style={{ borderTop: '1px solid var(--tf-border)' }}>
         {sorted.map((f) => {
-          const c = STATUS_COLOR[f.status];
+          const pill = primaryPill(f, faxState(f, faxedKeys, jobFaxOwed));
           const yearDeletable = f.status === 'draft' || f.status === 'in_progress';
           // The row used to be a single <Link> wrapping everything. A delete
           // button cannot live inside that: nesting a button in an anchor is
@@ -1666,10 +1752,7 @@ function JobCard({
               <Link to={filingPath(f)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.75rem 0.75rem 0.75rem 1.5rem', textDecoration: 'none' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
-                  {faxPending(f, jobFaxOwed) && (
-                    <Pill bg={FAX_PENDING_PILL.bg} fg={FAX_PENDING_PILL.fg}>Fax pending</Pill>
-                  )}
+                  <Pill bg={pill.bg} fg={pill.fg}>{pill.label}</Pill>
                   <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
                 </span>
               </Link>
