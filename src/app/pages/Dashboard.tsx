@@ -236,10 +236,19 @@ function actionLabel(status: Filing['status']): string {
   return 'View';
 }
 
-/** Route draft/in_progress → Intake wizard (?filing_id=); paid/completed → FilingWizard */
+/**
+ * Route draft/in_progress → Intake wizard (?filing_id=); paid/completed → FilingWizard
+ *
+ * Carries `step` so "Continue" reopens where the filer left off. Without it the
+ * intake fell back to step 1 and someone who had reached Transactions was put
+ * back at their LLC's name, on a card that had just told them they were on
+ * step 4. `current_step` is the same number the card shows.
+ */
 function filingPath(f: Filing): string {
   if (f.status === 'paid' || f.status === 'completed') return `/filing/${f.id}`;
-  return `/intake?filing_id=${f.id}`;
+  const step = Number(f.current_step);
+  const resumeAt = step >= 1 && step <= 5 ? step : 1;
+  return `/intake?filing_id=${f.id}&step=${resumeAt}`;
 }
 
 export function Dashboard() {

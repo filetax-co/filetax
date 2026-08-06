@@ -102,7 +102,7 @@ export function Services() {
               The IRS requires a separate Form 5472 for each foreign related party. Most single-member LLCs have only one, the foreign owner. If your LLC transacted with additional related parties such as a foreign parent company or an entity you own 25% or more of, each requires its own Form 5472.
             </p>
             <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400 }}>
-              Each additional related party: <strong style={{ color: "var(--tf-text)" }}>+${PRICE_ADDITIONAL_PARTY} per year</strong> (one extra Form 5472 per party, for each year you file). You add each related party in the portal, and your total updates as you go. You will see the full itemised amount before you are asked to pay.
+              Each additional related party: <strong style={{ color: "var(--tf-text)" }}>+${PRICE_ADDITIONAL_PARTY} per year</strong> (one extra Form 5472 per party, for each year you file). You add each related party in the portal, and your total updates as you go. You will see every service itemised before you are asked to pay. Prices exclude tax: any tax due is calculated at checkout from your billing country.
             </p>
           </div>
 

@@ -316,7 +316,8 @@ const STAGES: Stage[] = [
         body:
           `$${PRICE_PER_YEAR} per tax year, and $${PRICE_ADDITIONAL_PARTY} for each additional ` +
           "related party per year. Any add-ons you chose are itemised on the same screen, and " +
-          "you see the total before you are asked to pay. The download is a print-ready PDF.",
+          "you see that total before you are asked to pay. Prices exclude tax: any tax due is " +
+          "calculated at checkout from your billing country. The download is a print-ready PDF.",
       },
     ],
     // NO `reading` LIST ON THIS STAGE, DELIBERATELY, AND DO NOT RESTORE IT.

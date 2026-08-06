@@ -775,6 +775,16 @@ export default function FilingWizard() {
                         ? 'Pay for the additional related party'
                         : 'Continue to secure checkout'}
                   </button>
+                  {/* Our prices exclude tax, and until this line the first a
+                      filer heard of it was the processor turning a $332 cart
+                      into $391.76. Saying it here costs one muted sentence;
+                      putting the real figure on this page would mean asking
+                      Dodo for a tax quote before checkout, which is a large
+                      change for a number they see thirty seconds later. */}
+                  <p style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', lineHeight: 1.5, marginTop: '0.75rem', marginBottom: 0 }}>
+                    Prices exclude tax. Any tax due, and your billing currency, are calculated at
+                    checkout from your billing country.
+                  </p>
                 </div>
               </section>
             )}

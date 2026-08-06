@@ -2535,6 +2535,37 @@ export function Intake() {
     return (await saveTransactions(id)) ? id : null;
   };
 
+  /**
+   * Persist the transaction list as soon as a transaction is ADDED or REMOVED,
+   * instead of waiting for "Save & continue to Review".
+   *
+   * Three transactions entered and left without completing the step were gone
+   * on resume, while steps 1 to 4 persisted perfectly. The list shows a running
+   * count and live totals as you add, so it reads as saved, and nothing warned
+   * on leaving: someone entering twenty transactions and getting interrupted
+   * lost all of them silently.
+   *
+   * NOT a save on every keystroke. That is a network call per character and it
+   * risks persisting a half-written row. An add is already a discrete,
+   * complete, validated object, and that is the moment worth writing.
+   *
+   * Routed through a counter and an effect rather than calling saveDraft inline
+   * because `setTransactions` has not applied yet at the end of the handler,
+   * and `saveTransactions` reads the list off state: saving inline would write
+   * the list as it stood BEFORE the add. The effect runs after the render that
+   * applied it.
+   */
+  const [txSaveRequests, setTxSaveRequests] = useState(0);
+  const requestTransactionSave = () => setTxSaveRequests((n) => n + 1);
+  useEffect(() => {
+    if (txSaveRequests === 0) return;   // nothing added or removed yet
+    if (loadingFiling) return;          // saveTransactions would reconcile against an empty list
+    if (isFaxLocked || isPaidLocked) return; // the write is refused anyway; do not surface an error
+    void saveDraft();
+    // saveDraft is redefined every render; the counter is the real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txSaveRequests]);
+
   // Expand/collapse an accordion section. Collapsing persists the whole form so
   // the draft is saved as the filer moves through the page (unless paid-locked
   // with no edits left, or nothing has been entered yet).
@@ -3026,6 +3057,7 @@ export function Intake() {
     clearTxForm();
     setStepErrors([]);
     setNoTransactionsConfirmed(false);
+    requestTransactionSave();
     // Back to the total and the empty form, for an add and for a saved edit
     // alike. Both end with the same cleared form and the same next move.
     scrollToTransactionsTop();
@@ -3054,6 +3086,7 @@ export function Intake() {
     setTransactions((prev) => prev.filter((_, idx) => idx !== i));
     // If the row being edited was removed, reset the form back to "add" mode.
     setEditingTxIdx((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur));
+    requestTransactionSave();
   };
 
   /**

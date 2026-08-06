@@ -560,9 +560,16 @@ export function EligibilityCheck() {
                   borderTop: "1px solid var(--tf-border)",
                 }}
               >
+                {/* This used to promise "your exact total, itemised, before you
+                    are asked to pay". Our prices exclude tax, and a filer with
+                    an Indian billing address saw a $332 cart become $391.76 at
+                    the processor, so the sentence was making a promise the
+                    checkout could not keep. It now promises the itemised
+                    services, which is true, and names the tax separately. */}
                 The letter is charged once however many late years you file, never per year. We
                 work out which of your years are late from the actual deadlines once you pick
-                them, and you will see your exact total, itemised, before you are asked to pay.
+                them, and you will see every service itemised before you are asked to pay. Prices
+                exclude tax: any tax due is calculated at checkout from your billing country.
               </p>
             </div>
 
