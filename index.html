@@ -32,7 +32,19 @@
     <!-- Third-party origins the app hits on first paint. -->
     <link rel="preconnect" href="https://alh0fv7m.apicdn.sanity.io" crossorigin />
     <link rel="preconnect" href="https://cdn.sanity.io" crossorigin />
-    <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+    <!--
+      min-height, NOT height. With `height: 100%` the html element is pinned to
+      the viewport, and because taxfile.css sets `overflow-x: hidden` (which the
+      spec resolves to `overflow-y: auto` on the same element, there is no such
+      thing as hidden on one axis and visible on the other), the BODY became the
+      scroll container instead of the document. Measured on the live filing
+      page: documentElement.scrollHeight and clientHeight were both 910 while
+      body.scrollHeight was 2518. That breaks window.scrollTo, scroll
+      restoration, and anything measuring against document.scrollingElement,
+      which is html. min-height keeps the full-height layouts working and lets
+      the document grow with its content.
+    -->
+    <style>html, body { min-height: 100%; margin: 0; } #root { min-height: 100%; }</style>
   </head>
   <body>
     <div id="root"></div>

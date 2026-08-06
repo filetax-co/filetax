@@ -838,7 +838,17 @@ const PART_V_UI_TYPE_LABELS: Record<string, string> = {
  * unprofessional on a filed return.
  */
 const humanizeTxCode = (code: string): string =>
-  code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  code
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    // Title-casing mangles acronyms: `loan_to_llc` came out "Loan To Llc" on a
+    // statement filed with the IRS. Restore the ones our codes actually
+    // contain, and lowercase the linking words title case should not raise.
+    .replace(/\bLlc\b/g, 'LLC')
+    .replace(/\bIrs\b/g, 'IRS')
+    .replace(/\bUs\b/g, 'US')
+    .replace(/\bFmv\b/g, 'FMV')
+    .replace(/ (To|From|Of|By|And|Or|For|On|In) /g, (m) => m.toLowerCase());
 
 export const buildPartVStatement = async (
   filing: NormalizedFiling,

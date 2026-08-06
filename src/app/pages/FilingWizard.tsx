@@ -4,6 +4,7 @@ import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
 import { edgeFunctionError } from '../../lib/edgeErrors';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
+import { TX_TYPES } from './intake/constants';
 import { formatAmount } from '../../lib/money';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
@@ -682,8 +683,13 @@ export default function FilingWizard() {
                       fontSize: '0.875rem',
                     }}>
                       <div style={{ flex: 1, display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
-                          {tx.transaction_type.replace(/_/g, ' ')}
+                        {/* The canonical label, not the raw code run through
+                            CSS `capitalize`, which produced "Loan To Llc" on
+                            the page a filer reads after paying. Falls back to
+                            the code only for a type this build does not know. */}
+                        <span style={{ fontWeight: 600 }}>
+                          {TX_TYPES.find((t) => t.value === tx.transaction_type)?.label
+                            ?? tx.transaction_type.replace(/_/g, ' ')}
                         </span>
                         <span style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', textTransform: 'capitalize' }}>
                           {tx.direction}

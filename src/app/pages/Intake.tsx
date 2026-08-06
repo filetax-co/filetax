@@ -41,7 +41,7 @@ import {
   taxIdWarning,
 } from './intake/countryTaxIds';
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY } from '../../lib/pricing';
-import { formatUsd } from '../../lib/money';
+import { formatAmount, formatUsd } from '../../lib/money';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
@@ -873,7 +873,20 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
   );
 }
 
-const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+/**
+ * A money figure for the summary panel.
+ *
+ * It used to be `Math.round(n)`, and rounding each figure INDEPENDENTLY made
+ * the panel fail to add up: money in $1,312,768 plus money out $21,601 came to
+ * $1,334,369 under a headline reading $1,334,368. Every number was right, the
+ * true sum being $1,334,368.39, but three separate roundings cannot be made to
+ * agree and a filer checking their own books reads the difference as our error.
+ *
+ * So cents are shown when there are cents, and not when there are not: a whole
+ * figure still prints as "$1,312,768" rather than "$1,312,768.00", and only the
+ * filings that actually had the mismatch look any different.
+ */
+const usd = (n: number) => `$${formatAmount(n)}`;
 
 /** One-line readable address from the intake address shape, or null if empty. */
 function formatAddress(a?: { line1?: string; city?: string; region?: string; postal_code?: string; country?: string } | null): string | null {
@@ -1376,6 +1389,14 @@ export function Intake() {
     return `${base}${personal} Do not write "None": the box cannot be left without an identifier.`;
   })();
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
+  // The form now KEEPS the chosen party between adds (see clearTxForm), so the
+  // index has to survive the party list changing under it. Deleting the related
+  // party you were entering rows for would otherwise leave the form pointing at
+  // a party that no longer exists, and the next add would be written against
+  // whatever index that is. Fall back to the owner, who always exists at 0.
+  useEffect(() => {
+    if (txRelatedPartyIdx > relatedParties.length) setTxRelatedPartyIdx(0);
+  }, [relatedParties.length, txRelatedPartyIdx]);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
   const [txAmt, setTxAmt] = useState('');
@@ -3026,7 +3047,13 @@ export function Intake() {
     setTxDate('');
     setTxType('');
     setTxDir('received');
-    setTxRelatedPartyIdx(0);
+    // The party is DELIBERATELY kept. This used to reset to 0, the owner, after
+    // every add, so a filer entering several transactions for one related party
+    // had the second and every one after it silently recorded against the owner
+    // unless they noticed the dropdown had moved on its own. Someone entering
+    // eight rows for one party would have had seven of them misattributed.
+    // Keeping it also stops the quick-type list swapping between the owner list
+    // and the related-party list under the filer between one add and the next.
     setShowDetailedTx(false);
     setOpenCategory(null);
     setTxSearch('');

@@ -375,7 +375,11 @@ export default function FaxPanel({ filing, build, busy }: Props) {
             disabled={!!working || !!busy}
             style={btn(!!working || !!busy, true)}
           >
-            {working === 'record' ? 'Preparing…' : 'Download fax record'}
+            {working === 'record'
+              ? 'Preparing…'
+              : canConfirm(transmission)
+                ? 'Download confirmation & pages sent'
+                : 'Download the pages sent'}
           </button>
         )}
 
@@ -393,13 +397,6 @@ export default function FaxPanel({ filing, build, busy }: Props) {
         )}
       </div>
 
-      {transmission?.submitted_at && (
-        <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.75rem 0 0', lineHeight: 1.5 }}>
-          {canConfirm(transmission)
-            ? 'One PDF: your confirmation, followed by the exact pages we transmitted.'
-            : 'The exact pages we transmitted. Your confirmation is added to this file once the provider confirms delivery.'}
-        </p>
-      )}
 
       {inFlight && (
         <p style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', margin: '0.75rem 0 0' }}>
