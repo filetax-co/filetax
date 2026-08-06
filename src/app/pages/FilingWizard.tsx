@@ -64,8 +64,11 @@ export default function FilingWizard() {
   const relatedPartyCount = Array.isArray(filing?.related_parties) ? filing.related_parties.length : 0;
   const hasUnpaidRelatedParties =
     relatedPartyCount > Number(filing?.paid_related_party_count ?? 0);
+  // `submitted` is a paid state, the strongest one: it is what a filing becomes
+  // once its fax is confirmed delivered to Ogden. Omitting it here would have
+  // shown the pay-first view to a filer whose return is already with the IRS.
   const isPaid =
-    (filing?.status === 'paid' || filing?.status === 'completed') &&
+    (filing?.status === 'paid' || filing?.status === 'completed' || filing?.status === 'submitted') &&
     !hasUnpaidRelatedParties;
   // A TOP-UP is a filing that has already been paid for once and has since
   // gained a related party. `hasUnpaidRelatedParties` alone does not mean that:
@@ -285,17 +288,26 @@ export default function FilingWizard() {
    * is a bookkeeping write, and the next one will correct it.
    */
   const markDownloaded = async (rows: { id: string; download_count?: number | null }[]) => {
+    // Never write `completed` over `submitted`. A faxed filing is further along
+    // than a downloaded one, and walking it back would demote the dashboard
+    // card from "Faxed to the IRS" to "Downloaded" because the filer saved a
+    // second copy of the same PDF. The trigger would refuse the write anyway
+    // (it permits `completed` only from `paid` / `completed`), so attempting it
+    // would fail the whole update and lose the download count with it.
+    const submitted = filing?.status === 'submitted';
     await Promise.all(rows.map(async (row) => {
       const { error } = await supabase
         .from('filings')
         .update({
-          status: 'completed',
+          ...(submitted ? {} : { status: 'completed' }),
           download_count: Number(row.download_count ?? 0) + 1,
         })
         .eq('id', row.id);
       if (error) console.error('[markDownloaded]', row.id, error.message);
     }));
-    setFiling((prev) => (prev ? { ...prev, status: 'completed', download_count: Number(prev.download_count ?? 0) + 1 } : prev));
+    setFiling((prev) => (prev
+      ? { ...prev, status: submitted ? prev.status : 'completed', download_count: Number(prev.download_count ?? 0) + 1 }
+      : prev));
   };
 
   const triggerDownload = (bytes: Uint8Array, filename: string) => {
@@ -844,12 +856,6 @@ export default function FilingWizard() {
               >
                 {faxLocked ? '← View your answers' : '← Edit Filing'}
               </button>
-              {faxLocked && (
-                <span style={{ fontSize: '0.8rem', color: 'var(--tf-muted)', alignSelf: 'center' }}>
-                  Faxed to the IRS, so your answers are read-only. A correction is a new filing:
-                  email support@filetax.co.
-                </span>
-              )}
 
               {isPaid && <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 {!filing?.job_id && (

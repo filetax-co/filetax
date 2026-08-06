@@ -53,6 +53,35 @@ function json(body: unknown, status = 200) {
 }
 
 const DELIVERED_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'DELIVERED']);
+
+/**
+ * Advance the filing(s) this transmission covers to `submitted`.
+ *
+ * A COPY of the same function in `sinch-fax-webhook`, and it has to be: the two
+ * functions deploy separately, and this one exists precisely for the case where
+ * the webhook never ran. If a delivery only ever becomes known through this
+ * path, this is the only chance the filing has to learn it. Change one, change
+ * the other. See the long note there for why the filing carries the status at
+ * all rather than every surface querying fax_transmissions for a second chip.
+ *
+ * Job-scoped when the filing belongs to a catch-up: one $9 transmission covers
+ * every year in the job. Only forward, and only from `paid` / `completed`, so a
+ * repeated reconcile is a no-op and no draft can be dragged into `submitted`.
+ */
+async function markFilingsSubmitted(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  filing: { id: string; job_id: string | null },
+): Promise<void> {
+  const query = supabase
+    .from('filings')
+    .update({ status: 'submitted', updated_at: new Date().toISOString() })
+    .in('status', ['paid', 'completed']);
+  const { error } = filing.job_id
+    ? await query.eq('job_id', filing.job_id)
+    : await query.eq('id', filing.id);
+  if (error) console.error('[reconcile-fax-status] filings -> submitted', filing.id, error);
+}
 // Sinch's own terminal set. QUEUED and IN_PROGRESS are not outcomes: recording
 // either as `failed` would tell a filer their filing failed while it is still
 // on its way.
@@ -98,7 +127,13 @@ serve(async (req) => {
     }
     // Already settled. Asking again could only overwrite a timestamp the filer
     // may already be holding on a receipt.
-    if (row.status === 'delivered') return json({ status: 'delivered', unchanged: true });
+    if (row.status === 'delivered') {
+      // Nothing to ask Sinch, but the filing still gets a nudge: this is the
+      // repair path for a delivery that was recorded before `submitted` had a
+      // writer, or where the status update failed after the transmission wrote.
+      await markFilingsSubmitted(supabase, filing);
+      return json({ status: 'delivered', unchanged: true });
+    }
 
     const basic = btoa(`${key}:${secret}`);
     const response = await fetch(
@@ -148,6 +183,10 @@ serve(async (req) => {
       console.error('[reconcile-fax-status] update failed', row.id, updateErr);
       return json({ error: 'The delivery record could not be saved.' }, 500);
     }
+
+    // After the transmission write. Same ordering rule as the webhook: the
+    // receipt is the source of truth, the filing status is a projection of it.
+    if (delivered) await markFilingsSubmitted(supabase, filing);
 
     console.log('[reconcile-fax-status]', row.provider_fax_id, row.status, '->', patch.status, providerStatus);
     return json({ status: patch.status, provider_status: providerStatus, checked: true });

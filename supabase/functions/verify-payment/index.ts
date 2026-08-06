@@ -228,8 +228,17 @@ serve(async (req) => {
           // package has been generated, and this line used to demote the row on
           // every one of them: the dashboard card flipped from "Downloaded"
           // back to "Ready to download" because a filer paid us more money.
-          status: filing.status === 'completed' ? 'completed' : 'paid',
-          paid_at: filing.status === 'paid' || filing.status === 'completed' ? undefined : now,
+          //
+          // `submitted` is on the same list for the same reason and a stronger
+          // one: it means a fax reached Ogden, and demoting that to "Ready to
+          // download" because the filer later bought another related party
+          // would un-file a filed return on the dashboard.
+          status: filing.status === 'completed' || filing.status === 'submitted'
+            ? filing.status
+            : 'paid',
+          paid_at: filing.status === 'paid' || filing.status === 'completed' || filing.status === 'submitted'
+            ? undefined
+            : now,
           payment_id: payment.payment_id,
           payment_amount_cents: nextAmount,
           payment_currency: currencyChanged ? null : (currency ?? priorCurrency),

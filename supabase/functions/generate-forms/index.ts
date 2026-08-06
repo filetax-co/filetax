@@ -82,7 +82,11 @@ serve(async (req) => {
       .from('filings').select('*').eq('id', filing_id).eq('user_id', user.id).single()
 
     if (filingError || !filing) return json({ error: 'Filing not found' }, 404)
-    if (filing.status !== 'paid' && filing.status !== 'completed') {
+    // `submitted` is a PAID state: it is what a filing becomes once its fax is
+    // delivered. Leaving it out of this gate would have answered "Payment
+    // required" to the one filer who has paid the most, and locked them out of
+    // re-downloading the very package we sent to the IRS on their behalf.
+    if (filing.status !== 'paid' && filing.status !== 'completed' && filing.status !== 'submitted') {
       return json({ error: 'Payment required before generating forms' }, 402)
     }
 

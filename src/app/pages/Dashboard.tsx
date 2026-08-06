@@ -33,7 +33,7 @@ const BUCKET_TITLE: Record<Bucket, string> = {
   // filer still has to print, sign and post the package to Ogden, and this
   // heading was telling them the return was filed when a PDF had merely
   // reached their Downloads folder. The one case that IS more than a download,
-  // a delivered fax, says so on the card itself.
+  // a delivered fax, is `submitted`, and its own status pill says so.
   done: 'Downloaded',
 };
 
@@ -132,7 +132,13 @@ const STATUS_LABEL: Record<Filing['status'], string> = {
   payment_failed: 'Payment failed',
   paid: 'Ready to download',
   completed: 'Downloaded',
-  submitted: 'Submitted',
+  // "Submitted" said nothing a filer could act on, and next to it sat a second
+  // green chip reading "Faxed to the IRS" driven by a separate read of
+  // fax_transmissions. Two pills, one fact. A delivered fax now advances the
+  // filing itself to `submitted`, so this label carries the meaning and the
+  // chip is gone. If a second submission channel ever exists, this becomes a
+  // generic word again and the channel goes in the card's detail line.
+  submitted: 'Faxed to the IRS',
 };
 
 // Status badge colors via design tokens so they adapt to dark mode.
@@ -142,8 +148,43 @@ const STATUS_COLOR: Record<Filing['status'], { bg: string; fg: string }> = {
   payment_failed: { bg: 'var(--tf-banner-red-bg)',    fg: 'var(--tf-banner-red-text)' },
   paid:           { bg: 'rgba(var(--tf-accent-rgb), 0.12)', fg: 'var(--tf-accent)' },
   completed:      { bg: 'var(--tf-banner-green-bg)',  fg: 'var(--tf-banner-green-text)' },
-  submitted:      { bg: 'rgba(var(--tf-accent-rgb), 0.12)', fg: 'var(--tf-accent)' },
+  // Green, the same green the removed "Faxed to the IRS" chip used. This is the
+  // strongest state a filing reaches, and it was wearing the same accent blue
+  // as `paid`, which meant the two were only distinguishable by their text.
+  submitted:      { bg: 'var(--tf-banner-green-bg)',  fg: 'var(--tf-banner-green-text)' },
 };
+
+/**
+ * Has this filer bought the $9 IRS fax and not yet had it confirmed at Ogden?
+ *
+ * The deleted "Faxed to the IRS" chip only ever said something once delivery
+ * had happened, which left the gap in between silent: a filer paid $9 for a fax
+ * and the dashboard looked identical to one who had not. This fills that gap,
+ * and unlike the old chip it needs NO second query. `include_irs_fax` is a
+ * column on the filing row the page already has, and `submitted` is the row's
+ * own status, so the pill cannot disagree with the pill beside it.
+ *
+ * Deliberately covers both "bought, never dispatched" and "dispatched, not yet
+ * confirmed". From the filer's side those are the same fact, and the honest
+ * word for both is pending: nothing is at the IRS until a provider says so. The
+ * filing page, which does load the transmission, is where the difference is
+ * spelled out, along with the send button and the failure reason.
+ *
+ * Unpaid filings are excluded. Before payment the fax is a checkbox in the
+ * intake, not a thing owed, and "Fax pending" over a draft would promise a
+ * transmission nobody has bought.
+ *
+ * `owed` is overridable so a multi-year job can pass its own answer: the flag
+ * is written on whichever year the filer was looking at when they bought the
+ * fax, and the transmission covers all of them.
+ */
+function faxPending(f: Filing, owed: boolean = f.include_irs_fax === true): boolean {
+  return owed
+    && f.status !== 'submitted'
+    && (f.status === 'paid' || f.status === 'completed');
+}
+
+const FAX_PENDING_PILL = { bg: 'var(--tf-banner-amber-bg)', fg: 'var(--tf-banner-amber-text)' };
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -232,7 +273,7 @@ function deriveTaxYear(years: string | null | undefined): string {
 function actionLabel(status: Filing['status']): string {
   if (status === 'draft' || status === 'in_progress') return 'Continue';
   if (status === 'payment_failed') return 'Retry payment';
-  if (status === 'paid' || status === 'completed') return 'Download forms';
+  if (status === 'paid' || status === 'completed' || status === 'submitted') return 'Download forms';
   return 'View';
 }
 
@@ -245,7 +286,11 @@ function actionLabel(status: Filing['status']): string {
  * step 4. `current_step` is the same number the card shows.
  */
 function filingPath(f: Filing): string {
-  if (f.status === 'paid' || f.status === 'completed') return `/filing/${f.id}`;
+  // `submitted` belongs here too. It was falling through to the intake branch,
+  // so the moment a delivered fax could produce that status, the card's button
+  // would have thrown a filer whose return is already at Ogden back into the
+  // wizard at step 1.
+  if (f.status === 'paid' || f.status === 'completed' || f.status === 'submitted') return `/filing/${f.id}`;
   const step = Number(f.current_step);
   const resumeAt = step >= 1 && step <= 5 ? step : 1;
   return `/intake?filing_id=${f.id}&step=${resumeAt}`;
@@ -263,8 +308,6 @@ export function Dashboard() {
   const effectiveUserId = user?.id ?? (import.meta.env.DEV ? DEV_USER_ID : null);
 
   const [filings, setFilings] = useState<Filing[]>([]);
-  /** dispatch_key of every transmission that reached `delivered`. */
-  const [faxedKeys, setFaxedKeys] = useState<Set<string>>(new Set());
   const [companies, setCompanies] = useState<FilingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -272,6 +315,30 @@ export function Dashboard() {
   // Turned off the first time a write proves the column is missing, so the
   // button disappears instead of failing again on the next company.
   const [canDismissYears, setCanDismissYears] = useState(true);
+
+  /**
+   * Normalised EIN → the latest tax year this user has PAID for.
+   *
+   * The saved-companies list used to read `company_profiles.last_filed_tax_year`
+   * and every card said "Not filed yet", including over companies with paid,
+   * completed and faxed returns. The column is written by one code path only,
+   * the switch into a multi-year catch-up, and that path passes no tax year, so
+   * it was null on every row. Derive it from the filings instead, which is the
+   * only place that knows.
+   *
+   * PAYMENT is the bar, not the existence of a draft, which keeps this
+   * consistent with the intake's duplicate gate. EINs are normalised on both
+   * sides because `filings.ein` is stored formatted ("88-7776665") while
+   * `company_profiles.ein` is digits only.
+   */
+  const lastFiledByEin = filings.reduce<Record<string, number>>((acc, f) => {
+    if (!f.paid_at) return acc;
+    const key = normalizeEin(f.ein);
+    const year = Number(f.tax_year);
+    if (!key || !year) return acc;
+    if (!acc[key] || year > acc[key]) acc[key] = year;
+    return acc;
+  }, {});
 
   useEffect(() => {
     if (authLoading) return;
@@ -288,21 +355,18 @@ export function Dashboard() {
       // Both at once. The saved companies are a separate table and neither
       // read depends on the other, so serialising them would only make the
       // dashboard slower to appear.
-      const [filingsRes, companiesRes, faxRes] = await Promise.all([
+      // This used to fetch delivered fax_transmissions as a third read, purely
+      // to decide a "Faxed to the IRS" chip. It is gone: a delivered fax now
+      // advances filings.status to `submitted` at the moment of delivery, so
+      // the fact travels on the filing row this query already returns, and the
+      // dashboard can no longer disagree with the filing page about it.
+      const [filingsRes, companiesRes] = await Promise.all([
         supabase
           .from('filings')
           .select('*')
           .eq('user_id', effectiveUserId)
           .order('updated_at', { ascending: false }),
         listCompanies(effectiveUserId),
-        // Delivered faxes only. RLS already limits this to the caller's own
-        // rows, and `dispatch_key` is the same job:/filing: string the filing
-        // page keys on, so the two surfaces cannot disagree about which
-        // transmission belongs to which filing.
-        supabase
-          .from('fax_transmissions')
-          .select('dispatch_key')
-          .eq('status', 'delivered'),
       ]);
 
       if (cancelled) return;
@@ -316,9 +380,6 @@ export function Dashboard() {
       // an empty companies section rather than blocking the filings list, which
       // is the part of this page the filer actually came for.
       setCompanies(companiesRes);
-      // A failed read here costs a chip, not the page: the filings list is what
-      // the filer came for.
-      setFaxedKeys(new Set((faxRes.data ?? []).map((r: { dispatch_key: string }) => r.dispatch_key)));
 
       setLoading(false);
     }
@@ -683,7 +744,6 @@ export function Dashboard() {
                     {companyGroups[0] && catchUpFor(companyGroups[0])}
                     <FilingGroups
                       filings={filings}
-                      faxedKeys={faxedKeys}
                       onDeleteJob={deleteJob}
                       onDeleteFiling={deleteFiling}
                       busy={busy}
@@ -707,7 +767,6 @@ export function Dashboard() {
                       {catchUpFor(c)}
                       <FilingGroups
                         filings={c.filings}
-                        faxedKeys={faxedKeys}
                         onDeleteJob={deleteJob}
                         onDeleteFiling={deleteFiling}
                         busy={busy}
@@ -795,6 +854,7 @@ export function Dashboard() {
           userId={effectiveUserId}
           onChange={setCompanies}
           canUndoDismissed={canDismissYears}
+          lastFiledByEin={lastFiledByEin}
         />
       )}
 
@@ -980,11 +1040,14 @@ function SavedCompanies({
   userId,
   onChange,
   canUndoDismissed,
+  lastFiledByEin,
 }: {
   companies: FilingProfile[];
   userId: string | null;
   onChange: (next: FilingProfile[]) => void;
   canUndoDismissed: boolean;
+  /** Normalised EIN → the latest tax year this user has PAID for. */
+  lastFiledByEin: Record<string, number>;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -1150,7 +1213,19 @@ function SavedCompanies({
                       </p>
                       <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, marginTop: '0.15rem' }}>
                         EIN {formatEin(c.ein)}
-                        {c.last_filed_tax_year ? ` · Last filed ${c.last_filed_tax_year}` : ' · Not filed yet'}
+                        {/* Derived from the filings themselves, NOT from
+                            `company_profiles.last_filed_tax_year`. That column
+                            is written by exactly one code path, the switch to a
+                            multi-year catch-up, which does not pass a tax year,
+                            so it was null for every company on this account and
+                            every card read "Not filed yet" over companies with
+                            paid, completed, faxed returns. The filings table is
+                            the only thing that knows, and payment is what makes
+                            a year filed, which is the same bar the intake's
+                            duplicate gate uses. */}
+                        {lastFiledByEin[normalizeEin(c.ein) ?? ''] != null
+                          ? ` · Last filed ${lastFiledByEin[normalizeEin(c.ein) ?? '']}`
+                          : ' · Not filed yet'}
                       </p>
                       {/* Says what the filer TOLD US, not that a return exists.
                           This is the only place a dismissed year is visible at
@@ -1282,21 +1357,15 @@ function groupByCompany(filings: Filing[]): CompanyGroup[] {
  */
 function FilingGroups({
   filings,
-  faxedKeys,
   onDeleteJob,
   onDeleteFiling,
   busy,
 }: {
   filings: Filing[];
-  faxedKeys: Set<string>;
   onDeleteJob: (filings: Filing[]) => void;
   onDeleteFiling: (f: Filing) => void;
   busy: string | null;
 }) {
-  // Job-scoped when the filing belongs to a catch-up, because the $9 fax is:
-  // one transmission covers every year in the job.
-  const wasFaxed = (f: Filing) =>
-    faxedKeys.has(f.job_id ? `job:${f.job_id}` : `filing:${f.id}`);
   // Group standalone filings vs multi-year job filings.
   const jobs = new Map<string, Filing[]>();
   const standalone: Filing[] = [];
@@ -1320,7 +1389,6 @@ function FilingGroups({
         <JobCard
           key={jobId}
           filings={yearFilings}
-          faxed={yearFilings.some(wasFaxed)}
           onDeleteJob={onDeleteJob}
           onDeleteYear={onDeleteFiling}
           busy={busy}
@@ -1337,7 +1405,6 @@ function FilingGroups({
               <FilingCard
                 key={f.id}
                 f={f}
-                faxed={wasFaxed(f)}
                 onDelete={onDeleteFiling}
                 deleting={busy === `del-${f.id}`}
               />
@@ -1425,7 +1492,7 @@ function DeleteCardButton({
   );
 }
 
-function FilingCard({ f, faxed, onDelete, deleting }: { f: Filing; faxed?: boolean; onDelete?: (f: Filing) => void; deleting?: boolean }) {
+function FilingCard({ f, onDelete, deleting }: { f: Filing; onDelete?: (f: Filing) => void; deleting?: boolean }) {
   const c = STATUS_COLOR[f.status];
   const due = (f.status !== 'completed' && f.status !== 'submitted')
     ? dueState(f, hasExtension(f))
@@ -1458,7 +1525,9 @@ function FilingCard({ f, faxed, onDelete, deleting }: { f: Filing; faxed?: boole
             {headline}{f.tax_year ? <span style={{ color: 'var(--tf-muted)', fontWeight: 500 }}> · {f.tax_year}</span> : ''}
           </p>
           <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
-          {faxed && <Pill bg="var(--tf-banner-green-bg)" fg="var(--tf-banner-green-text)">Faxed to the IRS</Pill>}
+          {faxPending(f) && (
+            <Pill bg={FAX_PENDING_PILL.bg} fg={FAX_PENDING_PILL.fg}>Fax pending</Pill>
+          )}
           {due && (
             <Pill bg={DUE_TONE[due.tone].bg} fg={DUE_TONE[due.tone].fg}>{due.label}</Pill>
           )}
@@ -1496,13 +1565,11 @@ function FilingCard({ f, faxed, onDelete, deleting }: { f: Filing; faxed?: boole
 // ── Multi-year job card (groups all years that share one reasonable-cause letter) ──
 function JobCard({
   filings,
-  faxed,
   onDeleteJob,
   onDeleteYear,
   busy,
 }: {
   filings: Filing[];
-  faxed?: boolean;
   onDeleteJob?: (filings: Filing[]) => void;
   onDeleteYear?: (f: Filing) => void;
   busy?: string | null;
@@ -1513,7 +1580,12 @@ function JobCard({
   const years = sorted.map((f) => f.tax_year).filter(Boolean);
   const llc = sorted.find((f) => f.llc_name)?.llc_name?.trim() || 'Catch-up filing';
   const remaining = sorted.filter((f) => f.status === 'draft' || f.status === 'in_progress').length;
-  const allReady = sorted.every((f) => f.status === 'paid' || f.status === 'completed');
+  // `submitted` counts as ready. Without it a fully faxed catch-up read as not
+  // finished: no "all years ready" line, and "Add or remove years" still
+  // offered on a job whose package is already at Ogden.
+  const allReady = sorted.every(
+    (f) => f.status === 'paid' || f.status === 'completed' || f.status === 'submitted',
+  );
   // Continue → the EARLIEST year still needing work, so the catch-up is filed in
   // chronological order. When every year is done, the action points at the job's
   // review/download page (most-recent filing).
@@ -1521,6 +1593,12 @@ function JobCard({
 
   // A job with any paid year cannot be deleted; the button is hidden rather than
   // shown-and-refused, so the only delete a filer can see is one that will work.
+  // Job-scoped, because the $9 fax is: one transmission covers every year in
+  // the catch-up, and `include_irs_fax` is only written on the year the filer
+  // happened to be looking at when they bought it. Per-year here would have put
+  // the pill on one row of a job whose whole envelope is waiting to go.
+  const jobFaxOwed = sorted.some((f) => f.include_irs_fax === true);
+
   const jobDeletable = sorted.every(
     (f) => f.status !== 'paid' && f.status !== 'completed' && f.status !== 'submitted',
   );
@@ -1589,7 +1667,9 @@ function JobCard({
                 <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', fontWeight: 600 }}>Tax year {f.tax_year}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <Pill bg={c.bg} fg={c.fg}>{STATUS_LABEL[f.status]}</Pill>
-          {faxed && <Pill bg="var(--tf-banner-green-bg)" fg="var(--tf-banner-green-text)">Faxed to the IRS</Pill>}
+                  {faxPending(f, jobFaxOwed) && (
+                    <Pill bg={FAX_PENDING_PILL.bg} fg={FAX_PENDING_PILL.fg}>Fax pending</Pill>
+                  )}
                   <span style={{ color: 'var(--tf-accent)', fontSize: '0.8rem', fontWeight: 600 }}>{actionLabel(f.status)} →</span>
                 </span>
               </Link>

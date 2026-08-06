@@ -124,6 +124,60 @@ async function readEvent(req: Request): Promise<Record<string, unknown> | null> 
  */
 const DELIVERED_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'DELIVERED']);
 
+/**
+ * Advance the filing(s) this transmission covers to `submitted`.
+ *
+ * A delivered fax is the only thing in the product that makes a return FILED,
+ * and until now that fact lived only in `fax_transmissions`. Every surface that
+ * wanted to say so had to run its own query against that table and render its
+ * own chip beside the real status pill, which is how the dashboard ended up
+ * showing "Downloaded" and "Faxed to the IRS" side by side: two pills, one
+ * fact, two independent reads that could disagree. The filing row now carries
+ * it, and `filings.status = 'submitted'` finally has a writer.
+ *
+ * JOB-SCOPED WHEN THERE IS A JOB. The $9 fax is one transmission covering every
+ * year in a catch-up, so `dispatch_key` is `job:<job_id>` for those, and all of
+ * that job's filings were in the envelope that reached Ogden.
+ *
+ * ONLY FORWARD, AND ONLY FROM A PAID STATE. `paid` and `completed` are the only
+ * statuses a fax can have been sent from, so the `in` filter both prevents a
+ * draft from being dragged into `submitted` by a stray callback and makes a
+ * duplicate delivery notice a no-op rather than a rewrite.
+ *
+ * Never fatal. The transmission record is the receipt and it is already
+ * written; failing the callback here would only earn 16 Sinch retries against a
+ * row that is already correct.
+ *
+ * `reconcile-fax-status` carries a copy of this. The two functions deploy
+ * separately, so it is duplicated on purpose: change one, change the other.
+ */
+async function markFilingsSubmitted(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  dispatchKey: string | null,
+  filingId: string | null,
+): Promise<void> {
+  const query = supabase
+    .from('filings')
+    .update({ status: 'submitted', updated_at: new Date().toISOString() })
+    .in('status', ['paid', 'completed']);
+
+  if (dispatchKey?.startsWith('job:')) {
+    const jobId = dispatchKey.slice(4);
+    if (!jobId) return;
+    const { error } = await query.eq('job_id', jobId);
+    if (error) console.error('[sinch-fax-webhook] filings -> submitted (job)', jobId, error);
+    return;
+  }
+
+  // `filing:<id>`, or an older row with no dispatch_key at all, where filing_id
+  // is the only handle we have.
+  const id = dispatchKey?.startsWith('filing:') ? dispatchKey.slice(7) : filingId;
+  if (!id) return;
+  const { error } = await query.eq('id', id);
+  if (error) console.error('[sinch-fax-webhook] filings -> submitted', id, error);
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -220,7 +274,7 @@ serve(async (req) => {
     // the id is the one field Sinch alone can mint.
     const { data: row, error: findErr } = await supabase
       .from('fax_transmissions')
-      .select('id, status, filing_id, delivered_at')
+      .select('id, status, filing_id, dispatch_key, delivered_at')
       .eq('provider_fax_id', faxId)
       .maybeSingle();
 
@@ -255,6 +309,11 @@ serve(async (req) => {
     // anomaly, and re-writing delivered_at would move a timestamp the filer may
     // already have on a receipt.
     if (row.status === 'delivered' && delivered) {
+      // The transmission is untouched, but the filing still gets a nudge: if
+      // the first notice recorded delivery and then failed on the filings
+      // write, this retry is the thing that repairs it. Idempotent, since the
+      // update only matches `paid` / `completed`.
+      await markFilingsSubmitted(supabase, row.dispatch_key, row.filing_id);
       return json({ ok: true, unchanged: true });
     }
     // Never walk a delivered fax backwards. If a late or out-of-order callback
@@ -295,6 +354,11 @@ serve(async (req) => {
       console.error('[sinch-fax-webhook] update failed', row.id, updateErr);
       return json({ error: 'Update failed' }, 500);
     }
+
+    // After the transmission write, never before it. The transmission row is
+    // the receipt and the source of truth; the filing status is a projection of
+    // it, and a projection must not exist for a delivery we failed to record.
+    if (delivered) await markFilingsSubmitted(supabase, row.dispatch_key, row.filing_id);
 
     console.log('[sinch-fax-webhook]', faxId, row.status, '->', patch.status, providerStatus);
     return json({ ok: true, status: patch.status });
