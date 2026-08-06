@@ -4,9 +4,11 @@ import { supabase, Filing, Transaction } from '../../lib/supabase';
 import { startCheckout } from '../../lib/checkout';
 import { edgeFunctionError } from '../../lib/edgeErrors';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
+import { formatAmount } from '../../lib/money';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
 import FaxPanel, { type FaxBuild } from '../components/FaxPanel';
+import { loadFaxTransmission } from '../../lib/faxTransmissions';
 import type { DrawnSignature } from '../../lib/drawnSignature';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ export default function FilingWizard() {
   // ── state ─────────────────────────────────────────────────────────────────
 
   const [filing,       setFiling]       = useState<Filing | null>(null);
+  const [faxLocked,    setFaxLocked]    = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [generating,   setGenerating]   = useState(false);
@@ -64,6 +67,15 @@ export default function FilingWizard() {
   const isPaid =
     (filing?.status === 'paid' || filing?.status === 'completed') &&
     !hasUnpaidRelatedParties;
+  // A TOP-UP is a filing that has already been paid for once and has since
+  // gained a related party. `hasUnpaidRelatedParties` alone does not mean that:
+  // on a filing that has never been paid, paid_related_party_count is 0, so
+  // every related party is "unpaid" and the checkout section announced
+  // "1 additional related party requires payment" to someone whose whole $391
+  // payment had just been declined. The button charged the full cart correctly;
+  // only the words were wrong, which is the worse failure of the two after a
+  // decline.
+  const isRelatedPartyTopUp = filing?.paid_at != null && hasUnpaidRelatedParties;
 
   // Integrity, IRM 10.10.1.3.1. A signature is a statement about a specific
   // document. If the filing changes after it was drawn, what the filer signed no
@@ -97,6 +109,16 @@ export default function FilingWizard() {
       if (txErr)  { setLoadErr(txErr.message);  return; }
       if (fi)     setFiling(fi);
       if (txData) setTransactions(txData);
+      // Whether this filing's pages are already at the IRS. FaxPanel loads the
+      // same row, but it renders below the edit links and cannot reach back up
+      // to hide them, so this page reads it too rather than routing state
+      // through a callback whose timing would decide what the filer sees.
+      // Anything but a failed transmission counts: a fax still in flight must
+      // not be edited out from under itself either.
+      if (fi) {
+        const tx = await loadFaxTransmission({ id: fi.id as string, job_id: (fi as any).job_id ?? null });
+        setFaxLocked(!!tx && tx.status !== 'failed');
+      }
     })();
   }, [id]);
 
@@ -660,7 +682,7 @@ export default function FilingWizard() {
                       </div>
                       {tx.amount_usd != null && (
                         <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--tf-accent)' }}>
-                          ${tx.amount_usd.toLocaleString()}
+                          ${formatAmount(tx.amount_usd)}
                         </span>
                       )}
                     </div>
@@ -687,12 +709,16 @@ export default function FilingWizard() {
                   managerial services you provide as the owner, and filing on time protects you
                   from the $25,000 penalty even in a year with no transactions.
                 </p>
-                <button
-                  onClick={() => id && navigate(`/intake?filing_id=${id}`)}
-                  style={{ ...secondaryBtnStyle, marginTop: '1rem', display: 'inline-block' }}
-                >
-                  ← Back to intake to add transactions
-                </button>
+                {/* Not on a faxed filing: the intake refuses the write, so this
+                    only ever led somewhere that would turn the filer away. */}
+                {!faxLocked && (
+                  <button
+                    onClick={() => id && navigate(`/intake?filing_id=${id}`)}
+                    style={{ ...secondaryBtnStyle, marginTop: '1rem', display: 'inline-block' }}
+                  >
+                    ← Back to intake to add transactions
+                  </button>
+                )}
               </div>
             )}
 
@@ -729,7 +755,7 @@ export default function FilingWizard() {
                     Complete payment before generating your package
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', lineHeight: 1.55, marginBottom: '1rem' }}>
-                    {hasUnpaidRelatedParties
+                    {isRelatedPartyTopUp
                       ? `${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} additional related ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party requires' : 'parties require'} payment. After payment, you can generate and download the updated filing package.`
                       : 'Your checkout is calculated from the tax years and optional services in this filing. After payment, you can generate and download the filing package.'}
                   </p>
@@ -745,8 +771,8 @@ export default function FilingWizard() {
                   >
                     {checkoutBusy
                       ? 'Opening secure checkout...'
-                      : hasUnpaidRelatedParties
-                        ? 'Pay for additional related party'
+                      : isRelatedPartyTopUp
+                        ? 'Pay for the additional related party'
                         : 'Continue to secure checkout'}
                   </button>
                 </div>
@@ -795,13 +821,20 @@ export default function FilingWizard() {
               borderTop: '1px solid var(--tf-border)',
               flexWrap: 'wrap',
             }}>
-              <button
-                onClick={() => id && navigate(`/intake?filing_id=${id}`)}
-                style={secondaryBtnStyle}
-                type="button"
-              >
-                ← Edit Filing
-              </button>
+              {faxLocked ? (
+                <span style={{ fontSize: '0.85rem', color: 'var(--tf-muted)', alignSelf: 'center' }}>
+                  Faxed to the IRS, so this filing can no longer be edited. A correction is a new
+                  filing: email support@filetax.co.
+                </span>
+              ) : (
+                <button
+                  onClick={() => id && navigate(`/intake?filing_id=${id}`)}
+                  style={secondaryBtnStyle}
+                  type="button"
+                >
+                  ← Edit Filing
+                </button>
+              )}
 
               {isPaid && <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 {!filing?.job_id && (

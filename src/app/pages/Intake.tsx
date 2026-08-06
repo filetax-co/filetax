@@ -5,7 +5,7 @@ import { Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Filing } from '../../lib/supabase';
 import { mapTransactionForPersist, summarizeTransactions, resolveUiTxType } from '../../lib/filingMapping';
-import { listCompanies, loadCompany, saveProfileFromFiling, type FilingProfile } from '../../lib/filingProfile';
+import { listCompanies, loadCompany, saveProfileFromFiling, normalizeEin, type FilingProfile } from '../../lib/filingProfile';
 import { startCheckout } from '../../lib/checkout';
 import { loadFaxTransmission } from '../../lib/faxTransmissions';
 import { DraftPreviewModal, type DraftDoc } from '../../components/DraftPreviewModal';
@@ -34,12 +34,15 @@ import {
   US_STATES,
 } from './intake/constants';
 import {
+  GENERIC_TAX_ID,
   taxIdInfoFor,
   taxIdPlaceholder,
   taxIdTooltip,
   taxIdWarning,
 } from './intake/countryTaxIds';
 import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY } from '../../lib/pricing';
+import { formatUsd } from '../../lib/money';
+import { usePageMeta } from '../hooks/usePageMeta';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
 
 type Address = {
@@ -650,11 +653,20 @@ function Field({
       <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-muted)' }}>
         {label}
         {required && <span style={{ color: 'var(--tf-error)', marginLeft: '0.2rem' }}>*</span>}
-        {locked && <LockGlyph />}
         {status && <span style={{ fontWeight: 400, marginLeft: '0.25rem', fontStyle: 'italic' }}>{status}</span>}
         {tip && <InfoTooltip text={tip} label={`About ${label}`} />}
       </label>
-      {children}
+      {/* The padlock sits INSIDE the control, at its right edge, where a select
+          draws its chevron. It used to follow the label, which on a narrow
+          column (EIN, Tax year) pushed itself and the (i) onto their own lines
+          under a two-word label and read as three stacked icons attached to
+          nothing. In the control it is beside the thing it describes, and on a
+          locked select it replaces the chevron, which was promising a dropdown
+          that cannot open. */}
+      <div className={`field-control${locked ? ' is-locked' : ''}`}>
+        {children}
+        {locked && <LockGlyph />}
+      </div>
     </div>
   );
 }
@@ -672,15 +684,15 @@ function LockGlyph() {
     <svg
       role="img"
       aria-label="Locked after payment"
-      width="11"
-      height="11"
+      width="13"
+      height="13"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ marginLeft: '0.3rem', verticalAlign: '-0.05em', opacity: 0.75 }}
+      className="field-lock"
     >
       <title>Locked after payment</title>
       <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -701,6 +713,7 @@ function AccordionSection({
   complete,
   onToggle,
   anchorRef,
+  frozen,
   children,
 }: {
   numberLabel: string;
@@ -709,6 +722,15 @@ function AccordionSection({
   complete: boolean;
   onToggle: () => void;
   anchorRef?: (el: HTMLDivElement | null) => void;
+  /**
+   * Freeze every control in the body, for a filing whose pages are already at
+   * the IRS. A fieldset rather than a `disabled` prop on each input: the fields
+   * the fax lock needs to stop are mostly the ones payment never froze, so they
+   * carry no `disabled` prop to extend, and the set would drift every time a
+   * field was added. The trigger stays outside it, so a frozen filing can still
+   * be opened and read.
+   */
+  frozen?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -729,7 +751,18 @@ function AccordionSection({
           </svg>
         </span>
       </button>
-      {open && <div className="acc-body">{children}</div>}
+      {open && (
+        <div className="acc-body">
+          {frozen ? (
+            // minInlineSize:auto undoes the UA default that stops a fieldset
+            // shrinking inside flex/grid, which would otherwise widen every
+            // frozen section.
+            <fieldset disabled style={{ border: 0, margin: 0, padding: 0, minInlineSize: 'auto' }}>
+              {children}
+            </fieldset>
+          ) : children}
+        </div>
+      )}
     </section>
   );
 }
@@ -1026,6 +1059,17 @@ export function Intake() {
     return (s >= 1 && s <= 5 ? s : 1) as IntakeStep;
   });
 
+  // The intake set no page meta at all, so every step kept whichever title the
+  // previous route had left behind: all five reported "Check Your Eligibility"
+  // to the browser and to analytics, which made every funnel step log
+  // identically and hid where filers actually drop out. noindex because the
+  // intake is a signed-in route.
+  usePageMeta({
+    title: `${STEP_LABELS[String(step)] ?? 'Filing details'} | Form 5472 filing | FileTax.co`,
+    description: 'Enter the details for your Form 5472 and pro forma 1120 filing.',
+    noindex: true,
+  });
+
   // Vertical-accordion model: open only the requested section. Later sections
   // are unlocked as earlier required sections become valid.
   const [openSections, setOpenSections] = useState<Set<string>>(
@@ -1183,6 +1227,19 @@ export function Intake() {
   const onTimeViaExtension =
     extensionFiled === true && filingTiming.originalPassed && !filingTiming.extendedPassed;
 
+  // The timing label the review page shows. `filingTiming` only knows the
+  // dates, not whether a 7004 was filed, so reading its status straight out
+  // told a 2025 filer who had answered "No, I didn't file an extension" that
+  // they were "Within the extension period" while the line directly beneath
+  // said no 7004 was filed and the dashboard badged the filing past due. There
+  // is no extension period without a 7004: once the original deadline passes
+  // the return is simply late.
+  const filingTimingLabel = (() => {
+    if (!filingTiming.originalPassed) return 'On time';
+    if (extensionFiled !== true) return 'Late, past the filing deadline';
+    return filingTiming.extendedPassed ? 'Past the extended deadline' : 'Within the extension period';
+  })();
+
   // Step 2
   const [ownerName, setOwnerName] = useState('');
   const [ownerCountry, setOwnerCountry] = useState('');
@@ -1299,7 +1356,25 @@ export function Intake() {
   // citizenship). Cheap enough to recompute each render; no memo needed.
   const ownerTaxIdInfo = taxIdInfoFor(ownerCountryRes);
   const ownerTaxIdWarning = taxIdWarning(ownerCountryRes, ownerForeignTaxId);
+  // A related party, unlike the owner, may be a company: the eligibility gate
+  // admits only non-U.S. INDIVIDUALS as owners, but it says nothing about who
+  // the LLC transacted with. So the country's PERSONAL number cannot be used
+  // as this field's label. A Swedish aktiebolag was being asked for its
+  // "Personnummer", which is a personal identity number no company has; its
+  // number is an organisationsnummer. The label is therefore neutral, and the
+  // country's personal number is named in the tooltip, where it reads as the
+  // help it is rather than as an assertion about this party.
   const rpTaxIdInfo = taxIdInfoFor(rpDraft.country_residence);
+  const rpTaxIdTooltip = (() => {
+    const base =
+      'The tax identification number their country of residence issues them. For a company that is ' +
+      'its company or business tax registration number.';
+    const personal =
+      rpDraft.country_residence && rpTaxIdInfo !== GENERIC_TAX_ID && rpTaxIdInfo.issues !== false
+        ? ` If they are an individual resident in ${rpDraft.country_residence}, that is their ${rpTaxIdInfo.label}.`
+        : '';
+    return `${base}${personal} Do not write "None": the box cannot be left without an identifier.`;
+  })();
   const [txRelatedPartyIdx, setTxRelatedPartyIdx] = useState(0);
   const [txType, setTxType] = useState('');
   const [txDir, setTxDir] = useState<'paid' | 'received'>('received');
@@ -1456,16 +1531,16 @@ export function Intake() {
   }, [stepErrors, error, einErr]);
 
   // When the filing turns out to be late (deadline passed, for a 7004 filer,
-  // the EXTENDED deadline), pre-select the reasonable-cause letter so the user
-  // is asked by default. If the extension is still valid, ensure it is off.
+  // the EXTENDED deadline), OFFER the reasonable-cause letter. It is never
+  // pre-selected: it used to default ON, which turned a $99 order into a $298
+  // one with no interaction on the checkbox, and then blocked the step until a
+  // reason was picked. The $9 fax add-on is the pattern to follow, it is
+  // offered unticked. If the extension is still valid, ensure it is off.
   const rclSectionShown = !jobId && isLateForRcl;
   useEffect(() => {
     if (!rclSectionShown && includeReasonableCause) {
       setIncludeReasonableCause(false);
       setReasonableCauseReasons([]);
-    } else if (rclSectionShown && !includeReasonableCause && reasonableCauseReasons.length === 0) {
-      // Default the offer ON for a late filing (user can still opt out).
-      setIncludeReasonableCause(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rclSectionShown]);
@@ -1708,6 +1783,50 @@ export function Intake() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingFiling]);
 
+  // ── Already filed: one company, one tax year, once ────────────────────────
+  //
+  // The dashboard was showing the same company and year twice, both Downloaded
+  // and Faxed, with nothing saying whether the second was an amendment. Nothing
+  // stopped a filer paying twice for the same return.
+  //
+  // The bar is PAYMENT, not the existence of a draft. Drafts are how people
+  // work: someone abandons one, starts again, and must not be locked out of
+  // their own year by their own half-finished attempt. A filing with `paid_at`
+  // set is a return we have delivered, and that year is done.
+  //
+  // This only applies to filings the SAME user paid for. It is not a claim
+  // about what was filed elsewhere; we never know that. Amendments, when they
+  // are built, will need their own route past this, see §7 of the handoff.
+  const [paidYearsByEin, setPaidYearsByEin] = useState<Record<string, number[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+      const { data } = await supabase
+        .from('filings')
+        .select('id, ein, tax_year, paid_at')
+        .eq('user_id', user.id)
+        .not('paid_at', 'is', null);
+      if (cancelled || !data) return;
+      const map: Record<string, number[]> = {};
+      for (const row of data as { id: string; ein: string | null; tax_year: string | number | null }[]) {
+        // The filing being edited never blocks itself.
+        if (filingId && row.id === filingId) continue;
+        const key = normalizeEin(row.ein ?? '');
+        const year = Number(row.tax_year);
+        if (!key || !year) continue;
+        (map[key] ??= []).push(year);
+      }
+      setPaidYearsByEin(map);
+    })();
+    return () => { cancelled = true; };
+  }, [filingId]);
+
+  /** Years already paid for THIS EIN. Empty until an EIN has been typed. */
+  const paidYearsForThisEin = paidYearsByEin[normalizeEin(ein) ?? ''] ?? [];
+  const yearAlreadyFiled = (y: number | string) => paidYearsForThisEin.includes(Number(y));
+
   /** Copy a chosen saved company into the form. Empty fields only. */
   const importCompany = (profile: FilingProfile, withRelatedParties: boolean) => {
     {
@@ -1923,6 +2042,12 @@ export function Intake() {
     // TAX_YEARS, but a resumed draft or an imported value can hold anything.
     if (taxYear && !TAX_YEARS.includes(Number(taxYear))) {
       errs.push(at('1', 'taxYear', `${taxYear} is not a tax year you can file here. Choose one of ${TAX_YEARS[TAX_YEARS.length - 1]} to ${TAX_YEARS[0]}.`));
+    }
+    // The dropdown disables an already-paid year, but the EIN can be typed or
+    // changed AFTER the year was chosen, so the pair is checked here too. This
+    // is the check that actually holds.
+    if (taxYear && yearAlreadyFiled(taxYear)) {
+      errs.push(at('1', 'taxYear', `You have already filed and paid for ${taxYear} under EIN ${ein}. Choose a different tax year.`));
     }
     if (!entityDOI) errs.push(at('1', 'entityDOI', 'Enter the date your LLC was formed.'));
     if (entityDOI && taxYear) {
@@ -2323,7 +2448,11 @@ export function Intake() {
         + 'The IRS holds the pages exactly as they were sent. If something on them is wrong, '
         + 'email support@filetax.co: a correction is a new filing, not an edit to this one.',
       );
-      return filingId;
+      // Null, not `filingId`. Callers read a truthy id as "saved": returning the
+      // id here let `saveDraft` succeed, so `continueFromSection` advanced the
+      // accordion and the filer watched their edit be accepted, then silently
+      // discarded. The write was always refused; only the feedback lied.
+      return null;
     }
     setSaving(true);
     setError(null);
@@ -3084,6 +3213,28 @@ export function Intake() {
           background-position: right 1rem center;
           padding-right: 2.75rem;
         }
+        /* The padlock on a paid-locked field, drawn in the control's right
+           inset rather than after the label. \`.field-control\` wraps whatever a
+           Field was given, which is usually one input but can be an input plus
+           an explanatory box beneath it, so the lock is pinned to the height of
+           the first row (controls are ~2.35rem tall) instead of to the centre
+           of the wrapper, which would drift down the taller fields. */
+        .intake-form .field-control { position: relative; }
+        .intake-form .field-lock {
+          position: absolute;
+          right: 0.95rem;
+          top: 1.175rem;
+          transform: translateY(-50%);
+          opacity: 0.8;
+          pointer-events: none;
+          color: var(--tf-muted);
+        }
+        /* A locked select is disabled, so its chevron was advertising a menu
+           that cannot open. The lock takes that space. */
+        .intake-form .field-control.is-locked select { background-image: none; }
+        .intake-form .field-control.is-locked input:not([type="checkbox"]):not([type="radio"]) {
+          padding-right: 2.25rem;
+        }
         /* The chevron is a baked-in SVG, so its stroke cannot inherit the theme.
            Swap in a lighter one for dark mode instead of leaving a near-black
            arrow on a near-black field. */
@@ -3434,7 +3585,7 @@ export function Intake() {
         </div>
 
         {/* ── Step 1: LLC Details ── */}
-        <AccordionSection numberLabel={stepNumber(1)} label={STEP_LABELS['1']} open={openSections.has('1')} complete={sectionProgress(1) === 'complete'} onToggle={() => toggleSection('1')} anchorRef={(el) => { sectionRefs.current['1'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(1)} label={STEP_LABELS['1']} open={openSections.has('1')} complete={sectionProgress(1) === 'complete'} onToggle={() => toggleSection('1')} anchorRef={(el) => { sectionRefs.current['1'] = el; }} frozen={isFaxLocked}>
           <div>
             <h2 style={stepHeadingStyle}>Your LLC details</h2>
             <p style={stepSubheadStyle}>Basic information about the U.S. company. This goes on the Pro Forma 1120 and all Form 5472 filings.</p>
@@ -3748,9 +3899,24 @@ export function Intake() {
                       fixed tax year, and the intake walks the years in order, so
                       the tax year can't be changed here. It's also locked once
                       the filing is paid. */}
+                  {/* A year this company has already PAID for is offered but
+                      not selectable: the same company and year were being
+                      filed twice with no warning. Drafts never block, only a
+                      completed payment does. */}
                   <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} disabled={isPaidLocked || !!jobId}>
-                    {TAX_YEARS.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+                    {TAX_YEARS.map((y) => (
+                      <option key={y} value={String(y)} disabled={yearAlreadyFiled(y)}>
+                        {y}{yearAlreadyFiled(y) ? ' — already filed' : ''}
+                      </option>
+                    ))}
                   </select>
+                  {yearAlreadyFiled(taxYear) && (
+                    <div style={{ ...infoBoxStyle, marginTop: '0.5rem' }}>
+                      You have already filed {taxYear} for this EIN with us, and it has been paid for.
+                      Choose a different year. If you need to change what was filed, that is an amended
+                      return rather than a second filing, so email hello@filetax.co.
+                    </div>
+                  )}
                 </Field>
                 <Field anchor="totalAssets" label="Total assets (USD)" status="optional" tooltip="Usually your LLC's bank balance on December 31, plus the value of anything else it owns (equipment, inventory). A rough figure is fine.">
                   <input type="text" inputMode="numeric" value={formatMoney(totalAssets)} onChange={(e) => setTotalAssets(stripMoney(e.target.value))} placeholder="e.g. 50,000" />
@@ -3979,7 +4145,7 @@ export function Intake() {
 
         {/* ── Step 1b: Filing Status (only when the filing is late) ── */}
         {show1b && (
-        <AccordionSection numberLabel={stepNumber('1b')} label={STEP_LABELS['1b']} open={openSections.has('1b')} complete={sectionProgress('1b') === 'complete'} onToggle={() => toggleSection('1b')} anchorRef={(el) => { sectionRefs.current['1b'] = el; }}>
+        <AccordionSection numberLabel={stepNumber('1b')} label={STEP_LABELS['1b']} open={openSections.has('1b')} complete={sectionProgress('1b') === 'complete'} onToggle={() => toggleSection('1b')} anchorRef={(el) => { sectionRefs.current['1b'] = el; }} frozen={isFaxLocked}>
           <div>
             <h2 style={stepHeadingStyle}>Filing status</h2>
             <p style={stepSubheadStyle}>
@@ -4080,7 +4246,7 @@ export function Intake() {
         )}
 
         {/* ── Step 2: Owner Details ── */}
-        <AccordionSection numberLabel={stepNumber(2)} label={STEP_LABELS['2']} open={openSections.has('2')} complete={sectionProgress(2) === 'complete'} onToggle={() => toggleSection('2')} anchorRef={(el) => { sectionRefs.current['2'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(2)} label={STEP_LABELS['2']} open={openSections.has('2')} complete={sectionProgress(2) === 'complete'} onToggle={() => toggleSection('2')} anchorRef={(el) => { sectionRefs.current['2'] = el; }} frozen={isFaxLocked}>
           <div>
             <h2 style={stepHeadingStyle}>Your details as the foreign owner</h2>
             <p style={stepSubheadStyle}>Details about you as the person (or entity) that owns 25% or more of this LLC. This goes on your Form 5472.</p>
@@ -4257,7 +4423,7 @@ export function Intake() {
         </AccordionSection>
 
         {/* ── Step 3: Related Parties ── */}
-        <AccordionSection numberLabel={stepNumber(3)} label={STEP_LABELS['3']} open={openSections.has('3')} complete={sectionProgress(3) === 'complete'} onToggle={() => toggleSection('3')} anchorRef={(el) => { sectionRefs.current['3'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(3)} label={STEP_LABELS['3']} open={openSections.has('3')} complete={sectionProgress(3) === 'complete'} onToggle={() => toggleSection('3')} anchorRef={(el) => { sectionRefs.current['3'] = el; }} frozen={isFaxLocked}>
           <div>
             <h2 style={stepHeadingStyle}>Related parties</h2>
             <p style={stepSubheadStyle}>
@@ -4338,11 +4504,12 @@ export function Intake() {
                       <input value={rpDraft.us_tin ?? ''} onChange={(e) => setRpDraft((p) => ({ ...p, us_tin: e.target.value }))} placeholder="XX-XXXXXXX or XXX-XX-XXXX" />
                     </Field>
                     <Field
-                      label={`Their ${rpTaxIdInfo.label}`}
-                      tooltip={taxIdTooltip(rpDraft.country_residence)}
+                      label="Their foreign tax ID"
+                      hint="Their local tax number, or their company registration number"
+                      tooltip={rpTaxIdTooltip}
                       required
                     >
-                      <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder={taxIdPlaceholder(rpDraft.country_residence)} />
+                      <input value={rpDraft.foreign_tax_id} onChange={(e) => setRpDraft((p) => ({ ...p, foreign_tax_id: e.target.value }))} placeholder="Local tax or company registration number" />
                     </Field>
                     <Field label="Reference code" required tooltip="A short code identifying this related party. It is printed on Form 5472; keep it consistent.">
                       <input value={rpDraft.ref_number} onChange={(e) => setRpDraft((p) => ({ ...p, ref_number: e.target.value }))} placeholder="e.g. REL002" />
@@ -4421,7 +4588,7 @@ export function Intake() {
         </AccordionSection>
 
         {/* ── Step 4: Transactions ── */}
-        <AccordionSection numberLabel={stepNumber(4)} label={STEP_LABELS['4']} open={openSections.has('4')} complete={sectionProgress(4) === 'complete'} onToggle={() => toggleSection('4')} anchorRef={(el) => { sectionRefs.current['4'] = el; }}>
+        <AccordionSection numberLabel={stepNumber(4)} label={STEP_LABELS['4']} open={openSections.has('4')} complete={sectionProgress(4) === 'complete'} onToggle={() => toggleSection('4')} anchorRef={(el) => { sectionRefs.current['4'] = el; }} frozen={isFaxLocked}>
           <div>
             <h2 style={stepHeadingStyle}>Money between you and the LLC</h2>
             <p style={stepSubheadStyle}>
@@ -4804,7 +4971,7 @@ export function Intake() {
                     const partyLabel = allPartyLabels[t.related_party_index] || 'Unknown party';
                     const isEditing = editingTxIdx === i;
                     const amount = t.amount_usd && Number(t.amount_usd) > 0
-                      ? `USD ${Number(t.amount_usd).toLocaleString()}`
+                      ? formatUsd(t.amount_usd)
                       : '';
                     const sentence = asksDirection(t.transaction_type, t.related_party_index === 0)
                       ? `The LLC ${t.direction === 'received' ? 'received' : 'paid'}${amount ? ` ${amount}` : ' money'} ${t.direction === 'received' ? 'from' : 'to'} ${partyLabel} for this transaction: ${meta?.label ?? humanizeTxType(t.transaction_type)}.`
@@ -4879,6 +5046,7 @@ export function Intake() {
           complete={step === 5 && validateForSubmit().length === 0}
           onToggle={() => toggleSection('5')}
           anchorRef={(el) => { sectionRefs.current['5'] = el; }}
+          frozen={isFaxLocked}
         >
           <div>
             {/* "Submit" was the wrong word for what this step does. Nothing is
@@ -4900,7 +5068,7 @@ export function Intake() {
                 <SummaryRow label="EIN" value={ein} />
                 <SummaryRow label="State of formation" value={stateOfFormation} />
                 <SummaryRow label="Tax year" value={taxYear} />
-                <SummaryRow label="Total assets" value={totalAssets ? `USD ${Number(totalAssets).toLocaleString()}` : null} />
+                <SummaryRow label="Total assets" value={totalAssets ? formatUsd(totalAssets) : null} />
                 <SummaryRow label="Date of incorporation" value={formatDateMMDDYYYY(entityDOI)} />
                 <SummaryRow label="Principal country" value={entityPrincipalCountry} />
                 <SummaryRow label="Business type" value={entityBizActivity} />
@@ -4933,11 +5101,7 @@ export function Intake() {
               <div style={reviewGridStyle}>
                 <SummaryRow
                   label="Filing timing"
-                  value={
-                    filingTiming.status === 'on_time' ? 'On time'
-                      : filingTiming.status === 'within_extension' ? 'Within the extension period'
-                        : 'Past the extended deadline'
-                  }
+                  value={filingTimingLabel}
                 />
                 <SummaryRow
                   label="Extension (Form 7004) filed"
@@ -4991,7 +5155,7 @@ export function Intake() {
                     <SummaryRow label="Name" value={rp.name} />
                     <SummaryRow label="Country where they do business" value={rp.country} />
                     <SummaryRow label="Country where they pay taxes" value={rp.country_residence} />
-                    <SummaryRow label={taxIdInfoFor(rp.country_residence).short} value={rp.foreign_tax_id} />
+                    <SummaryRow label="Foreign tax ID" value={rp.foreign_tax_id} />
                     <SummaryRow label="U.S. tax ID" value={rp.us_tin} />
                     <SummaryRow label="Reference code" value={rp.ref_number} />
                     <SummaryRow label="Business type" value={rp.biz_activity?.trim()} />
@@ -5013,8 +5177,8 @@ export function Intake() {
                     <div key={i} style={{ ...reviewGridStyle, marginBottom: '0.5rem' }}>
                       <SummaryRow label="Type" value={meta?.label ?? humanizeTxType(t.transaction_type)} />
                       <SummaryRow label="Party" value={allPartyLabels[t.related_party_index] ?? 'Not provided'} />
-                      <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? `USD ${Number(t.amount_usd).toLocaleString()}` : 'Not provided'} />
-                      {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? `USD ${Number(t.loan_begin_usd).toLocaleString()}` : 'USD 0'} />}
+                      <SummaryRow label={isLoan ? 'Closing balance' : 'Amount'} value={t.amount_usd ? formatUsd(t.amount_usd) : 'Not provided'} />
+                      {isLoan && <SummaryRow label="Beginning balance" value={t.loan_begin_usd ? formatUsd(t.loan_begin_usd) : 'USD 0'} />}
                       {/* Echoed back only when it was actually asked, so review
                           does not present a value the filer never chose. */}
                       {asksDirection(t.transaction_type, t.related_party_index === 0)
