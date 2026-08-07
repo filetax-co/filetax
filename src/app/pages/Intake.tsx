@@ -3731,7 +3731,7 @@ export function Intake() {
 
                 {savedCompanies.some((c) => Array.isArray(c.related_parties) && c.related_parties.length > 0) && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.875rem', fontSize: '0.82rem', color: 'var(--tf-muted)' }}>
-                    <input type="checkbox" checked={importRelatedParties} onChange={(e) => setImportRelatedParties(e.target.checked)} />
+                    <input type="checkbox" checked={importRelatedParties} onChange={(e) => setImportRelatedParties(e.target.checked)} style={{ accentColor: 'var(--tf-accent)' }} />
                     Also bring across the related parties saved for that company
                   </label>
                 )}
