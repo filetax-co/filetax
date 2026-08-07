@@ -116,6 +116,12 @@ revoke execute on function
     public.filings_block_payment_writes()
   from public, anon, authenticated;
 
+-- `rls_auto_enable` is deliberately NOT in that list. It returns `event_trigger`,
+-- which PostgREST cannot expose and which errors if called outside an event
+-- trigger, so it is unreachable rather than merely unrewarding to call. Leave it
+-- alone: it is the event trigger that enables RLS on every table created in
+-- `public`, which is why no table in this schema has ever shipped without it.
+
 -- ── 6. Close the unauthenticated write endpoint on intake_submissions ───────
 --
 -- `"Anyone can insert intake"` allowed a row from a caller with NO SESSION AT
