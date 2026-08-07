@@ -172,13 +172,18 @@ export function AppNav() {
           )}
 
           {/* New tab, deliberately: reading an explanation must not cost the
-              filing in progress. */}
+              filing in progress.
+
+              Points at /guide, not /resources. This link is read by someone
+              stuck on the screen in front of them, and /resources is the blog:
+              tax articles, not help with the wizard. /guide is the walk-through
+              of this exact flow. */}
           <a
             className="app-nav__text-link"
-            href={`${import.meta.env.BASE_URL}resources`}
+            href={`${import.meta.env.BASE_URL}guide`}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Guides and answers (opens in a new tab)"
+            aria-label="How filing works (opens in a new tab)"
             style={{
               color: ON_HEADER,
               textDecoration: 'none',
@@ -193,7 +198,7 @@ export function AppNav() {
               whiteSpace: 'nowrap',
             }}
           >
-            Guides
+            Guide
             <ExternalLink size={13} aria-hidden="true" />
           </a>
 
