@@ -17,9 +17,19 @@ on:
 permissions:
   contents: read
 
+# Every commit on `main` gets its own concurrency group and is never cancelled,
+# because Cloudflare deploys each one and this workflow is the only thing that
+# checks the prerender strictly. Six commits landed on 6 August 2026 within a
+# few minutes and each push cancelled its predecessor, so the last commit with a
+# finished `build` was `61e2505` while four later commits shipped unverified.
+# A cancelled run reports no result, which reads as "not failed" and is not the
+# same as "checked".
+#
+# Pull requests keep the old behaviour: only the head commit of a branch matters
+# there, and nothing is deployed from it.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
