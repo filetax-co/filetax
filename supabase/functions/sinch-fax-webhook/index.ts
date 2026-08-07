@@ -198,48 +198,26 @@ serve(async (req) => {
     const signedId = url.searchParams.get('t') ?? '';
     const presentedSig = url.searchParams.get('sig') ?? '';
 
-    let authorised = false;
-    let legacyAuth = false;
-
-    if (signedId && presentedSig) {
-      authorised = secretsMatch(presentedSig, await signTransmission(WEBHOOK_TOKEN, signedId));
-    } else {
-      // LEGACY, and it is on a clock. Faxes sent before the signed URL shipped
-      // registered `?token=<secret>` and Sinch retries a failed callback for
-      // about three days, so those notices are still arriving and refusing them
-      // would lose real delivery records. Also accepts the secret as a Basic
-      // password, which is how a service-level webhook would send it.
-      //
-      // DELETE THIS BRANCH AFTER 9 AUGUST 2026. Nothing sent with a token URL
-      // can still be retried by then, and leaving it is leaving the whole
-      // exposure in place for anything that skips the `t`/`sig` pair.
-      let presented = url.searchParams.get('token') ?? '';
-      if (!presented) {
-        const auth = req.headers.get('authorization') ?? '';
-        if (auth.startsWith('Basic ')) {
-          try {
-            presented = atob(auth.slice(6)).split(':').slice(1).join(':');
-          } catch { /* malformed header: presented stays empty and we 401 */ }
-        }
-      }
-      authorised = secretsMatch(presented, WEBHOOK_TOKEN);
-      legacyAuth = authorised;
-    }
+    // A signature, or nothing. The `?token=<secret>` branch that used to sit
+    // here was deleted on 7 August 2026: it existed only so that callbacks for
+    // faxes sent before the signed URL shipped could still be retried, and the
+    // owner confirmed every one of those faxes was a test, so there was no real
+    // delivery record left to lose by closing it early. While it stood, the
+    // secret logged by those old callbacks was still a working key to this
+    // endpoint, and this endpoint writes the delivery facts a filer's proof of
+    // filing is printed from.
+    const authorised = Boolean(signedId) && Boolean(presentedSig)
+      && secretsMatch(presentedSig, await signTransmission(WEBHOOK_TOKEN, signedId));
 
     if (!authorised) {
       console.warn('[sinch-fax-webhook] rejected callback',
         req.headers.get('x-forwarded-for') ?? 'unknown ip');
       return json({ error: 'Unauthorized' }, 401);
     }
-    if (legacyAuth) {
-      // Expected until 9 August 2026 and an anomaly after it. If this is still
-      // appearing then, something is minting token URLs and needs finding.
-      console.warn('[sinch-fax-webhook] accepted on the legacy token path');
-    }
 
     const sourceIp = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
     if (sourceIp && !SINCH_NOTIFICATION_IPS.includes(sourceIp)) {
-      console.warn('[sinch-fax-webhook] token accepted from unlisted ip', sourceIp);
+      console.warn('[sinch-fax-webhook] signature accepted from unlisted ip', sourceIp);
     }
 
     const body = await readEvent(req);
