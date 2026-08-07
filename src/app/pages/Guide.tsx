@@ -182,38 +182,60 @@ const STAGES: Stage[] = [
     lede:
       "Every filing you start appears here and stays here once it is finished, so you can come " +
       "back and download the package again later. It opens with a row of counts so you can see " +
-      "what needs you without reading the list.",
+      "what needs you without reading the list, and the filings themselves are grouped by " +
+      "company rather than listed as one long run of years.",
     shot: "03-dashboard",
     shotAlt: "The dashboard showing filing counts, the next deadline, and a filing with its status",
     points: [
       {
-        label: "Where each filing has got to",
+        label: "One badge per filing, saying what it is right now",
         body:
           "A filing is a Draft while you are still entering details, In progress once it is " +
           "under way, Ready to download once paid, and Downloaded after you have taken the " +
           "package. Payment failed appears if a card is declined, so a half-finished purchase " +
-          "is never silently abandoned.",
+          "is never silently abandoned. There is deliberately only ever one badge: it tells you " +
+          "the single most important thing about that filing rather than making you read three " +
+          "labels and work out which one wins.",
       },
       {
-        label: "The deadline is worked out for you",
+        label: "If you bought fax delivery, the badge is about the fax instead",
+        body:
+          "Fax pending while the transmission is still owed or still in flight, and Faxed to " +
+          "the IRS once the provider confirms it landed. That outranks Downloaded, because it " +
+          "is the thing you are actually waiting on. Nothing is at the IRS until the provider " +
+          "confirms it, and the wording never claims otherwise.",
+      },
+      {
+        label: "The deadline is worked out for you, and retired when it stops applying",
         body:
           "Each filing shows its own IRS position for that tax year: the original due date " +
           "while there is still time, the extended date once the first has passed, and 'Past " +
           "due, file ASAP' after that. The summary row shows your nearest deadline across every " +
-          "unfinished filing.",
+          "unfinished filing. Once a filing has been faxed the deadline disappears from that " +
+          "card, rather than warning you about a return you have just sent.",
+      },
+      {
+        label: "Your companies are remembered between years",
+        body:
+          "Each company you have filed for gets its own group, showing the year you last filed " +
+          "for it. Starting the next year from there carries the LLC and owner details forward " +
+          "for you to review, instead of asking for an EIN you already gave us.",
       },
       {
         label: "Start one year, or catch up several",
         body:
           "A single tax year goes straight into the intake. Missed several years and the " +
-          "catch-up flow sets them up as one job, grouped together on the dashboard so the " +
-          "years stay a single piece of work rather than scattered rows.",
+          "catch-up flow sets them up as one job, grouped together so the years stay a single " +
+          "piece of work rather than scattered rows. Where we have no filing on record for a " +
+          "year, the company's card offers to start it. That is a statement about what you " +
+          "filed through us, never a claim about what you did or did not file elsewhere.",
       },
       {
         label: "Nothing is lost if you stop",
         body:
           "The intake saves as you go. You can close the tab partway through and pick it up " +
-          "from the dashboard days later on a different machine. A catch-up resumes at the " +
+          "from the dashboard days later on a different machine, and the link returns you to " +
+          "the section you left rather than to the beginning. A catch-up resumes at the " +
           "earliest year still needing work, so the years get filed in order.",
       },
       {
@@ -230,7 +252,8 @@ const STAGES: Stage[] = [
     title: "The intake, section by section",
     lede:
       "This is the part that takes real time, about ten minutes for a straightforward year. " +
-      "It is six sections, and one of them only appears if your filing is late.",
+      "It is six sections, one of which only appears if your filing is late. They open one at " +
+      "a time, in order, and a completed section stays open to be reread and corrected.",
     shot: "04-intake-llc",
     shotAlt: "The intake wizard on the LLC Details section, with its progress indicator",
     points: [
@@ -239,7 +262,8 @@ const STAGES: Stage[] = [
         body:
           "Legal name, EIN, tax year, state of formation, date of incorporation, your business " +
           "activity, and total assets at year end. The business activity picks the NAICS code " +
-          "for you rather than making you look one up.",
+          "for you rather than making you look one up. A year you have already filed and paid " +
+          "for under that EIN is shown as already filed and cannot be picked twice.",
       },
       {
         label: "Filing Status, only when the year is late",
@@ -267,13 +291,23 @@ const STAGES: Stage[] = [
         body:
           "The money and non-money movements between you and the LLC during the year: capital " +
           "contributions, distributions, loans, services, reimbursements. You enter them " +
-          "manually. These populate Part IV, Part V and Part VI of Form 5472.",
+          "manually, each against the related party it belongs to, and each one is saved as " +
+          "you add it rather than only when you leave the section. A running total sits under " +
+          "the list. These populate Part IV, Part V and Part VI of Form 5472.",
       },
       {
         label: "Review",
         body:
           "A plain-language summary of everything you entered, before anything is generated. " +
           "Read it properly. This is the last point at which a typo is free to fix.",
+      },
+      {
+        label: "You can see the forms before you pay",
+        body:
+          "Review offers a preview of your filled Form 5472 and pro forma 1120, built from " +
+          "your own answers on the form revision for your year, watermarked DRAFT and with the " +
+          "detail obscured. It is there so you can check your name, your EIN and your figures " +
+          "landed in the right boxes before you decide to buy anything.",
       },
     ],
     reading: [
@@ -289,19 +323,39 @@ const STAGES: Stage[] = [
   {
     id: "generate",
     kicker: "Step 5",
-    title: "Generating and paying",
+    title: "Paying, signing and downloading",
     lede:
-      "Your package is built from the details you entered, on the IRS form revision in force " +
-      "for that tax year, not on the current year's form for every year.",
+      "Leaving Review takes you to a page headed Review and Payment. Once payment clears, the " +
+      "same page becomes Generate Filing Package. Your package is built from the details you " +
+      "entered, on the IRS form revision in force for that tax year, not on the current " +
+      "year's form for every year.",
     shot: "05-generate",
     shotAlt: "The generate step showing the filing summary and the list of included documents",
     points: [
       {
+        label: "What you are charged, itemised",
+        body:
+          `$${PRICE_PER_YEAR} per tax year, and $${PRICE_ADDITIONAL_PARTY} for each additional ` +
+          "related party per year. Anything else you chose is a separate line on the same " +
+          "screen, and you see that total before you are asked to pay. Prices exclude tax: any " +
+          "tax due, and the currency you are billed in, are calculated at checkout from your " +
+          "billing country.",
+      },
+      {
+        label: "The card details are never ours to hold",
+        body:
+          "Paying hands you to our payment provider's own checkout page and back again. There " +
+          "is no card field anywhere on FileTax, so there is nothing here for a card number to " +
+          "be typed into or stored in.",
+      },
+      {
         label: "What is in the package",
         body:
-          "Always the pro forma Form 1120 and Form 5472, and a Part VI statement. A Part V " +
-          "statement is added if you had monetary transactions, and a Form 7004 if an extension " +
-          "applies to your year. The screen lists exactly what yours contains before you pay.",
+          "Always the pro forma Form 1120 and Form 5472, one Form 5472 per related party, and " +
+          "a Part VI statement. A Part V statement is added if you had monetary transactions, " +
+          "and a Form 7004 if one applies to your year. Filing instructions for your year, with " +
+          "the address and fax number to use, sit at the front. The screen lists exactly what " +
+          "yours contains.",
       },
       {
         label: "You sign it here, at the end and not before",
@@ -312,12 +366,11 @@ const STAGES: Stage[] = [
           "version you edited three screens ago. On a catch-up, one signature covers every year.",
       },
       {
-        label: "Then you pay and download",
+        label: "The drawn signature is never stored",
         body:
-          `$${PRICE_PER_YEAR} per tax year, and $${PRICE_ADDITIONAL_PARTY} for each additional ` +
-          "related party per year. Any add-ons you chose are itemised on the same screen, and " +
-          "you see that total before you are asked to pay. Prices exclude tax: any tax due is " +
-          "calculated at checkout from your billing country. The download is a print-ready PDF.",
+          "The pad is blank every time you come back, deliberately: we keep your typed name, " +
+          "not an image of your hand. Redrawing it changes only the next file you generate. A " +
+          "PDF you have already downloaded is fixed as it was.",
       },
     ],
     // NO `reading` LIST ON THIS STAGE, DELIBERATELY, AND DO NOT RESTORE IT.
@@ -340,25 +393,79 @@ const STAGES: Stage[] = [
       "the IRS, and that step is yours unless you add fax delivery.",
     points: [
       {
-        label: "By mail or by fax",
+        label: "By mail or by fax, yourself",
         body:
           "Form 5472 with a pro forma 1120 goes to the IRS by mail or by fax. The filing " +
-          "instructions included with your package give the current address and fax number for " +
-          "your filing, so you are not hunting for them.",
+          "instructions at the front of your package give the address and fax number for your " +
+          "filing, so you are not hunting for them.",
       },
       {
-        label: "Or we send it",
+        label: `Or we fax it for you, for $${PRICE_FAX}`,
         body:
-          `Fax delivery is an opt-in $${PRICE_FAX} for the whole job, however many years it ` +
-          "covers. You get the transmission confirmation.",
+          "One charge for the whole job, however many years it covers. You add it while you " +
+          "are filing, it is a line on the same bill as everything else, and it is fixed once " +
+          "paid. If you decide you want it after paying, you can add it from the filing itself.",
       },
       {
-        label: "Keep the confirmation",
+        label: "You press send, and you can see what happened",
         body:
-          "Whichever way it goes, keep proof of when it was sent. If the IRS later questions " +
-          "the date, that proof is the answer.",
+          "Fax delivery does not fire on its own. Your filing page carries a Send to the IRS " +
+          "by fax button, so the moment your pages leave is a moment you chose. The page then " +
+          "shows the transmission's state, and if it fails it says why and lets you try again.",
+      },
+      {
+        label: "Once it lands, you can download what we sent",
+        body:
+          "A confirmation from the fax provider, with the pages that were transmitted, the " +
+          "number they went to, and the time they were accepted. Keep it. If the IRS ever " +
+          "questions when you filed, that record is what answers it.",
+      },
+      {
+        label: "A faxed filing becomes read-only",
+        body:
+          "Once your pages are with the IRS, that filing stops being editable, because changing " +
+          "it here would no longer change what they hold. You keep full access to read it, " +
+          "download it again, and see exactly what was sent. A correction after that point is a " +
+          "conversation with a person, not a form field.",
       },
     ],
+  },
+];
+
+// What paying does and does not lock. This section exists because "can I still
+// fix it afterwards" is the question the pay screen raises and the guide never
+// answered, and the honest answer is a selling point: corrections are
+// unlimited. Keep it accurate against the database triggers rather than
+// against memory. The frozen list is exactly the six identity fields in
+// `filings_freeze_when_paid`, and it is frozen because those six are what the
+// purchase was FOR: a different EIN, owner or year is a different filing.
+const AFTER_PAYMENT: { label: string; body: string }[] = [
+  {
+    label: "You can correct it as many times as you need",
+    body:
+      "There is no cap on corrections and no charge for them. Fix a figure, add a " +
+      "transaction, change an address, and regenerate the package as often as you like. A " +
+      "filing you spot an error in three days later is not a filing you have to buy again.",
+  },
+  {
+    label: "Six fields lock, and they are the ones that define what you bought",
+    body:
+      "The EIN, the LLC name, the tax year, your legal name, your foreign tax ID and the " +
+      "incorporation date. A change to any of those is not a correction to this filing, it is " +
+      "a different filing, and it needs to be started as one. Everything else stays open.",
+  },
+  {
+    label: "Your package stays downloadable",
+    body:
+      "Sign in and take it again whenever you need it, for as long as the account exists. " +
+      "Nothing expires and there is no second charge for a second download.",
+  },
+  {
+    label: "A related party added later costs only that party",
+    body:
+      `If you realise afterwards that another party belongs on the return, you can add them ` +
+      `and pay $${PRICE_ADDITIONAL_PARTY} for that party. The filing itself is never charged ` +
+      "for twice. The updated forms unlock once that payment clears.",
   },
 ];
 
@@ -436,7 +543,7 @@ export function Guide() {
   usePageMeta({
     title: "How Filing Works, Step by Step | FileTax.co",
     description:
-      "A walkthrough of filing Form 5472 and the pro forma 1120 through FileTax, screen by screen: the eligibility check, the six intake sections, generating and signing your package, and sending it to the IRS.",
+      "A walkthrough of filing Form 5472 and the pro forma 1120 through FileTax, screen by screen: the eligibility check, the six intake sections, what you are charged, signing and downloading your package, sending it to the IRS by mail or fax, and what you can still change after you have paid.",
     canonical: "https://filetax.co/guide",
   });
 
@@ -608,6 +715,49 @@ export function Guide() {
           </div>
         </section>
       ))}
+
+      {/* Stages end on --tf-bg (six of them, alternating from surface), so this
+          opens on surface and the run continues: catch-up bg, limits surface,
+          CTA bg. Inserting a section here without moving the two below it is
+          what puts two identical backgrounds against each other. */}
+      <section style={{ background: "var(--tf-surface)", padding: "3rem 1rem" }} aria-labelledby="after-payment-heading">
+        <div style={{ maxWidth: "820px", margin: "0 auto" }}>
+          <h2 id="after-payment-heading" style={headingStyle}>
+            What paying does, and does not, lock
+          </h2>
+          <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
+            The most common worry at the pay screen is whether a mistake spotted
+            afterwards is an expensive one. It is not.
+          </p>
+          <dl style={{ margin: 0 }}>
+            {AFTER_PAYMENT.map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  paddingBottom: "1.125rem",
+                  marginBottom: "1.125rem",
+                  borderBottom: "1px solid var(--tf-border)",
+                }}
+              >
+                <dt style={{ fontWeight: 600, color: "var(--tf-text)", fontSize: "0.9375rem", marginBottom: "0.3rem", lineHeight: 1.45 }}>
+                  {item.label}
+                </dt>
+                <dd style={{ margin: 0, color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.65 }}>
+                  {item.body}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p style={{ color: "var(--tf-muted)", fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.65, margin: 0 }}>
+            The one exception is a filing we have already faxed to the IRS, which
+            becomes read-only. See{" "}
+            <a href="#sending" style={{ color: "var(--tf-accent)", fontWeight: 600 }}>
+              Sending it to the IRS
+            </a>
+            .
+          </p>
+        </div>
+      </section>
 
       <section style={{ background: "var(--tf-bg)", padding: "3rem 1rem" }} aria-labelledby="catchup-heading">
         <div style={{ maxWidth: "820px", margin: "0 auto" }}>
