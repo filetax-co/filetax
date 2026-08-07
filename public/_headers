@@ -1,0 +1,98 @@
+# Cloudflare Pages response headers.
+#
+# WHY THIS FILE EXISTS
+# filetax.co shipped with no security headers of any kind: no framing control,
+# no HSTS, no referrer policy, no MIME sniffing control. /dashboard and
+# /filing/:id were framable by any origin, which makes clickjacking the download
+# and fax buttons a real attack rather than a theoretical one.
+#
+# WHAT IS DELIBERATELY *NOT* HERE
+# A full enforcing Content-Security-Policy. Every directive in one is a way to
+# stop a page rendering, and this site loads Google Analytics, Microsoft
+# Clarity, Sanity's CDN, a pdf.js web worker and a blob: PDF preview iframe. An
+# enforcing policy written blind would break one of those in production and the
+# first symptom would be a blank panel on a page a filer paid for. So the full
+# policy ships as Report-Only below: it changes nothing a visitor can see, and
+# it produces the evidence needed to turn it on safely later. See the note at
+# the bottom for how to promote it.
+#
+# Everything in the enforced block is a header that cannot alter layout,
+# styling or script behaviour. `frame-ancestors` is the one CSP directive with
+# no rendering side effects on the page that sets it: it governs who may embed
+# US, never what we may load.
+
+/*
+  # Nobody frames this site. Both spellings, because X-Frame-Options is what
+  # older browsers honour and frame-ancestors is what current ones use. This
+  # does NOT affect the app's own <iframe> in PdfPreviewModal, which is about
+  # what we embed, not who embeds us.
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+
+  # A stylesheet served as text/plain stays a stylesheet, and a script that a
+  # sniffing browser guesses at stays unexecuted.
+  X-Content-Type-Options: nosniff
+
+  # A filer arriving at /filing/<uuid> and clicking an outbound link must not
+  # hand that uuid to the destination in the Referer header. Same-origin
+  # navigation keeps the full path, cross-origin sends the bare origin.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Two years, subdomains included. `preload` is deliberately absent: getting
+  # onto the browser preload list is easy and getting off it takes months, so
+  # it should be a separate, deliberate decision once this has been live a while.
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+
+  # This site asks for none of these, so nothing it loads should be able to
+  # either. `payment=()` is safe because checkout happens on Dodo's own domain,
+  # not through the Payment Request API here.
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+
+  # `same-origin-allow-popups`, not `same-origin`: the stricter value severs
+  # window.opener, and while nothing here opens a popup today, the payment
+  # return path is one refactor away from needing one.
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+  # REPORT ONLY. Enforces nothing, breaks nothing, renders nothing differently.
+  # Sources below are the ones actually observed in the codebase:
+  #   script  /assets/*.js, GA (googletagmanager), Clarity (two hosts)
+  #   connect Supabase REST + edge functions, Sanity API/CDN, GA, Clarity
+  #   img     Sanity CDN for article images, data:/blob: for generated previews
+  #   worker  pdf.js worker, bundled by Vite as a same-origin hashed asset
+  #   frame   blob: for the PdfPreviewModal preview
+  #   style   'unsafe-inline' is required: this codebase styles heavily with
+  #           React inline style props, which CSP counts as inline styles.
+  Content-Security-Policy-Report-Only: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; connect-src 'self' https://*.supabase.co https://*.sanity.io https://*.google-analytics.com https://*.analytics.google.com https://*.clarity.ms; img-src 'self' data: blob: https://cdn.sanity.io https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-src 'self' blob:; manifest-src 'self'
+
+# Authenticated routes. These files are EMPTY SHELLS by design and contain no
+# user data (CI asserts exactly that in .github/workflows/ci.yml), so this is
+# defence in depth rather than a fix for a leak: it guarantees that no proxy,
+# corporate middlebox or shared browser cache can ever retain a document served
+# under an authenticated URL, whatever a future change puts in one. The hashed
+# /assets/* bundles keep their long cache lifetime, so this costs one small HTML
+# request per navigation and nothing else.
+/dashboard
+  Cache-Control: private, no-store
+
+/dashboard/*
+  Cache-Control: private, no-store
+
+/intake
+  Cache-Control: private, no-store
+
+/catch-up
+  Cache-Control: private, no-store
+
+/filing/*
+  Cache-Control: private, no-store
+
+# ── Promoting the Report-Only policy to enforcing ────────────────────────────
+# 1. Leave it as-is for a week of real traffic.
+# 2. Collect violations from the browser console on /guide, /resources/<any
+#    article>, the full intake wizard, the PDF preview and a live payment
+#    return. Those five cover every third-party this site touches.
+# 3. Add whatever legitimately fires, then rename the header by deleting
+#    `-Report-Only` and merge `frame-ancestors 'none'` from the block above so
+#    there is only one Content-Security-Policy header.
+# Do NOT skip step 2. `style-src` without 'unsafe-inline' alone would strip the
+# styling from most of this site, because it is written with inline style props.

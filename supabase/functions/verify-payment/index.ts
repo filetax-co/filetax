@@ -195,6 +195,23 @@ serve(async (req) => {
         : null;
 
     for (const filing of filings) {
+      // ONE PAYMENT IS ADDED TO THE TOTAL ONCE.
+      //
+      // This handler runs on every load of the return URL, and the return URL
+      // is a page a filer can refresh, bookmark, or land on twice because their
+      // bank bounced them through 3-D Secure. Every run used to add
+      // `settlement_amount` to the running total again, so a filer who refreshed
+      // three times had a filing recorded as costing three times what their card
+      // was actually charged. Nothing about access was wrong; the number was.
+      //
+      // `filings.payment_id` holds the last payment applied to this row, so it
+      // is the record of what has already been counted. It carries the checkout
+      // SESSION id until the first successful verification rewrites it with the
+      // PAYMENT id, which is why a first run never matches and a replay always
+      // does. A genuine second purchase (an extra related party, or the $9 fax)
+      // is a different payment with a different id, so it still sums correctly.
+      const alreadyRecorded = filing.payment_id === payment.payment_id;
+
       // Amounts in two different currencies cannot be added. A filing can be
       // topped up (the additional-party add-on is a second checkout), so the
       // running total is only meaningful while the currency holds. When it
@@ -202,9 +219,13 @@ serve(async (req) => {
       // quantity of anything: null reads as "ask the payment provider", a wrong
       // integer reads as an answer. This is logged because it should not happen
       // and, if it does, reconciliation needs to know which filing to look at.
+      //
+      // Not evaluated on a replay: the currency of a payment already counted
+      // cannot have changed since we counted it, and treating the match as a
+      // change would null out a total that is correct.
       const priorCurrency = filing.payment_currency ?? null;
-      const currencyChanged =
-        priorCurrency !== null && currency !== null && priorCurrency !== currency;
+      const currencyChanged = !alreadyRecorded
+        && priorCurrency !== null && currency !== null && priorCurrency !== currency;
 
       if (currencyChanged) {
         console.error(
@@ -214,11 +235,13 @@ serve(async (req) => {
         );
       }
 
-      const nextAmount = currencyChanged
-        ? null
-        : amount === null
-          ? filing.payment_amount_cents
-          : Number(filing.payment_amount_cents ?? 0) + amount;
+      const nextAmount = alreadyRecorded
+        ? filing.payment_amount_cents
+        : currencyChanged
+          ? null
+          : amount === null
+            ? filing.payment_amount_cents
+            : Number(filing.payment_amount_cents ?? 0) + amount;
 
       const { error: updateErr } = await supabase
         .from('filings')
@@ -247,7 +270,15 @@ serve(async (req) => {
           // current party count as paid here would hand the filer every party
           // they had added since their last payment for free, and the delta
           // that `create-checkout-session` bills from would be gone.
-          paid_related_party_count: faxAddon
+          //
+          // A REPLAY IS NOT A PURCHASE EITHER, for exactly the same reason.
+          // Re-running this handler recounted the parties as they stand NOW
+          // against a payment made earlier, so a filer who paid, added two more
+          // related parties, then reloaded the return URL had both marked paid
+          // and got them free. The delta `create-checkout-session` bills from is
+          // the difference between these two numbers, so anything that advances
+          // this without money changing hands is money we never charge.
+          paid_related_party_count: faxAddon || alreadyRecorded
             ? filing.paid_related_party_count
             : relatedPartyCount(filing.related_parties),
           // What the $9 actually buys. Written here rather than at intake

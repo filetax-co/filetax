@@ -31,21 +31,25 @@ create table if not exists public.intake_submissions (
 
 alter table public.intake_submissions enable row level security;
 
-create policy "Users can read own submissions" on public.intake_submissions
-  for select using (auth.uid() = user_id);
-
--- SECURITY: anonymous visitors may submit intake (user_id must be null);
--- authenticated users may only insert rows with their own user_id. Without
--- this clamp, any logged-in user could attach an intake to another user's
--- account by spoofing user_id or linked_filing_id.
-create policy "Anyone can insert intake" on public.intake_submissions
-  for insert with check (
-    (auth.uid() is null and user_id is null and linked_filing_id is null)
-    or (auth.uid() is not null and auth.uid() = user_id)
-  );
-
-create policy "Users can update own submissions" on public.intake_submissions
-  for update using (auth.uid() = user_id);
+-- NO POLICIES, DELIBERATELY. RLS with no policy denies everything, and that is
+-- the intended state of this table.
+--
+-- It used to carry `"Anyone can insert intake"`, which accepted a row from a
+-- caller with no session at all as long as user_id and linked_filing_id were
+-- null. `full_name` and `email` are the only NOT NULL columns and the anon key
+-- is inside the public JS bundle, so that policy was an unauthenticated,
+-- unrate-limited, unconstrained INSERT endpoint that anyone could loop.
+--
+-- It was removed on 7 August 2026 rather than rate limited because THE TABLE IS
+-- DEAD: nothing in `src` reads or writes it, the intake flow writes `filings`,
+-- and it held zero rows. The table itself is kept because `filings` is on the
+-- other end of its foreign key and an empty table costs nothing.
+--
+-- If an intake capture form is ever wanted again, it does not come back as an
+-- anonymous RLS policy. It comes back as an edge function behind a captcha,
+-- because a public write endpoint with no proof-of-human in front of it is a
+-- free database for whoever finds it first.
+revoke all on public.intake_submissions from anon, authenticated;
 
 
 -- ============================================================================
@@ -152,8 +156,12 @@ create policy "Users can read own filings" on public.filings
 create policy "Users can insert own filings" on public.filings
   for insert with check (auth.uid() = user_id);
 
+-- WITH CHECK, not USING alone: USING selects the rows that may be updated and
+-- says nothing about the row being written. Without it `{"user_id": <victim>}`
+-- passes, and the filing lands in someone else's dashboard carrying whatever
+-- EIN and owner identity the attacker put on it.
 create policy "Users can update own filings" on public.filings
-  for update using (auth.uid() = user_id);
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Auto-update updated_at on every row change
 create or replace function public.set_updated_at()
@@ -269,8 +277,16 @@ create policy "Users can insert own transactions" on public.reportable_transacti
     )
   );
 
+-- WITH CHECK stops the row being RE-PARENTED. USING alone let a filer PATCH
+-- filing_id to another user's filing, which adds a Part IV transaction line to
+-- a Form 5472 that is not theirs.
 create policy "Users can update own transactions" on public.reportable_transactions
   for update using (
+    exists (
+      select 1 from public.filings f
+      where f.id = filing_id and f.user_id = auth.uid()
+    )
+  ) with check (
     exists (
       select 1 from public.filings f
       where f.id = filing_id and f.user_id = auth.uid()
@@ -339,18 +355,15 @@ do $$ begin
   end if;
 end; $$;
 
--- intake_submissions UPDATE policy
-do $$ begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public' and tablename = 'intake_submissions'
-      and policyname = 'Users can update own submissions'
-  ) then
-    execute $p$ create policy "Users can update own submissions"
-      on public.intake_submissions for update
-      using (auth.uid() = user_id) $p$;
-  end if;
-end; $$;
+-- intake_submissions: policies REMOVED, not recreated. This block used to
+-- restore the UPDATE policy on an older database. It now does the opposite,
+-- because a re-run of this file on a database that still has the old policies
+-- must take them away rather than put them back. See the long note beside the
+-- table definition above for why the table is closed to clients entirely.
+drop policy if exists "Anyone can insert intake"          on public.intake_submissions;
+drop policy if exists "Users can read own submissions"    on public.intake_submissions;
+drop policy if exists "Users can update own submissions"  on public.intake_submissions;
+revoke all on public.intake_submissions from anon, authenticated;
 
 -- filings: updated_at column
 do $$ begin
@@ -546,7 +559,7 @@ do $$ begin
     execute $p$ create policy "Users can insert own transactions" on public.reportable_transactions for insert with check (exists (select 1 from public.filings f where f.id = filing_id and f.user_id = auth.uid())) $p$;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='reportable_transactions' and policyname='Users can update own transactions') then
-    execute $p$ create policy "Users can update own transactions" on public.reportable_transactions for update using (exists (select 1 from public.filings f where f.id = filing_id and f.user_id = auth.uid())) $p$;
+    execute $p$ create policy "Users can update own transactions" on public.reportable_transactions for update using (exists (select 1 from public.filings f where f.id = filing_id and f.user_id = auth.uid())) with check (exists (select 1 from public.filings f where f.id = filing_id and f.user_id = auth.uid())) $p$;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='reportable_transactions' and policyname='Users can delete own transactions') then
     execute $p$ create policy "Users can delete own transactions" on public.reportable_transactions for delete using (exists (select 1 from public.filings f where f.id = filing_id and f.user_id = auth.uid())) $p$;

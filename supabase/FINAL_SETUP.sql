@@ -42,19 +42,16 @@ create table if not exists public.intake_submissions (
 );
 alter table public.intake_submissions enable row level security;
 
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='intake_submissions' and policyname='Users can read own submissions') then
-    execute $p$ create policy "Users can read own submissions" on public.intake_submissions for select using (auth.uid() = user_id) $p$;
-  end if;
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='intake_submissions' and policyname='Anyone can insert intake') then
-    execute $p$ create policy "Anyone can insert intake" on public.intake_submissions for insert with check (
-      (auth.uid() is null and user_id is null and linked_filing_id is null)
-      or (auth.uid() is not null and auth.uid() = user_id)) $p$;
-  end if;
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='intake_submissions' and policyname='Users can update own submissions') then
-    execute $p$ create policy "Users can update own submissions" on public.intake_submissions for update using (auth.uid() = user_id) $p$;
-  end if;
-end $$;
+-- NO POLICIES, DELIBERATELY. RLS with no policy denies everything, which is the
+-- intended state. `"Anyone can insert intake"` accepted rows from callers with
+-- no session at all, on a table nothing in `src` has read or written for months
+-- and which held zero rows: an unauthenticated, unrate-limited INSERT endpoint
+-- attached to a dead feature. Removed 7 August 2026. If intake capture returns
+-- it comes back behind an edge function and a captcha, not an anonymous policy.
+drop policy if exists "Anyone can insert intake"          on public.intake_submissions;
+drop policy if exists "Users can read own submissions"    on public.intake_submissions;
+drop policy if exists "Users can update own submissions"  on public.intake_submissions;
+revoke all on public.intake_submissions from anon, authenticated;
 
 -- ============================================================================
 -- 2. filing_jobs - multi-year catch-up groups (one shared RCL)
@@ -196,7 +193,7 @@ do $$ begin
     execute $p$ create policy "Users can insert own filings" on public.filings for insert with check (auth.uid() = user_id) $p$;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='filings' and policyname='Users can update own filings') then
-    execute $p$ create policy "Users can update own filings" on public.filings for update using (auth.uid() = user_id) $p$;
+    execute $p$ create policy "Users can update own filings" on public.filings for update using (auth.uid() = user_id) with check (auth.uid() = user_id) $p$;
   end if;
 end $$;
 
@@ -325,7 +322,7 @@ do $$ begin
     execute $p$ create policy "Users can insert own transactions" on public.reportable_transactions for insert with check (exists (select 1 from public.filings f where f.id=filing_id and f.user_id=auth.uid())) $p$;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='reportable_transactions' and policyname='Users can update own transactions') then
-    execute $p$ create policy "Users can update own transactions" on public.reportable_transactions for update using (exists (select 1 from public.filings f where f.id=filing_id and f.user_id=auth.uid())) $p$;
+    execute $p$ create policy "Users can update own transactions" on public.reportable_transactions for update using (exists (select 1 from public.filings f where f.id=filing_id and f.user_id=auth.uid())) with check (exists (select 1 from public.filings f where f.id=filing_id and f.user_id=auth.uid())) $p$;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='reportable_transactions' and policyname='Users can delete own transactions') then
     execute $p$ create policy "Users can delete own transactions" on public.reportable_transactions for delete using (exists (select 1 from public.filings f where f.id=filing_id and f.user_id=auth.uid())) $p$;
