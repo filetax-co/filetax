@@ -1306,7 +1306,12 @@ export function Intake() {
   // or the filer chooses to start blank.
   const [savedCompanies, setSavedCompanies] = useState<FilingProfile[]>([]);
   const [showCompanyPicker, setShowCompanyPicker] = useState(false);
-  const [importRelatedParties, setImportRelatedParties] = useState(true);
+  // FALSE, so the checkbox is the opt-in `importCompany` says it is. Defaulted
+  // true, it copied last year's related parties into a new year silently, and
+  // the section then ticked itself before the filer had seen who was on it.
+  // Bringing a party across is one click; noticing an obsolete one that arrived
+  // under a tick is not.
+  const [importRelatedParties, setImportRelatedParties] = useState(false);
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
@@ -2015,7 +2020,18 @@ export function Intake() {
       // on `step` it flipped back to incomplete every time the filer scrolled
       // up, and a finished filing reopened from the dashboard (which starts at
       // step 1) showed this section as incomplete.
-      if (errs.length === 0 && relatedParties.length === 0 && !relatedPartiesReviewed) {
+      //
+      // A list PREFILLED from the profile needs the same treatment, and used to
+      // escape it because it is non-empty and therefore valid: the section
+      // ticked itself the instant a saved company was picked, before the filer
+      // had seen the party at all. Same rule as the owner section above, and for
+      // the same reason: a tick claims the FILER has checked something. A
+      // related party goes stale between years more often than an address does,
+      // and a stale one is a wrong Form 5472 for a taxpayer who may no longer be
+      // related at all, which is exactly what nobody looks at twice once it is
+      // wearing a tick.
+      if (errs.length === 0 && !relatedPartiesReviewed
+          && (relatedParties.length === 0 || prefilledFromProfile)) {
         errs = ['not reviewed'];
       }
     }
