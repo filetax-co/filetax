@@ -17,6 +17,11 @@
 -- fax can produce it, each of them silently STOPS APPLYING to the filings that
 -- deserve them most:
 --
+-- NOTE ON SECTION 2, ADDED 7 AUGUST 2026. The list below is what this file was
+-- written to fix, and it was right about the hole. It was wrong about the
+-- remedy for `txn_block_when_filing_paid`, which it reproduced from a source
+-- superseded four days earlier. See the long comment above that function.
+--
 --   filings_freeze_when_paid    a faxed filing's EIN, LLC name, tax year and
 --                               owner identity become editable again, on the
 --                               one filing whose pages the IRS is already
@@ -89,25 +94,39 @@ create trigger filings_freeze_when_paid
   for each row execute procedure public.filings_freeze_when_paid();
 
 -- ── 2. And so do its transactions ───────────────────────────────────────────
+--
+-- READ THIS BEFORE RESTORING THE OLD BODY. The version of this function in
+-- `20260702_lock_paid_filings` refused any transaction write once the parent
+-- filing was paid AND `post_payment_edits >= 2`. That two-correction budget was
+-- DELIBERATELY REMOVED on 4 August by `20260804_unlimited_paid_corrections`,
+-- which dropped this trigger and this function outright, and production has
+-- correctly had no trigger on `reportable_transactions` since. Reproducing the
+-- old body here to add `submitted` to its status list would have silently
+-- reimposed the cap on every paying customer, and /guide now promises in as
+-- many words that corrections are unlimited and free.
+--
+-- So the function comes back NARROWED, not restored. `paid` and `completed`
+-- are absent on purpose: a paid filing's transactions stay freely editable,
+-- without a numeric limit, which is the settled decision. The only thing that
+-- locks them is a fax the IRS has already received, because at that point an
+-- edit here changes nothing about what they hold, and `post_payment_edits`
+-- is not consulted at all.
 create or replace function public.txn_block_when_filing_paid()
 returns trigger language plpgsql security definer as $$
 declare
   v_filing_id uuid;
   v_status    text;
-  v_edits     int;
 begin
   if auth.role() = 'service_role' then
     return coalesce(new, old);
   end if;
 
   v_filing_id := coalesce(new.filing_id, old.filing_id);
-  select status, post_payment_edits into v_status, v_edits
+  select status into v_status
     from public.filings where id = v_filing_id;
 
-  -- Once the parent filing is paid, transaction edits are corrections - allowed
-  -- only while the filing still has correction budget left.
-  if v_status in ('paid','completed','submitted') and coalesce(v_edits, 0) >= 2 then
-    raise exception 'This filing has used all available post-payment edits; its transactions are locked. Contact support@filetax.co for further changes.'
+  if v_status = 'submitted' then
+    raise exception 'This filing has already been faxed to the IRS, so its transactions can no longer be changed. The IRS holds the pages exactly as they were sent. Email support@filetax.co: a correction is a new filing, not an edit to this one.'
       using errcode = '42501';
   end if;
 
@@ -167,6 +186,20 @@ $$;
 -- deletes. Without this they would silently lose the fact. Job-scoped where
 -- there is a job, because one $9 transmission covers every year in a catch-up,
 -- which is exactly what `dispatch_key` encodes.
+-- FIRST, CLAIM THE ROLE THE GUARDS EXEMPT. Every function in this file opens
+-- with `if auth.role() = 'service_role' then return ...`, and that exemption is
+-- the only reason a server write gets past them. But `auth.role()` reads the
+-- PostgREST request context, and a migration HAS NO REQUEST: it returns NULL,
+-- so the exemption is skipped and the guards treat this statement as a browser.
+-- Section 3, installed ten lines above, then refuses this very backfill with
+-- 'filings.status cannot be set to submitted from the client'. Verified against
+-- the live `auth.role()` definition on 7 August 2026, which coalesces two
+-- `current_setting` reads and yields NULL when neither is set.
+--
+-- `true` scopes this to the current transaction, so it is gone the moment the
+-- migration commits and no session inherits it.
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
 update public.filings f
    set status = 'submitted',
        updated_at = now()
