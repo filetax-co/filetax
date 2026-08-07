@@ -3413,6 +3413,24 @@ export function Intake() {
           padding: 0 !important; border: none !important;
           box-shadow: none !important;
         }
+        /* A faxed filing cannot change, so its cards must stop behaving like
+           controls: no hover lift, no pointer, no click. The selected ones keep
+           their ring, because the point of the read-only view is to show which
+           answers went to the IRS. */
+        .select-card.is-locked {
+          cursor: default;
+          pointer-events: none;
+        }
+        .select-card.is-locked:hover {
+          border-color: var(--tf-border);
+          background: var(--tf-surface);
+          transform: translateY(0);
+          box-shadow: none;
+        }
+        .select-card.is-locked.is-selected:hover {
+          border-color: var(--tf-accent);
+          box-shadow: 0 0 0 3px rgba(var(--tf-accent-rgb), 0.14);
+        }
         .select-card-label { font-weight: 600; font-size: 0.9rem; color: var(--tf-text); }
         .select-card-hint { font-size: 0.8rem; color: var(--tf-muted); margin-top: 0.15rem; line-height: 1.4; }
 
@@ -4223,7 +4241,7 @@ export function Intake() {
                 ].map(({ val, label }) => (
                   <label
                     key={String(val)}
-                    className={`select-card${extensionFiled === val ? ' is-selected' : ''}`}
+                    className={`select-card${extensionFiled === val ? ' is-selected' : ''}${isFaxLocked ? ' is-locked' : ''}`}
                   >
                     <input
                       type="radio"
@@ -4250,7 +4268,7 @@ export function Intake() {
               <p style={{ fontSize: '0.875rem', color: 'var(--tf-text-muted, #6b7280)', marginBottom: '0.875rem', lineHeight: 1.55 }}>
                 A reasonable cause letter can help reduce or waive the $25,000 penalty for late filing. It's a +${PRICE_RCL} add-on that we draft for you alongside your forms, charged once however many years you are filing.
               </p>
-              <label className={`select-card${includeReasonableCause ? ' is-selected' : ''}`} style={{ marginBottom: '1.25rem' }}>
+              <label className={`select-card${includeReasonableCause ? ' is-selected' : ''}${isFaxLocked ? ' is-locked' : ''}`} style={{ marginBottom: '1.25rem' }}>
                 <input
                   type="checkbox"
                   checked={includeReasonableCause}
@@ -4280,13 +4298,17 @@ export function Intake() {
                           key={r.value}
                           role="checkbox"
                           aria-checked={checked}
-                          tabIndex={0}
-                          className={`select-card${checked ? ' is-selected' : ''}`}
-                          style={{ cursor: 'pointer' }}
-                          onClick={toggle}
-                          onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } }}
+                          aria-disabled={isFaxLocked || undefined}
+                          // Not a real input, so `disabled` does nothing here:
+                          // the handlers and the tab stop have to come off by
+                          // hand, or a faxed filing still toggles its reasons.
+                          tabIndex={isFaxLocked ? -1 : 0}
+                          className={`select-card${checked ? ' is-selected' : ''}${isFaxLocked ? ' is-locked' : ''}`}
+                          style={{ cursor: isFaxLocked ? 'default' : 'pointer' }}
+                          onClick={isFaxLocked ? undefined : toggle}
+                          onKeyDown={isFaxLocked ? undefined : (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } }}
                         >
-                          <input type="checkbox" checked={checked} readOnly tabIndex={-1} style={{ pointerEvents: 'none' }} />
+                          <input type="checkbox" checked={checked} readOnly disabled={isFaxLocked} tabIndex={-1} style={{ pointerEvents: 'none' }} />
                           <div>
                             <div className="select-card-label">{r.label}</div>
                             <div className="select-card-hint">{r.hint}</div>
@@ -5105,7 +5127,10 @@ export function Intake() {
           numberLabel={stepNumber(5)}
           label={STEP_LABELS['5']}
           open={openSections.has('5')}
-          complete={step === 5 && validateForSubmit().length === 0}
+          // A faxed filing is finished, so this section carries the tick on its
+          // own. Waiting for `step === 5` left the last step of a completed
+          // filing looking like the one thing still outstanding.
+          complete={isFaxLocked || (step === 5 && validateForSubmit().length === 0)}
           onToggle={() => toggleSection('5')}
           anchorRef={(el) => { sectionRefs.current['5'] = el; }}
           frozen={isFaxLocked}
@@ -5116,11 +5141,20 @@ export function Intake() {
                 happens is payment, and only then are the forms prepared. A
                 filer who reads "submit" on the last step reasonably believes
                 they have just filed. */}
-            <h2 style={stepHeadingStyle}>Review & continue to payment</h2>
+            {/* Once the fax is at the IRS both sentences below are false: it IS
+                filed, it HAS been sent, and nothing on this page can be
+                corrected. Same summary, opposite tense. */}
+            <h2 style={stepHeadingStyle}>
+              {isFaxLocked ? 'Your filing as we sent it' : 'Review & continue to payment'}
+            </h2>
             <p style={stepSubheadStyle}>
-              Check everything below. Nothing is filed yet, and nothing is sent to the IRS.
-              Next you pay, then we prepare your forms. You can still correct anything on this
-              page until you pay.
+              {isFaxLocked
+                ? 'This is what was faxed to the IRS. It is filed, and these answers are'
+                  + ' read-only. If something on them is wrong, email support@filetax.co: a'
+                  + ' correction is a new filing, not an edit to this one.'
+                : 'Check everything below. Nothing is filed yet, and nothing is sent to the IRS.'
+                  + ' Next you pay, then we prepare your forms. You can still correct anything on'
+                  + ' this page until you pay.'}
             </p>
 
             <section style={sectionStyle}>
@@ -5337,6 +5371,11 @@ export function Intake() {
                 now a button rather than a paragraph. It does not replace the
                 summary above it: the summary is what they can correct, the
                 preview is what they are buying. */}
+            {/* No actions on a faxed filing. `handleSubmit` is refused by the
+                write path anyway, so "Save corrections & re-download" only
+                offered a correction that cannot happen. The download of the fax
+                record lives on the filing page, which the banner points to. */}
+            {!isFaxLocked && (
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem', flexWrap: 'wrap' }}>
               {!isPaidLocked && (
                 <button
@@ -5371,6 +5410,7 @@ export function Intake() {
                       : 'Continue to payment →'}
               </button>
             </div>
+            )}
           </div>
         </AccordionSection>
       </div>
