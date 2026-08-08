@@ -4,6 +4,7 @@ import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router';
 import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
+import { PasswordField } from '../components/PasswordField';
 
 // WHAT TO HAVE READY. This list has to match what the intake actually asks
 // for. It said "passport number" until 8 August 2026, which no screen in the
@@ -353,7 +354,13 @@ export function Portal() {
                         </button>
                       )}
                     </div>
-                    <input id="portal-password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Create a strong password' : 'Your password'} value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px' }} />
+                    <PasswordField
+                      id="portal-password"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                      placeholder={mode === 'signup' ? 'Create a strong password' : 'Your password'}
+                      value={password}
+                      onChange={setPassword}
+                    />
                     {mode === 'signup' && (() => {
                       const status = ruleStatus(password);
                       return (

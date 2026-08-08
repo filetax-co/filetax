@@ -380,3 +380,28 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(67%) sepia(8%) saturate(1088%) hue-rotate(176deg) brightness(88%) contrast(86%);
   opacity: 1;
 }
+
+/* The reveal control inside a password field, see PasswordField.tsx.
+   Global for the same reason the date icon above is: password fields appear on
+   /portal and /reset-password, neither of which is the intake, and an in-field
+   control themed on one screen is invisible on the others. The two greys are
+   the ones the intake's select chevron is drawn in, so every control sitting in
+   a field's right inset is the same colour. */
+.pw-reveal {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 0.25rem;
+  color: #64748B;
+  cursor: pointer;
+}
+.pw-reveal:hover { color: var(--tf-text); }
+.pw-reveal:disabled { opacity: 0.4; cursor: not-allowed; }
+[data-theme="dark"] .pw-reveal { color: #94A3B8; }

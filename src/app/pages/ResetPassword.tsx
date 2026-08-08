@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabase';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
+import { PasswordField } from '../components/PasswordField';
 
 export function ResetPassword() {
   usePageMeta({
@@ -113,7 +114,15 @@ export function ResetPassword() {
             <form onSubmit={handleSubmit} noValidate>
               <div style={{ marginBottom: '1.125rem' }}>
                 <label htmlFor="rp-password" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>New password</label>
-                <input id="rp-password" type="password" autoComplete="new-password" placeholder="Create a strong password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!sessionReady} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px', opacity: sessionReady ? 1 : 0.5 }} />
+                <PasswordField
+                  id="rp-password"
+                  autoComplete="new-password"
+                  placeholder="Create a strong password"
+                  value={password}
+                  onChange={setPassword}
+                  disabled={!sessionReady}
+                  style={{ opacity: sessionReady ? 1 : 0.5 }}
+                />
                 {/* Same checklist as signup, driven by the same PASSWORD_RULES.
                     A reset that enforces the signup rules must also show them,
                     or the filer is guessing at what the form wants. */}
@@ -136,7 +145,15 @@ export function ResetPassword() {
               </div>
               <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
                 <label htmlFor="rp-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
-                <input id="rp-confirm" type="password" autoComplete="new-password" placeholder="Repeat your password" value={confirm} onChange={(e) => setConfirm(e.target.value)} disabled={!sessionReady} style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: '0.5rem', border: '1px solid var(--tf-border)', background: 'var(--tf-bg)', color: 'var(--tf-text)', fontSize: '0.9375rem', outline: 'none', boxSizing: 'border-box', minHeight: '44px', opacity: sessionReady ? 1 : 0.5 }} />
+                <PasswordField
+                  id="rp-confirm"
+                  autoComplete="new-password"
+                  placeholder="Repeat your password"
+                  value={confirm}
+                  onChange={setConfirm}
+                  disabled={!sessionReady}
+                  style={{ opacity: sessionReady ? 1 : 0.5 }}
+                />
               </div>
               {error && sessionReady && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
               <button type="submit" disabled={submitting || !sessionReady} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: (submitting || !sessionReady) ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: (submitting || !sessionReady) ? 0.7 : 1 }}>
