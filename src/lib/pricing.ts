@@ -240,6 +240,75 @@ export function computeTotal(
   return base + rcl + parties + fax;
 }
 
+/** One priced line of a checkout, as the filer is shown it before paying. */
+export type CheckoutLine = { label: string; amount: number };
+
+/**
+ * The cart, itemised, exactly as `create-checkout-session` builds it.
+ *
+ * Every surface that shows a filer what they are about to pay reads this, so
+ * the review screen, the filing page and the Dodo checkout cannot disagree. The
+ * shapes to keep in step are the ones the edge function encodes: the filing is
+ * per year, the letter and the fax are each charged ONCE for the whole job
+ * however many years it covers, and an additional party is charged per year it
+ * produces a Form 5472 in. That last one is why this takes a count PER YEAR
+ * rather than a single number: a party with transactions in one year of a
+ * three-year catch-up is one $25, not three.
+ *
+ * `billablePartiesByYear` holds billable additional parties for each year, in
+ * any order, one entry per year being bought. Its length is the year count, so
+ * the two cannot drift apart.
+ *
+ * Tax is not modelled here and must not be. Dodo is merchant of record and
+ * computes it at checkout from the payer's billing country, so any figure this
+ * file produced would be a guess presented as a total.
+ */
+export function checkoutLines(input: {
+  billablePartiesByYear: number[];
+  includeRCL: boolean;
+  includeFax: boolean;
+}): { lines: CheckoutLine[]; total: number } {
+  const years = input.billablePartiesByYear.length;
+  const lines: CheckoutLine[] = [];
+
+  if (years > 0) {
+    lines.push({
+      label: years === 1
+        ? 'Form 5472 + pro forma 1120'
+        : `Form 5472 + pro forma 1120, ${years} tax years at $${PRICE_PER_YEAR}`,
+      amount: years * PRICE_PER_YEAR,
+    });
+  }
+
+  if (input.includeRCL) {
+    lines.push({
+      label: years > 1
+        ? 'Reasonable cause letter, once for every year'
+        : 'Reasonable cause letter',
+      amount: PRICE_RCL,
+    });
+  }
+
+  const parties = input.billablePartiesByYear.reduce((t, n) => t + Math.max(0, n), 0);
+  if (parties > 0) {
+    lines.push({
+      label: `Additional related ${parties === 1 ? 'party' : 'parties'}, ${parties} at $${PRICE_ADDITIONAL_PARTY}`,
+      amount: parties * PRICE_ADDITIONAL_PARTY,
+    });
+  }
+
+  if (input.includeFax) {
+    lines.push({
+      label: years > 1
+        ? 'IRS fax transmission, once for every year'
+        : 'IRS fax transmission',
+      amount: PRICE_FAX,
+    });
+  }
+
+  return { lines, total: lines.reduce((t, l) => t + l.amount, 0) };
+}
+
 /** Human-readable breakdown for the additional-party add-on, for one year. */
 export function additionalPartiesBreakdown(totalForms: number): string {
   const additional = Math.max(0, totalForms - 1);

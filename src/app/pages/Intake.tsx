@@ -40,7 +40,7 @@ import {
   taxIdTooltip,
   taxIdWarning,
 } from './intake/countryTaxIds';
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY, billablePartyCount } from '../../lib/pricing';
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY, billablePartyCount, checkoutLines } from '../../lib/pricing';
 import { formatAmount, formatUsd } from '../../lib/money';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
@@ -479,7 +479,14 @@ function joinYears(years: string[]): string {
 }
 
 /** A sibling year of the same catch-up job, as this page reads it. */
-type JobYear = { id: string; tax_year: string; status: string; current_step: number };
+type JobYear = {
+  id: string;
+  tax_year: string;
+  status: string;
+  current_step: number;
+  /** Billable additional parties in THIS year, for pricing the whole job. */
+  billable_parties: number;
+};
 
 /**
  * The year to open after finishing `currentTaxYear`, or null when the next stop
@@ -506,7 +513,11 @@ type JobYear = { id: string; tax_year: string; status: string; current_step: num
  * before payment rather than being paid for half-answered. `years` is sorted
  * ascending.
  */
-function nextOpenYear(years: JobYear[], currentId: string | null, currentTaxYear: string | number): JobYear | null {
+function nextOpenYear<T extends Pick<JobYear, 'id' | 'tax_year' | 'status' | 'current_step'>>(
+  years: T[],
+  currentId: string | null,
+  currentTaxYear: string | number,
+): T | null {
   const others = years.filter((y) => y.id !== currentId);
   const ahead = others.filter((y) => Number(y.tax_year) > Number(currentTaxYear));
   if (ahead[0]) return ahead[0];
@@ -516,6 +527,32 @@ function nextOpenYear(years: JobYear[], currentId: string | null, currentTaxYear
 function getStepOrder(show1b: boolean): IntakeStep[] {
   if (show1b) return [1, '1b', 2, 3, 4, 5];
   return [1, 2, 3, 4, 5];
+}
+
+/**
+ * The step named by `?step=`, or null when the URL asks for nothing.
+ *
+ * The param carries the INTERNAL step number, the same 1 to 5 that
+ * `filings.current_step` stores and that the dashboard card counts "of 5". It is
+ * NOT the number the accordion prints on screen: 1b is an extra section inside
+ * step 1, so from the reasonable-cause section onward the printed number runs
+ * one ahead of this one. That divergence is deliberate and must stay, because
+ * the dashboard's resume link feeds `current_step` straight back into this
+ * param; renumbering here to match the screen would desync the two.
+ *
+ * Out of range CLAMPS rather than resetting. `?step=6` is the number the review
+ * section prints on itself, and it used to land the filer on step 1, at the top
+ * of a form they had already filled in, which reads as the wizard having thrown
+ * their work away. Anything past the end means the end.
+ */
+function stepFromParam(raw: string | null): IntakeStep | null {
+  if (raw === '1b') return '1b';
+  if (raw == null || raw.trim() === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  if (n < 1) return 1;
+  if (n > 5) return 5;
+  return Math.floor(n) as IntakeStep;
 }
 
 /**
@@ -1036,6 +1073,12 @@ const primaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.5rem', backgro
 const secondaryBtnStyle: React.CSSProperties = { padding: '0.6rem 1.25rem', background: 'transparent', color: 'var(--tf-text)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' };
 const addBtnStyle: React.CSSProperties = { marginTop: '0.75rem', alignSelf: 'flex-start', padding: '0.4375rem 1rem', background: 'var(--tf-accent)', color: 'var(--tf-on-accent)', border: 'none', borderRadius: '0.375rem', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' };
 const infoBoxStyle: React.CSSProperties = { background: 'var(--tf-offset)', border: '1px solid var(--tf-border)', borderRadius: '0.375rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.75rem' };
+// The priced-lines card. Same chrome as reviewGridStyle deliberately: it sits
+// among the review panels and is one of them, so it takes the surface, border,
+// radius and padding they all share rather than inventing a card of its own.
+const payCardStyle: React.CSSProperties = { background: 'var(--tf-surface)', border: '1px solid var(--tf-border)', borderRadius: '0.625rem', padding: '1.375rem 1.5rem' };
+const payLineStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: '1.5rem', fontSize: '0.95rem', color: 'var(--tf-text)', marginBottom: '0.625rem' };
+const payTotalStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: '1.5rem', paddingTop: '0.875rem', marginTop: '0.25rem', borderTop: '1px solid var(--tf-border)', fontSize: '1.0625rem', fontWeight: 700, color: 'var(--tf-text)' };
 const errorSummaryStyle: React.CSSProperties = { background: 'var(--tf-error-bg)', color: 'var(--tf-error-text)', border: '1px solid var(--tf-error-border)', borderRadius: '0.5rem', padding: '0.875rem 1rem', marginBottom: '1rem', fontSize: '0.875rem' };
 const groupedCardStyle: React.CSSProperties = { border: '1px solid var(--tf-border)', borderRadius: '0.625rem', background: 'var(--tf-surface)', overflow: 'hidden' };
 // A clickable error message. It has to look like the sentence it is, so it
@@ -1107,12 +1150,7 @@ export function Intake() {
   const [taxYear, setTaxYear] = useState('2024');
   const today = new Date();
 
-  const [step, setStep] = useState<IntakeStep>(() => {
-    const raw = params.get('step');
-    if (raw === '1b') return '1b';
-    const s = Number(raw);
-    return (s >= 1 && s <= 5 ? s : 1) as IntakeStep;
-  });
+  const [step, setStep] = useState<IntakeStep>(() => stepFromParam(params.get('step')) ?? 1);
 
   // The intake set no page meta at all, so every step kept whichever title the
   // previous route had left behind: all five reported "Check Your Eligibility"
@@ -1721,15 +1759,39 @@ export function Intake() {
       if (thisJobId) {
         const { data: sibs } = await supabase
           .from('filings')
-          .select('id, tax_year, status, current_step')
+          .select('id, tax_year, status, current_step, related_parties')
           .eq('job_id', thisJobId);
+        const sibRows = sibs ?? [];
+        // Billable parties for EVERY year of the job, not just the open one.
+        // The review screen prices the whole catch-up, and a party is charged
+        // per year it actually produces a Form 5472 in, so a total built from
+        // this year's parties alone would be wrong for any job whose years
+        // differ. One query for every sibling's transactions rather than one
+        // per year: the party index is all that is needed to price them.
+        const sibIds = sibRows.map((s: any) => s.id as string);
+        const { data: sibTxns } = sibIds.length
+          ? await supabase
+              .from('reportable_transactions')
+              .select('filing_id, related_party_index')
+              .in('filing_id', sibIds)
+          : { data: [] as any[] };
+        const txnsByFiling = new Map<string, (number | null)[]>();
+        for (const t of (sibTxns ?? []) as any[]) {
+          const key = t.filing_id as string;
+          if (!txnsByFiling.has(key)) txnsByFiling.set(key, []);
+          txnsByFiling.get(key)!.push(t.related_party_index ?? null);
+        }
         setJobYears(
-          (sibs ?? [])
+          sibRows
             .map((s: any) => ({
               id: s.id as string,
               tax_year: String(s.tax_year),
               status: s.status as string,
               current_step: Number(s.current_step ?? 1) || 1,
+              billable_parties: billablePartyCount(
+                Array.isArray(s.related_parties) ? s.related_parties.length : 0,
+                txnsByFiling.get(s.id as string) ?? [],
+              ),
             }))
             .sort((a, b) => Number(a.tax_year) - Number(b.tax_year)),
         );
@@ -1810,12 +1872,8 @@ export function Intake() {
       // Honor the step requested in the URL for this filing. When the multi-year
       // walk sends the user to the next year at ?step=3, the component does not
       // remount (same route, new query), so sync the step here after load.
-      const rawStep = params.get('step');
-      if (rawStep === '1b') setStep('1b');
-      else {
-        const s = Number(rawStep);
-        if (s >= 1 && s <= 5) setStep(s as IntakeStep);
-      }
+      const requested = stepFromParam(params.get('step'));
+      if (requested !== null) setStep(requested);
 
       setLoadingFiling(false);
     })();
@@ -2773,6 +2831,22 @@ export function Intake() {
    * predicates before, and the button read "Save 2023 & continue to 2022" on a
    * year already filed.
    */
+  /**
+   * What this filer is about to pay, itemised, for the review step.
+   *
+   * On a catch-up the price is the JOB's, not this year's: one checkout buys
+   * every year, so the review of any year in it shows the same figure the
+   * button leads to. The open year's parties come from local state rather than
+   * `jobYears` so the total answers to edits made on this screen before a save.
+   */
+  const reviewCart = checkoutLines({
+    billablePartiesByYear: jobId && jobYears.length > 0
+      ? jobYears.map((y) => (y.id === filingId ? billableRelatedPartyCount : y.billable_parties))
+      : [billableRelatedPartyCount],
+    includeRCL: includeReasonableCause,
+    includeFax: includeIrsFax,
+  });
+
   const nextYear = nextOpenYear(jobYears, filingId, taxYear);
   const nextDraftYear = nextYear?.tax_year ?? null;
   const hasNextDraftYear = nextYear != null;
@@ -5504,6 +5578,35 @@ export function Intake() {
 
             {noTransactionsConfirmed && (
               <div style={infoBoxStyle}>No reportable transactions confirmed.</div>
+            )}
+
+            {/* What it costs, itemised, on the screen where they decide.
+                The filer used to leave this step, and the filing page after it,
+                without ever being shown a figure: the first number in the whole
+                flow was on Dodo's checkout. Services.tsx already promises "you
+                will see every service itemised before you are asked to pay",
+                so this is the page making that sentence true. Read from
+                `checkoutLines` rather than added up here, so it cannot drift
+                from the cart `create-checkout-session` builds. */}
+            {!isPaidLocked && reviewCart.total > 0 && (
+              <section style={{ marginTop: '1.5rem' }}>
+                <h3 style={sectionLabelStyle}>What you pay</h3>
+                <div style={payCardStyle}>
+                  {reviewCart.lines.map((line) => (
+                    <div key={line.label} style={payLineStyle}>
+                      <span>{line.label}</span>
+                      <span style={{ whiteSpace: 'nowrap' }}>{usd(line.amount)}</span>
+                    </div>
+                  ))}
+                  <div style={payTotalStyle}>
+                    <span>{jobId && jobYears.length > 1 ? 'Total for every year' : 'Total'}</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>{usd(reviewCart.total)}</span>
+                  </div>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', lineHeight: 1.5, marginTop: '0.875rem', marginBottom: 0 }}>
+                    Prices exclude tax.
+                  </p>
+                </div>
+              </section>
             )}
 
             {!isPaidLocked && (

@@ -6,7 +6,7 @@ import { edgeFunctionError } from '../../lib/edgeErrors';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { TX_TYPES } from './intake/constants';
 import { formatAmount } from '../../lib/money';
-import { billablePartyCount } from '../../lib/pricing';
+import { billablePartyCount, checkoutLines, PRICE_ADDITIONAL_PARTY } from '../../lib/pricing';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
 import FaxPanel, { type FaxBuild } from '../components/FaxPanel';
@@ -88,6 +88,66 @@ export default function FilingWizard() {
   // only the words were wrong, which is the worse failure of the two after a
   // decline.
   const isRelatedPartyTopUp = filing?.paid_at != null && hasUnpaidRelatedParties;
+
+  /**
+   * Billable additional parties for every year of a catch-up, or null on a
+   * single filing, where the count already in `relatedPartyCount` is the whole
+   * answer. One checkout buys the whole job, so the figure this page shows has
+   * to be the job's; pricing it from the anchor year alone understates any
+   * catch-up whose other years carry parties of their own.
+   */
+  const [jobPartiesByYear, setJobPartiesByYear] = useState<number[] | null>(null);
+  useEffect(() => {
+    const jid = filing?.job_id;
+    if (!jid || isPaid) { setJobPartiesByYear(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: sibs } = await supabase
+        .from('filings').select('id, related_parties').eq('job_id', jid);
+      const rows = sibs ?? [];
+      const ids = rows.map((s: any) => s.id as string);
+      const { data: txns } = ids.length
+        ? await supabase
+            .from('reportable_transactions')
+            .select('filing_id, related_party_index')
+            .in('filing_id', ids)
+        : { data: [] as any[] };
+      const byFiling = new Map<string, (number | null)[]>();
+      for (const t of (txns ?? []) as any[]) {
+        const k = t.filing_id as string;
+        if (!byFiling.has(k)) byFiling.set(k, []);
+        byFiling.get(k)!.push(t.related_party_index ?? null);
+      }
+      if (cancelled) return;
+      setJobPartiesByYear(rows.map((s: any) => billablePartyCount(
+        Array.isArray(s.related_parties) ? s.related_parties.length : 0,
+        byFiling.get(s.id as string) ?? [],
+      )));
+    })();
+    return () => { cancelled = true; };
+  }, [filing?.job_id, isPaid]);
+
+  /**
+   * The cart this page's button leads to. A top-up is deliberately NOT the
+   * whole cart: `create-checkout-session` sells exactly the unpaid party delta
+   * in that case, so showing the filing and the letter again would quote a
+   * filer who has already paid for both.
+   */
+  const paymentCart = isRelatedPartyTopUp
+    ? {
+        lines: [{
+          label: `Additional related ${
+            relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party' : 'parties'
+          }, ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} at $${PRICE_ADDITIONAL_PARTY}`,
+          amount: (relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)) * PRICE_ADDITIONAL_PARTY,
+        }],
+        total: (relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)) * PRICE_ADDITIONAL_PARTY,
+      }
+    : checkoutLines({
+        billablePartiesByYear: jobPartiesByYear ?? [relatedPartyCount],
+        includeRCL: filing?.include_rcl === true,
+        includeFax: filing?.include_irs_fax === true,
+      });
 
   // Integrity, IRM 10.10.1.3.1. A signature is a statement about a specific
   // document. If the filing changes after it was drawn, what the filer signed no
@@ -785,6 +845,49 @@ export default function FilingWizard() {
                       ? `${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0)} additional related ${relatedPartyCount - Number(filing?.paid_related_party_count ?? 0) === 1 ? 'party requires' : 'parties require'} payment. After payment, you can generate and download the updated filing package.`
                       : 'Your checkout is calculated from the tax years and optional services in this filing. After payment, you can generate and download the filing package.'}
                   </p>
+                  {/* The figure, before the button, not after the redirect.
+                      This page asked for a card without ever naming a price:
+                      the first number in the flow was on Dodo's checkout. */}
+                  {paymentCart.total > 0 && (
+                    <div style={{
+                      padding: '1rem 1.125rem',
+                      border: '1px solid var(--tf-border)',
+                      borderRadius: '0.625rem',
+                      background: 'var(--tf-offset)',
+                      marginBottom: '1rem',
+                    }}>
+                      {paymentCart.lines.map((line) => (
+                        <div
+                          key={line.label}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: '1.5rem',
+                            fontSize: '0.95rem',
+                            color: 'var(--tf-text)',
+                            marginBottom: '0.625rem',
+                          }}
+                        >
+                          <span>{line.label}</span>
+                          <span style={{ whiteSpace: 'nowrap' }}>${formatAmount(line.amount)}</span>
+                        </div>
+                      ))}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '1.5rem',
+                        paddingTop: '0.875rem',
+                        marginTop: '0.25rem',
+                        borderTop: '1px solid var(--tf-border)',
+                        fontWeight: 700,
+                        color: 'var(--tf-text)',
+                        fontSize: '1.0625rem',
+                      }}>
+                        <span>{(jobPartiesByYear?.length ?? 0) > 1 ? 'Total for every year' : 'Total'}</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>${formatAmount(paymentCart.total)}</span>
+                      </div>
+                    </div>
+                  )}
                   <button
                     onClick={handleCheckout}
                     disabled={checkoutBusy}
@@ -806,10 +909,13 @@ export default function FilingWizard() {
                       into $391.76. Saying it here costs one muted sentence;
                       putting the real figure on this page would mean asking
                       Dodo for a tax quote before checkout, which is a large
-                      change for a number they see thirty seconds later. */}
+                      change for a number they see thirty seconds later.
+                      The sentence naming billing country and currency was cut
+                      on the owner's instruction, 8 August 2026: the itemised
+                      total above already tells the filer what they are paying,
+                      and the qualifications were longer than the fact. */}
                   <p style={{ fontSize: '0.75rem', color: 'var(--tf-muted)', lineHeight: 1.5, marginTop: '0.75rem', marginBottom: 0 }}>
-                    Prices exclude tax. Any tax due, and your billing currency, are calculated at
-                    checkout from your billing country.
+                    Prices exclude tax.
                   </p>
                 </div>
               </section>
