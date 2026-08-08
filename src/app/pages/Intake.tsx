@@ -471,6 +471,39 @@ function stepNumberOf(s: IntakeStep): number {
   return s === '1b' ? 1 : Number(s);
 }
 
+/** A sibling year of the same catch-up job, as this page reads it. */
+type JobYear = { id: string; tax_year: string; status: string; current_step: number };
+
+/**
+ * Has this catch-up year been all the way through intake?
+ *
+ * `status` cannot answer it. Every year of a job stays `draft` until the job is
+ * PAID, so after finishing 2022 and moving to 2023, both rows were `draft` and
+ * "the earliest remaining draft year" chose 2022 again: the catch-up walked
+ * 2022 → 2023 → 2022 → 2023 and never reached payment at all. `current_step`
+ * reaching 5 is the only record that a year has been submitted through its own
+ * review, and handleSubmit writes it as it submits.
+ */
+function isYearFinished(y: Pick<JobYear, 'status' | 'current_step'>): boolean {
+  return y.status !== 'draft' || Number(y.current_step ?? 1) >= 5;
+}
+
+/**
+ * The year to open after finishing `currentTaxYear`, or null when this was the
+ * last one and the next stop is payment.
+ *
+ * FORWARD first, because a catch-up is filed oldest to newest and the button
+ * names the year it is about to open: from 2023 the answer is 2024, never 2022.
+ * An unfinished EARLIER year is still offered rather than skipped, since the
+ * filer can reach any year from the tab strip and leave one behind; it just
+ * comes after everything ahead of here. `years` is sorted ascending.
+ */
+function nextOpenYear(years: JobYear[], currentId: string | null, currentTaxYear: string | number): JobYear | null {
+  const open = years.filter((y) => y.id !== currentId && !isYearFinished(y));
+  const ahead = open.filter((y) => Number(y.tax_year) > Number(currentTaxYear));
+  return ahead[0] ?? open[0] ?? null;
+}
+
 function getStepOrder(show1b: boolean): IntakeStep[] {
   if (show1b) return [1, '1b', 2, 3, 4, 5];
   return [1, 2, 3, 4, 5];
@@ -1315,10 +1348,15 @@ export function Intake() {
   // Set when this filing is part of a multi-year catch-up job; drives "next
   // year" routing after each year's intake is submitted.
   const [jobId, setJobId] = useState<string | null>(null);
-  // For a multi-year job: is there another draft year AFTER this one to file?
-  const [hasNextDraftYear, setHasNextDraftYear] = useState(false);
-  // Sibling year filings in the same catch-up job, drives the year tab strip.
-  const [jobYears, setJobYears] = useState<{ id: string; tax_year: string; status: string }[]>([]);
+  // Sibling year filings in the same catch-up job, drives the year tab strip,
+  // the submit button's label and where submitting this year goes next.
+  //
+  // `hasNextDraftYear` used to be tracked separately and answered a different
+  // question from the one the label asked: it was true whenever ANY other year
+  // was still `draft`, which is every year of an unpaid job including the ones
+  // already filled in. Derived from this one list now, through nextOpenYear, so
+  // the label and the navigation cannot disagree.
+  const [jobYears, setJobYears] = useState<JobYear[]>([]);
   // Once a filing has been completed at least once (submitted / paid), every
   // step is freely navigable, from step 1 the user can jump straight to step 5.
   const [completedOnce, setCompletedOnce] = useState(false);
@@ -1661,26 +1699,25 @@ export function Intake() {
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
       setJobId((f as any).job_id ?? null);
-      // Determine whether a later draft year remains in this job (drives the
-      // submit-button label: "File next year" vs "Finish & review").
+      // Every year of this job, sorted ascending. Drives the tab strip, the
+      // submit label and the next-year routing, all from this one list.
       const thisJobId = (f as any).job_id ?? null;
       if (thisJobId) {
         const { data: sibs } = await supabase
           .from('filings')
-          .select('id, tax_year, status')
+          .select('id, tax_year, status, current_step')
           .eq('job_id', thisJobId);
-        const remaining = (sibs ?? []).some(
-          (s: any) => s.id !== filingId && s.status === 'draft',
-        );
-        setHasNextDraftYear(remaining);
-        // Keep the year tabs in sync (sorted ascending by tax year).
         setJobYears(
           (sibs ?? [])
-            .map((s: any) => ({ id: s.id as string, tax_year: String(s.tax_year), status: s.status as string }))
+            .map((s: any) => ({
+              id: s.id as string,
+              tax_year: String(s.tax_year),
+              status: s.status as string,
+              current_step: Number(s.current_step ?? 1) || 1,
+            }))
             .sort((a, b) => Number(a.tax_year) - Number(b.tax_year)),
         );
       } else {
-        setHasNextDraftYear(false);
         setJobYears([]);
       }
       setFinalReturn((f as any).final_return ?? false);
@@ -2646,6 +2683,22 @@ export function Intake() {
     navigate(`?${newParams.toString()}`, { replace: true });
   };
 
+  // Opening another YEAR is a new page to the filer and the same route to the
+  // browser: only the query string changes, so the scroll position is kept. The
+  // button that opened 2023 sat far down 2022's page, and 2023 then rendered
+  // with its year tabs, its heading and its "Catch-up filing for tax year 2023"
+  // banner all off-screen above, so the click read as having done nothing at
+  // all. Not on the first filing this page shows, because that one is either
+  // already at the top or was deliberately deep-linked to a step.
+  const scrolledForFiling = useRef<string | null>(null);
+  useEffect(() => {
+    if (!filingId) return;
+    const first = scrolledForFiling.current === null;
+    if (scrolledForFiling.current === filingId) return;
+    scrolledForFiling.current = filingId;
+    if (!first) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [filingId]);
+
   // "Save & continue" inside a section: validate it, save the whole form, then
   // collapse this section and open the next one, scrolling to it.
   const continueFromSection = async (key: string) => {
@@ -2696,12 +2749,17 @@ export function Intake() {
   const isEarliestJobYear = jobYears.length === 0 || jobYears[0]?.id === filingId;
 
   /**
-   * The catch-up year the Review button will open next. Mirrors the selection
-   * handleSubmit makes (earliest remaining draft, this filing excluded), the
-   * `jobYears` list is already sorted ascending, so `find` picks the same row.
+   * The catch-up year the Review button will open next, or null when this is
+   * the last year left and the button goes to payment instead.
+   *
+   * Both the label and handleSubmit call nextOpenYear, so the year named on the
+   * button is by construction the year that opens. They were separately written
+   * predicates before, and the button read "Save 2023 & continue to 2022" on a
+   * year already filed.
    */
-  const nextDraftYear =
-    jobYears.find((y) => y.id !== filingId && y.status === 'draft')?.tax_year ?? null;
+  const nextYear = nextOpenYear(jobYears, filingId, taxYear);
+  const nextDraftYear = nextYear?.tax_year ?? null;
+  const hasNextDraftYear = nextYear != null;
 
   /**
    * Label for a section's "continue" button.
@@ -2975,25 +3033,39 @@ export function Intake() {
         });
       } catch { /* profile save is non-critical */ }
 
-      // Multi-year catch-up: file chronologically. After finishing this year,
-      // jump forward to the EARLIEST remaining draft year (ascending), so the
-      // user walks 2022 → 2023 → 2024 → 2025. When every year is done, go to the
-      // job's package page to review/download the whole catch-up.
+      // Multi-year catch-up: file chronologically, forwards. After finishing
+      // this year, open the next year that has not been through review, so the
+      // user walks 2022 → 2023 → 2024 → 2025. Read fresh from the database
+      // rather than from `jobYears`, because this year's own current_step was
+      // written moments ago, above.
+      //
+      // When nothing is left, fall through to checkout: the last year of a
+      // catch-up pays from here exactly as a single-year filing does. It used to
+      // route back to the earliest year that was still `draft`, which is every
+      // year of an unpaid job, so a catch-up could not reach payment from
+      // intake at all.
       if (jobId) {
         const { data: siblings } = await supabase
           .from('filings')
           .select('id, tax_year, current_step, status')
           .eq('job_id', jobId)
           .order('tax_year', { ascending: true });
-        const nextYear = (siblings ?? []).find(
-          (s) => s.id !== filingId && s.status === 'draft',
+        const target = nextOpenYear(
+          (siblings ?? []).map((s: any) => ({
+            id: s.id as string,
+            tax_year: String(s.tax_year),
+            status: s.status as string,
+            current_step: Number(s.current_step ?? 1) || 1,
+          })),
+          filingId,
+          taxYear,
         );
-        if (nextYear) {
+        if (target) {
           // Company + owner (Steps 1-2) were just propagated to this year, so
           // send the user straight to Step 3 (related parties). Every section
           // stays open on the page, so they can still scroll back to review
           // Steps 1-2 for this year if a year-specific detail needs changing.
-          navigate(`/intake?filing_id=${nextYear.id}&step=3`);
+          navigate(`/intake?filing_id=${target.id}&step=3`);
           return;
         }
       }
@@ -5322,10 +5394,27 @@ export function Intake() {
                 would mean either an unpaid fax or a second charge. */}
             <section style={sectionStyle}>
               <h3 style={sectionLabelStyle}>Delivery</h3>
-              {isPaidLocked ? (
-                <div style={reviewGridStyle}>
-                  <SummaryRow label="IRS fax transmission" value={includeIrsFax ? 'Yes' : 'No, download and send it yourself'} />
-                </div>
+              {/* On a CATCH-UP this is reported, not asked. The fee is charged
+                  once for the whole job and every year is transmitted together,
+                  so the question belongs on the screen that picks the years,
+                  beside the reasonable-cause letter, and it is asked there. A
+                  tick box per year's review would ask five times for one $9
+                  line and let the answer differ between years, which is the
+                  same fact in two places this codebase keeps getting wrong.
+                  A filer who said no is offered it again after payment, below
+                  the download, by FaxPanel. */}
+              {isPaidLocked || jobId ? (
+                <>
+                  <div style={reviewGridStyle}>
+                    <SummaryRow label="IRS fax transmission" value={includeIrsFax ? 'Yes' : 'No, download and send it yourself'} />
+                  </div>
+                  {jobId && !isPaidLocked && (
+                    <p style={{ color: 'var(--tf-muted)', fontSize: '0.8125rem', lineHeight: 1.6, marginTop: '0.5rem' }}>
+                      Chosen once for the whole catch-up, on the screen where you picked the years. You can
+                      change it there until you pay, and add it afterwards from the filing page.
+                    </p>
+                  )}
+                </>
               ) : (
                 <>
                   <label className="confirm-check-row" style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -5339,15 +5428,19 @@ export function Intake() {
                         Fax my completed forms to the IRS for me (+${PRICE_FAX})
                       </span>
                       <span style={{ display: 'block', color: 'var(--tf-muted)', fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.6, marginTop: '0.25rem' }}>
-                        {/* Says what they get and what is still theirs to do.
-                            These forms cannot be e-filed, so without this the
-                            filer prints and mails to Ogden themselves, and the
-                            page should say so rather than implying fax is the
-                            only route. */}
+                        {/* Says what they get and what is still theirs to do:
+                            without this the filer prints and mails to Ogden,
+                            and the page should say so rather than implying fax
+                            is the only route. It does NOT say the forms cannot
+                            be e-filed. Owner's instruction, 8 August 2026: no
+                            surface mentions electronic filing at all, here or
+                            on the catch-up screen. It answered a question
+                            nobody on this page had asked and put the words
+                            "cannot be filed" in front of someone deciding to
+                            pay. */}
                         We transmit the package and send you the confirmation. Charged once
                         {jobId ? ' for the whole catch-up, however many years it covers' : ' per filing'}.
-                        Without it you download the forms and mail them yourself; either way these
-                        forms cannot be filed electronically.
+                        Without it you download the forms and mail them to the IRS yourself.
                       </span>
                     </span>
                   </label>

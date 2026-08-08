@@ -19,11 +19,15 @@ import { useAuth } from '../context/AuthContext';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { listCompanies, type FilingProfile } from '../../lib/filingProfile';
 import { REASONABLE_CAUSE_REASONS, EARLIEST_TAX_YEAR } from './intake/constants';
-import { PRICE_RCL } from '../../lib/pricing';
+import { PRICE_RCL, PRICE_FAX } from '../../lib/pricing';
 
 // Defined once, in intake/constants. It was written out here and in
 // PenaltyCalculator, and the dashboard catch-up prompt needed a third.
 const EARLIEST_YEAR = EARLIEST_TAX_YEAR;
+
+// The company selector's "not one of these" option. A saved EIN can never be
+// this, so it cannot collide with a real value.
+const NEW_COMPANY = '__new__';
 
 export function MultiYearStart() {
   usePageMeta({
@@ -56,6 +60,23 @@ export function MultiYearStart() {
   // used, which is the right answer for the common single-company filer.
   const [companies, setCompanies] = useState<FilingProfile[]>([]);
   const [selectedEin, setSelectedEin] = useState<string>('');
+  // IRS fax delivery, the $9 add-on, charged ONCE for the whole catch-up.
+  //
+  // Asked here rather than on each year's review screen, because a catch-up is
+  // transmitted as one package: asking on review meant asking the same question
+  // three or five times for a single fee. Written to every year row, since
+  // `filings.include_irs_fax` is the only source of the entitlement the checkout
+  // and the dispatcher read, and both of them take it across the job with
+  // `some()`. A filer who says no here is offered it again after payment, on the
+  // filing page below the download, which is the moment they discover they have
+  // no fax machine.
+  const [includeIrsFax, setIncludeIrsFax] = useState(false);
+  // Years this company has already been filed for, so they cannot be bought
+  // twice. A year that has been paid for is not an option to re-select: the
+  // filer's own dashboard already holds that return, and selecting it here
+  // would create a second filing for the same year and charge $99 for it.
+  // Keyed by year, valued with what it is, so the hover can say which.
+  const [filedYears, setFiledYears] = useState<Map<number, string>>(new Map());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [anyYearPaid, setAnyYearPaid] = useState(false);
@@ -77,6 +98,38 @@ export function MultiYearStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Load the years already filed for the selected company. Matched on EIN,
+  // which is the identifier the IRS files under and the one thing a filer
+  // cannot have two of for one entity; a name can be edited between years.
+  // Rows belonging to the job being EDITED are excluded, or every year already
+  // in this catch-up would lock itself the moment one of them was paid.
+  useEffect(() => {
+    if (!user || !selectedEin || selectedEin === NEW_COMPANY) { setFiledYears(new Map()); return; }
+    let cancelled = false;
+    (async () => {
+      const dashed = formatEin(selectedEin);
+      if (!dashed) { setFiledYears(new Map()); return; }
+      const { data } = await supabase
+        .from('filings')
+        .select('tax_year, status, job_id')
+        .eq('user_id', user.id)
+        .eq('ein', dashed)
+        .in('status', ['paid', 'submitted', 'completed']);
+      if (cancelled) return;
+      const next = new Map<number, string>();
+      for (const row of (data ?? []) as any[]) {
+        if (editJobId && row.job_id === editJobId) continue;
+        const y = Number(row.tax_year);
+        if (!Number.isFinite(y)) continue;
+        next.set(y, row.status === 'submitted' ? 'faxed to the IRS' : 'already filed');
+      }
+      setFiledYears(next);
+      // A year that turns out to be filed cannot stay selected.
+      setSelected((prev) => new Set([...prev].filter((y) => !next.has(y))));
+    })();
+    return () => { cancelled = true; };
+  }, [user, selectedEin, editJobId]);
+
   // When editing an existing job, prefill the selected years, RCL choice,
   // reasons and incorporation date from the job and its filings.
   useEffect(() => {
@@ -90,7 +143,7 @@ export function MultiYearStart() {
         .single();
       const { data: fs } = await supabase
         .from('filings')
-        .select('tax_year, status, date_of_incorporation')
+        .select('tax_year, status, date_of_incorporation, include_irs_fax')
         .eq('job_id', editJobId);
       if (cancelled) return;
       if (job) {
@@ -99,6 +152,9 @@ export function MultiYearStart() {
       }
       if (fs && fs.length) {
         setSelected(new Set(fs.map((f: any) => Number(f.tax_year))));
+        // Job-scoped, so any year carrying it means the job has it. Same
+        // `some()` the checkout and the dispatcher use.
+        setIncludeIrsFax(fs.some((f: any) => f.include_irs_fax === true));
         const doi = fs.find((f: any) => f.date_of_incorporation)?.date_of_incorporation;
         if (doi) setIncorpDate(doi);
         // If any year is already paid, years can no longer be changed.
@@ -110,8 +166,18 @@ export function MultiYearStart() {
 
   // The entity can't have a filing obligation before it existed. Once the
   // incorporation date is known, years before that year are not selectable.
+  const isNewCompany = selectedEin === NEW_COMPANY;
   const incorpYear = incorpDate ? Number(incorpDate.split('-')[0]) : null;
-  const isYearEligible = (y: number) => incorpYear == null || y >= incorpYear;
+  const isYearEligible = (y: number) =>
+    !filedYears.has(y) && (incorpYear == null || y >= incorpYear);
+
+  /** Why a year cannot be picked, for the chip's hover. Null when it can. */
+  const whyBlocked = (y: number): string | null => {
+    const filed = filedYears.get(y);
+    if (filed) return `${y} is ${filed}. Open it from your dashboard.`;
+    if (incorpYear != null && y < incorpYear) return `Your LLC was not incorporated until ${incorpYear}`;
+    return null;
+  };
 
   const toggle = (y: number) => {
     if (!isYearEligible(y)) return;
@@ -152,6 +218,12 @@ export function MultiYearStart() {
         include_rcl: includeRcl,
         include_reasonable_cause: includeRcl,
         reasonable_cause_reasons: includeRcl ? rclReasons : [],
+        // Every draft year, not one of them: the entitlement is read across the
+        // job with `some()`, so leaving it on a year that is later deselected
+        // and deleted would silently drop a fax the filer had asked for.
+        // Draft rows only, which is also what `filings_freeze_when_paid()`
+        // permits once any year is paid.
+        include_irs_fax: includeIrsFax,
       }).eq('job_id', editJobId).eq('status', 'draft');
 
       // Existing (draft) year rows for this job.
@@ -185,6 +257,7 @@ export function MultiYearStart() {
           include_rcl: includeRcl,
           include_reasonable_cause: includeRcl,
           reasonable_cause_reasons: includeRcl ? rclReasons : [],
+          include_irs_fax: includeIrsFax,
         }));
         await supabase.from('filings').insert(rows);
       }
@@ -210,9 +283,14 @@ export function MultiYearStart() {
     return d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : '';
   }
 
-  /** The company this catch-up is for, or null when the filer has none saved. */
+  /**
+   * The company this catch-up is for, or null when there is nothing to seed
+   * from: either the filer has no saved company, or they picked one we have
+   * never filed for. Both cases produce an empty seed and intake collects the
+   * entity and owner on the first year, exactly as a first-ever filing does.
+   */
   function selectedCompany(): FilingProfile | null {
-    if (companies.length === 0) return null;
+    if (companies.length === 0 || selectedEin === NEW_COMPANY) return null;
     return companies.find((c) => c.ein === selectedEin) ?? companies[0];
   }
 
@@ -291,6 +369,10 @@ export function MultiYearStart() {
         include_rcl: includeRcl,
         include_reasonable_cause: includeRcl,
         reasonable_cause_reasons: includeRcl ? rclReasons : [],
+        // On every year, for one $9 fee. `create-checkout-session` and
+        // `dispatch-irs-fax` both take the entitlement across the job with
+        // `some()` and the fee is added once, so this cannot multiply the charge.
+        include_irs_fax: includeIrsFax,
       }));
       const { data: created, error: insErr } = await supabase
         .from('filings')
@@ -332,10 +414,14 @@ export function MultiYearStart() {
           </div>
         )}
 
-        {/* Only when there is a real choice to make. With one saved company the
-            question is noise, and with none there is nothing to list. Every
-            year in the catch-up is seeded from this one answer. */}
-        {companies.length > 1 && (
+        {/* Shown whenever anything is saved, because "a company I haven't filed
+            for yet" is now one of the answers, so there is a real choice to make
+            even with a single saved company: a second LLC's catch-up used to
+            open pre-filled with the first one's EIN and owner, and the filer had
+            to notice and overwrite it. With nothing saved there is still nothing
+            to list, and intake collects the company as it always has. Every year
+            in the catch-up is seeded from this one answer. */}
+        {companies.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--tf-text)', marginBottom: '0.375rem' }}>
               Which company is this catch-up for?
@@ -343,8 +429,14 @@ export function MultiYearStart() {
             <select
               value={selectedEin}
               onChange={(e) => {
-                setSelectedEin(e.target.value);
-                const co = companies.find((c) => c.ein === e.target.value);
+                const v = e.target.value;
+                setSelectedEin(v);
+                // A different company shares nothing with the one that was
+                // selected, and the incorporation date decides which years are
+                // even selectable, so carrying it over would offer years this
+                // LLC may not have existed for.
+                if (v === NEW_COMPANY) { setIncorpDate(''); setSelected(new Set()); return; }
+                const co = companies.find((c) => c.ein === v);
                 if (co?.date_of_incorporation) setIncorpDate(String(co.date_of_incorporation));
               }}
               style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-surface)', color: 'var(--tf-text)', fontSize: '0.9375rem' }}
@@ -354,9 +446,12 @@ export function MultiYearStart() {
                   {(c.llc_name?.trim() || 'Unnamed company')} · EIN {formatEin(c.ein)}
                 </option>
               ))}
+              <option value={NEW_COMPANY}>A different company, not listed here</option>
             </select>
             <p style={{ fontSize: '0.8125rem', color: 'var(--tf-muted)', marginTop: '0.375rem', lineHeight: 1.5 }}>
-              Every year you select below is prepared for this company.
+              {isNewCompany
+                ? 'You’ll enter this LLC’s name, EIN and owner details on the first year, and we carry them across every other year you select.'
+                : 'Every year you select below is prepared for this company.'}
             </p>
           </div>
         )}
@@ -394,18 +489,31 @@ export function MultiYearStart() {
           {years.map((y) => {
             const on = selected.has(y);
             const eligible = isYearEligible(y);
+            const blocked = whyBlocked(y);
+            const filed = filedYears.get(y);
             return (
-              <button
-                key={y}
-                type="button"
-                onClick={() => toggle(y)}
-                aria-pressed={on}
-                disabled={!eligible}
-                title={eligible ? undefined : `Your LLC was not incorporated until ${incorpYear}`}
-                className={`tf-chip${on ? ' tf-chip--on' : ''}`}
-              >
-                {y}
-              </button>
+              // The title sits on the WRAPPER, not on the button. A disabled
+              // button receives no mouse events, so a tooltip written on it
+              // never appears, which is the whole point of this one: a chip that
+              // cannot be pressed and does not say why reads as broken.
+              <span key={y} style={{ display: 'block' }} title={blocked ?? undefined}>
+                <button
+                  type="button"
+                  onClick={() => toggle(y)}
+                  aria-pressed={on}
+                  disabled={!eligible}
+                  aria-label={blocked ? `${y}, ${blocked}` : String(y)}
+                  className={`tf-chip${on ? ' tf-chip--on' : ''}`}
+                  style={{ width: '100%' }}
+                >
+                  {y}
+                  {filed && (
+                    <span style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, marginTop: '0.125rem' }}>
+                      Filed
+                    </span>
+                  )}
+                </button>
+              </span>
             );
           })}
         </div>
@@ -465,6 +573,31 @@ export function MultiYearStart() {
             </div>
           </div>
         )}
+
+        {/* Delivery, asked here and only here for a catch-up. On a single-year
+            filing this sits on the review screen, beside the price. A catch-up
+            has one review screen per year for a fee charged once, so asking
+            there asked the same question five times; this is the screen that
+            already decides the job-wide things. Frozen once any year is paid,
+            because that is when the $9 was either bought or not. */}
+        <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: anyYearPaid ? 'not-allowed' : 'pointer', marginBottom: '1.5rem', opacity: anyYearPaid ? 0.6 : 1 }}>
+          <input
+            type="checkbox"
+            checked={includeIrsFax}
+            disabled={anyYearPaid}
+            onChange={(e) => setIncludeIrsFax(e.target.checked)}
+            style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }}
+          />
+          <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
+            <strong>Fax the finished package to the IRS for me (${PRICE_FAX} once).</strong> We transmit
+            every year together and send you the confirmation. Charged once for the whole catch-up,
+            however many years it covers. Without it you download the forms and mail them to the IRS
+            yourself.
+            {anyYearPaid
+              ? ' This is settled for this catch-up because a year has already been paid.'
+              : ' You can also add this later, after payment, from the filing page.'}
+          </span>
+        </label>
 
         {error && (
           <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>{error}</div>
