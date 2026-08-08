@@ -471,6 +471,13 @@ function stepNumberOf(s: IntakeStep): number {
   return s === '1b' ? 1 : Number(s);
 }
 
+/** "2022 and 2023", "2019, 2020 and 2021". Ascending, as the tabs are. */
+function joinYears(years: string[]): string {
+  const ys = [...years].sort();
+  if (ys.length <= 1) return ys[0] ?? '';
+  return `${ys.slice(0, -1).join(', ')} and ${ys[ys.length - 1]}`;
+}
+
 /** A sibling year of the same catch-up job, as this page reads it. */
 type JobYear = { id: string; tax_year: string; status: string; current_step: number };
 
@@ -3670,12 +3677,21 @@ export function Intake() {
             {/* Reads off the SAME nextOpenYear the button and the routing use.
                 It used to promise a next year unconditionally, so the last year
                 of a two-year catch-up said "we'll take you to the next one"
-                while its own button said the next stop was payment. */}
-            <strong>Catch-up filing for tax year {taxYear}.</strong>{' '}
+                while its own button said the next stop was payment.
+
+                Both branches NAME the years. "The next one" told the filer
+                nothing, and "the last year left in this catch-up" read as
+                though the other years had gone somewhere, on the screen where
+                what they actually want to know is which years they are about to
+                pay for. */}
+            <strong>
+              Tax year {taxYear}
+              {jobYears.length > 1 ? ` of ${jobYears.length}` : ''}.
+            </strong>{' '}
             {nextDraftYear
-              ? `Finish this year and we’ll take you to ${nextDraftYear}.`
-              : 'This is the last year left in this catch-up, so finishing it takes you to payment for every year together.'}{' '}
-            Your LLC and owner details are shared across all the years you selected.
+              ? `Finish this year and ${nextDraftYear} opens next.`
+              : `This is the last one. Finishing it takes you to payment for ${joinYears(jobYears.map((y) => y.tax_year))} together.`}{' '}
+            Your LLC and owner details are shared across every year.
           </div>
         )}
 
