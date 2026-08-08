@@ -63,7 +63,7 @@ const filing = {
   current_step: 5,
 
   llc_name: 'Test LLC',
-  ein: '00-1234567',
+  ein: '07-1234567',
   tax_year: TAX_YEAR,
   date_of_incorporation: '2021-03-15',
   state_of_formation: 'DE',
