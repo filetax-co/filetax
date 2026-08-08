@@ -3033,7 +3033,11 @@ export function Intake() {
         });
       }
     } catch { /* best-effort: still go to the picker */ }
-    navigate('/catch-up');
+    // Carry the company across. The picker otherwise opens on the most recently
+    // used company, which on a multi-LLC account is not the one being filed
+    // here, and every year it then offers is prepared under the wrong EIN.
+    const key = normalizeEin(ein) ?? '';
+    navigate(key ? `/catch-up?ein=${key}` : '/catch-up');
   };
 
   /**
@@ -4130,7 +4134,21 @@ export function Intake() {
               // through the latest filable year, whichever year they happen to
               // be sitting on right now.
               const firstYear = doiYear != null ? Math.max(doiYear, 2019) : null;
-              const spanYears = firstYear != null ? latestFilable - firstYear + 1 : null;
+              // Counted OFF THE YEARS STILL OUTSTANDING, not off the span from
+              // formation to now. A filer who has already filed 2022 to 2025
+              // with us and is finishing 2021 was being told "all 5 years
+              // together is $694" and offered a catch-up, when the only year
+              // left to file is the one already open in front of them: the
+              // banner priced four returns they had already bought.
+              const outstanding: number[] = [];
+              if (firstYear != null) {
+                for (let y = firstYear; y <= latestFilable; y++) {
+                  if (!yearAlreadyFiled(y)) outstanding.push(y);
+                }
+              }
+              // Nothing else is owed, so there is no catch-up to offer.
+              if (firstYear != null && outstanding.filter((y) => y !== ty).length === 0) return null;
+              const spanYears = firstYear != null ? outstanding.length : null;
 
               // The saving is entirely the reasonable-cause letter: one per JOB
               // when filed together, one per FILING when filed year by year. Say
@@ -4140,7 +4158,7 @@ export function Intake() {
               const money =
                 spanYears != null && spanYears >= 2 ? (
                   <>
-                    {' '}All {spanYears} years together is{' '}
+                    {' '}The {spanYears} years you still owe, together, is{' '}
                     <strong>{usd(spanYears * PRICE_PER_YEAR + PRICE_RCL)}</strong>. Filed one at a
                     time it's <strong>{usd(spanYears * (PRICE_PER_YEAR + PRICE_RCL))}</strong>,
                     because each separate filing needs its own letter.

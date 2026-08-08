@@ -681,7 +681,15 @@ export function Dashboard() {
         years={years}
         canDismiss={canDismissYears}
         dismissing={busy === `dismiss-${key}`}
-        onFile={() => navigate('/catch-up')}
+        // The picker defaults to the most recently used company, which on an
+        // account with more than one LLC is the WRONG one: the prompt names a
+        // company and the screen it opens was showing another's years, none of
+        // its own filed years marked, and every year it offered would have been
+        // prepared under the other EIN. The company and the years being offered
+        // both travel with the click.
+        onFile={() => navigate(
+          `/catch-up?ein=${encodeURIComponent(key ?? '')}&years=${years.join(',')}`,
+        )}
         onDismiss={(subset) => dismissYears(group.ein, subset ?? years)}
       />
     );

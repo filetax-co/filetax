@@ -41,6 +41,15 @@ export function MultiYearStart() {
   // When editing an existing job (before payment), we reconcile years instead of
   // creating a new job.
   const editJobId = params.get('job');
+  // The company and the years the dashboard's catch-up prompt was talking
+  // about. Without them this screen opened on whichever company was used last,
+  // which on a multi-LLC account is a different entity than the one the filer
+  // just clicked, with a different set of years already filed.
+  const presetEin = (params.get('ein') ?? '').replace(/\D/g, '');
+  const presetYears = (params.get('years') ?? '')
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((y) => Number.isFinite(y) && y > 0);
 
   // Most recent filable year = last completed calendar year.
   const latestYear = new Date().getUTCFullYear() - 1;
@@ -89,9 +98,21 @@ export function MultiYearStart() {
       const saved = await listCompanies(user.id);
       if (cancelled || saved.length === 0) return;
       setCompanies(saved);
-      setSelectedEin((cur) => cur || (saved[0].ein ?? ''));
-      if (!incorpDate && saved[0].date_of_incorporation) {
-        setIncorpDate(String(saved[0].date_of_incorporation));
+      // The company named in the link wins over the most recently used one, and
+      // only falls back when that EIN is not one of this user's saved companies.
+      const asked = presetEin
+        ? saved.find((c) => (c.ein ?? '').replace(/\D/g, '') === presetEin)
+        : undefined;
+      const chosen = asked ?? saved[0];
+      setSelectedEin((cur) => cur || (chosen.ein ?? ''));
+      if (!incorpDate && chosen.date_of_incorporation) {
+        setIncorpDate(String(chosen.date_of_incorporation));
+      }
+      // Preselect the years the prompt offered, but only when arriving with
+      // them and not when editing an existing job, which loads its own set.
+      // Anything already filed is dropped by the filed-years effect below.
+      if (!editJobId && presetYears.length) {
+        setSelected((prev) => (prev.size ? prev : new Set(presetYears)));
       }
     })();
     return () => { cancelled = true; };
@@ -518,6 +539,31 @@ export function MultiYearStart() {
           })}
         </div>
 
+        {/* Delivery, asked here and only here for a catch-up. On a single-year
+            filing this sits on the review screen, beside the price. A catch-up
+            has one review screen per year for a fee charged once, so asking
+            there asked the same question five times; this is the screen that
+            already decides the job-wide things. Frozen once any year is paid,
+            because that is when the $9 was either bought or not.
+
+            Above the letter, because the letter's reason list unfolds beneath it
+            and pushed this to the bottom of a long screen, where it read as an
+            afterthought to a decision the filer had already finished making. */}
+        <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: anyYearPaid ? 'not-allowed' : 'pointer', marginBottom: '0.75rem', opacity: anyYearPaid ? 0.6 : 1 }}>
+          <input
+            type="checkbox"
+            checked={includeIrsFax}
+            disabled={anyYearPaid}
+            onChange={(e) => setIncludeIrsFax(e.target.checked)}
+            style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }}
+          />
+          <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
+            <strong>Fax the finished package to the IRS for me (${PRICE_FAX} once).</strong> Every year
+            goes together, and you get the confirmation. Without it, you download the forms and mail
+            them yourself.
+          </span>
+        </label>
+
         <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: 'pointer', marginBottom: '1.5rem' }}>
           <input type="checkbox" checked={includeRcl} onChange={(e) => setIncludeRcl(e.target.checked)} style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }} />
           <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
@@ -573,31 +619,6 @@ export function MultiYearStart() {
             </div>
           </div>
         )}
-
-        {/* Delivery, asked here and only here for a catch-up. On a single-year
-            filing this sits on the review screen, beside the price. A catch-up
-            has one review screen per year for a fee charged once, so asking
-            there asked the same question five times; this is the screen that
-            already decides the job-wide things. Frozen once any year is paid,
-            because that is when the $9 was either bought or not. */}
-        <label style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.875rem 1rem', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', background: 'var(--tf-offset)', cursor: anyYearPaid ? 'not-allowed' : 'pointer', marginBottom: '1.5rem', opacity: anyYearPaid ? 0.6 : 1 }}>
-          <input
-            type="checkbox"
-            checked={includeIrsFax}
-            disabled={anyYearPaid}
-            onChange={(e) => setIncludeIrsFax(e.target.checked)}
-            style={{ marginTop: '2px', accentColor: 'var(--tf-accent)', width: 16, height: 16 }}
-          />
-          <span style={{ fontSize: '0.875rem', color: 'var(--tf-text)', lineHeight: 1.55 }}>
-            <strong>Fax the finished package to the IRS for me (${PRICE_FAX} once).</strong> We transmit
-            every year together and send you the confirmation. Charged once for the whole catch-up,
-            however many years it covers. Without it you download the forms and mail them to the IRS
-            yourself.
-            {anyYearPaid
-              ? ' This is settled for this catch-up because a year has already been paid.'
-              : ' You can also add this later, after payment, from the filing page.'}
-          </span>
-        </label>
 
         {error && (
           <div className="cat-banner-red" style={{ marginBottom: '1rem' }}>{error}</div>
