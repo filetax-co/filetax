@@ -124,10 +124,6 @@ export function ResetPassword() {
                   disabled={!sessionReady}
                   style={{ opacity: sessionReady ? 1 : 0.5 }}
                 />
-                {/* Same checklist as signup, same component. A reset that
-                    enforces the signup gates must also show them, or the filer
-                    is guessing at what the form wants. */}
-                <PasswordChecklist password={password} />
               </div>
               <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
                 <label htmlFor="rp-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
@@ -140,6 +136,9 @@ export function ResetPassword() {
                   disabled={!sessionReady}
                   style={{ opacity: sessionReady ? 1 : 0.5 }}
                 />
+                {/* Same checklist as signup, same component and same position:
+                    below both boxes, so the password pair stays adjacent. */}
+                <PasswordChecklist password={password} />
               </div>
               {error && sessionReady && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginBottom: '0.875rem' }}>{error}</p>}
               <button type="submit" disabled={submitting || !sessionReady} style={{ width: '100%', background: '#0284C7', color: 'white', fontWeight: 700, fontSize: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: (submitting || !sessionReady) ? 'not-allowed' : 'pointer', minHeight: '44px', opacity: (submitting || !sessionReady) ? 0.7 : 1 }}>

@@ -369,7 +369,6 @@ export function Portal() {
                       value={password}
                       onChange={setPassword}
                     />
-                    {mode === 'signup' && <PasswordChecklist password={password} />}
                   </div>
                 )}
 
@@ -391,6 +390,10 @@ export function Portal() {
                         Passwords do not match yet.
                       </p>
                     )}
+                    {/* Checklist sits under both fields so the two password
+                        boxes stay adjacent and the requirements read as one
+                        block rather than splitting the pair apart. */}
+                    <PasswordChecklist password={password} />
                   </div>
                 )}
 
