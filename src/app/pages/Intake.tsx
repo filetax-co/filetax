@@ -5535,7 +5535,17 @@ export function Intake() {
                 </>
               ) : (
                 <>
-                  <label className="confirm-check-row" style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer' }}>
+                  {/* Neutral, not the bare .confirm-check-row. The bare class
+                      carries the amber border and the warn-coloured tick, which
+                      are reserved for the no-transactions confirmation: a thing
+                      the filer asserts and may get wrong. Buying fax delivery
+                      is an ordinary opt-in like the fiscal-year and final-return
+                      boxes, so it takes their neutral border and the accent tick,
+                      and turns blue when selected as they do. */}
+                  <label
+                    className={`confirm-check-row confirm-check-row--neutral${includeIrsFax ? ' is-selected' : ''}`}
+                    style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer' }}
+                  >
                     <input
                       type="checkbox"
                       checked={includeIrsFax}
