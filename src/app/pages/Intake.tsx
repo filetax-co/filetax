@@ -3078,11 +3078,14 @@ export function Intake() {
           // tabs, which set this state, worked. Set before navigate, the same
           // order switchYear uses.
           setLocalFilingId(target.id);
-          // Company + owner (Steps 1-2) were just propagated to this year, so
-          // send the user straight to Step 3 (related parties). Every section
-          // stays open on the page, so they can still scroll back to review
-          // Steps 1-2 for this year if a year-specific detail needs changing.
-          navigate(`/intake?filing_id=${target.id}&step=3`);
+          // Step 1, LLC Details, and not the first section carrying anything
+          // year-specific. Owner's instruction, 8 August 2026, replacing a jump
+          // to step 3 that reasoned the company and owner had just been
+          // propagated so there was nothing to see. There is: the tax period,
+          // the final-return question and the filing-status answers all belong
+          // to THIS year, and a year that opens half way down its own form asks
+          // the filer to trust that the part they were skipped past is right.
+          navigate(`/intake?filing_id=${target.id}&step=1`);
           return;
         }
       }
