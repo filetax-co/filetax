@@ -29,6 +29,11 @@ const styles = {
     color: "var(--tf-text)",
     marginBottom: "0.875rem",
     paddingLeft: "1.25rem",
+    // Tailwind's preflight resets `ul` to `list-style: none`, so every list on
+    // this page rendered as unmarked lines. Privacy.tsx already restored the
+    // marker; this file did not, which is why the two pages disagreed.
+    listStyleType: "disc",
+    listStylePosition: "outside",
   } as React.CSSProperties,
   li: {
     marginBottom: "0.375rem",
@@ -74,7 +79,15 @@ export function Terms() {
 
           <h2 style={styles.h2}>2. Description of the Service</h2>
           <p style={styles.p}>
-            {COMPANY_NAME} provides software-assisted tax compliance services for foreign-owned U.S. limited liability companies and other small entities, including but not limited to preparation assistance for IRS Form 5472, Pro Forma Form 1120, and related filings. The specific scope of services for any engagement is described at the time of purchase.
+            {COMPANY_NAME} provides software-assisted tax compliance services for foreign-owned U.S. limited liability companies and other small entities. This includes, but is not limited to:
+          </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>preparation assistance for IRS Form 5472;</li>
+            <li style={styles.li}>preparation assistance for Pro Forma Form 1120;</li>
+            <li style={styles.li}>related filings and optional add-on services you select at checkout.</li>
+          </ul>
+          <p style={styles.p}>
+            The specific scope of services for any engagement is described at the time of purchase.
           </p>
           <p style={styles.p}>
             <strong>The Service does not constitute legal advice.</strong> While we may assist in preparing tax-related documents, we are not a law firm and do not provide legal representation. For legal questions specific to your situation, please consult a qualified attorney.
@@ -96,8 +109,14 @@ export function Terms() {
 
           <h2 style={styles.h2}>4. Fees, Payment, and Refunds</h2>
           <p style={styles.p}>
-            Fees for the Service are displayed at the point of purchase. You are charged when your forms are generated, not before, so a draft filing you never complete costs you nothing. Once forms have been generated the fee is non-refundable, subject to the exceptions in our <Link to="/refunds" style={{ color: "var(--tf-accent)" }}>Refund Policy</Link>, which covers our own errors, failed fax transmissions and duplicate charges. All fees are exclusive of taxes you may owe in your own jurisdiction.
+            Fees for the Service are displayed at the point of purchase. In short:
           </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>you are charged when your forms are generated, not before;</li>
+            <li style={styles.li}>a draft filing you never complete costs you nothing;</li>
+            <li style={styles.li}>once forms have been generated the fee is non-refundable, subject to the exceptions in our <Link to="/refunds" style={{ color: "var(--tf-accent)" }}>Refund Policy</Link>, which covers our own errors, failed fax transmissions and duplicate charges;</li>
+            <li style={styles.li}>all fees are exclusive of taxes you may owe in your own jurisdiction.</li>
+          </ul>
 
           <h2 style={styles.h2}>5. User Responsibilities</h2>
           <p style={styles.p}>
@@ -155,8 +174,14 @@ export function Terms() {
 
           <h2 style={styles.h2}>12. Termination</h2>
           <p style={styles.p}>
-            We may suspend or terminate your access to the Service at any time, with or without notice, if we believe you have violated these Terms or for any other reason at our reasonable discretion. You may stop using the Service at any time. Provisions that by their nature should survive termination (including disclaimers, limitations of liability, indemnification, and governing law) will survive.
+            We may suspend or terminate your access to the Service at any time, with or without notice, if we believe you have violated these Terms or for any other reason at our reasonable discretion. You may stop using the Service at any time. Provisions that by their nature should survive termination will survive, including:
           </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>the disclaimers in section 9;</li>
+            <li style={styles.li}>the limitation of liability in section 10;</li>
+            <li style={styles.li}>the indemnification in section 11;</li>
+            <li style={styles.li}>the governing law and dispute terms in section 14.</li>
+          </ul>
 
           <h2 style={styles.h2}>13. Changes to the Terms</h2>
           <p style={styles.p}>
@@ -170,8 +195,14 @@ export function Terms() {
 
           <h2 style={styles.h2}>15. Miscellaneous</h2>
           <p style={styles.p}>
-            These Terms, together with our Privacy Policy, constitute the entire agreement between you and us regarding the Service. If any provision is held unenforceable, the remaining provisions remain in full effect. Our failure to enforce any provision is not a waiver of our right to do so later. You may not assign these Terms without our prior written consent.
+            A few standard points:
           </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>these Terms, together with our <Link to="/privacy" style={{ color: "var(--tf-accent)" }}>Privacy Policy</Link>, constitute the entire agreement between you and us regarding the Service;</li>
+            <li style={styles.li}>if any provision is held unenforceable, the remaining provisions remain in full effect;</li>
+            <li style={styles.li}>our failure to enforce any provision is not a waiver of our right to do so later;</li>
+            <li style={styles.li}>you may not assign these Terms without our prior written consent.</li>
+          </ul>
 
           <h2 style={styles.h2}>16. Contact</h2>
           <p style={styles.p}>

@@ -162,12 +162,28 @@ export function Privacy() {
 
           <h2 style={styles.h2}>6. Data Retention</h2>
           <p style={styles.p}>
-            We retain your information for as long as necessary to provide the Service, comply with our legal and tax-related recordkeeping obligations (which may require retaining tax return information for several years after preparation), resolve disputes, and enforce our agreements. When information is no longer needed, we will delete or anonymize it. You may also request deletion of your data at any time by emailing us at <a href={`mailto:${PRIVACY_EMAIL}`} style={{ color: "#0284C7", textDecoration: "none" }}>{PRIVACY_EMAIL}</a>, subject to legal retention obligations.
+            We retain your information for as long as necessary to:
+          </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>provide the Service, including letting you re-open and amend a filing;</li>
+            <li style={styles.li}>comply with our legal and tax-related recordkeeping obligations, which may require retaining tax return information for several years after preparation;</li>
+            <li style={styles.li}>resolve disputes and enforce our agreements.</li>
+          </ul>
+          <p style={styles.p}>
+            When information is no longer needed, we will delete or anonymize it. You may also request deletion of your data at any time by emailing us at <a href={`mailto:${PRIVACY_EMAIL}`} style={{ color: "#0284C7", textDecoration: "none" }}>{PRIVACY_EMAIL}</a>, subject to legal retention obligations.
           </p>
 
           <h2 style={styles.h2}>7. Security</h2>
           <p style={styles.p}>
-            We use reasonable administrative, technical, and physical safeguards to protect your information, including encryption in transit, access controls, and vendor due diligence. However, no system is 100% secure. We cannot guarantee absolute security and you transmit information to us at your own risk. If we become aware of a security breach affecting your information, we will notify you as required by applicable law.
+            We use reasonable administrative, technical, and physical safeguards to protect your information, including:
+          </p>
+          <ul style={styles.ul}>
+            <li style={styles.li}>encryption in transit;</li>
+            <li style={styles.li}>access controls, so a filing is reachable only from the account that created it;</li>
+            <li style={styles.li}>due diligence on the vendors who process data on our behalf.</li>
+          </ul>
+          <p style={styles.p}>
+            However, no system is 100% secure. We cannot guarantee absolute security and you transmit information to us at your own risk. If we become aware of a security breach affecting your information, we will notify you as required by applicable law.
           </p>
 
           <h2 style={styles.h2}>8. Cookies and Analytics</h2>
