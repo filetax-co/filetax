@@ -475,33 +475,35 @@ function stepNumberOf(s: IntakeStep): number {
 type JobYear = { id: string; tax_year: string; status: string; current_step: number };
 
 /**
- * Has this catch-up year been all the way through intake?
+ * The year to open after finishing `currentTaxYear`, or null when the next stop
+ * is payment.
  *
- * `status` cannot answer it. Every year of a job stays `draft` until the job is
- * PAID, so after finishing 2022 and moving to 2023, both rows were `draft` and
- * "the earliest remaining draft year" chose 2022 again: the catch-up walked
- * 2022 → 2023 → 2022 → 2023 and never reached payment at all. `current_step`
- * reaching 5 is the only record that a year has been submitted through its own
- * review, and handleSubmit writes it as it submits.
- */
-function isYearFinished(y: Pick<JobYear, 'status' | 'current_step'>): boolean {
-  return y.status !== 'draft' || Number(y.current_step ?? 1) >= 5;
-}
-
-/**
- * The year to open after finishing `currentTaxYear`, or null when this was the
- * last one and the next stop is payment.
+ * THE YEAR AHEAD, whatever state it is in. Two wrong answers were tried here
+ * first and both came from asking whether the next year was already "done":
  *
- * FORWARD first, because a catch-up is filed oldest to newest and the button
- * names the year it is about to open: from 2023 the answer is 2024, never 2022.
- * An unfinished EARLIER year is still offered rather than skipped, since the
- * filer can reach any year from the tab strip and leave one behind; it just
- * comes after everything ahead of here. `years` is sorted ascending.
+ * - `status`, which is `draft` on every year until the JOB is paid, so "the
+ *   earliest remaining draft year" kept choosing a year the filer had already
+ *   filled in: 2022 → 2023 → 2022 → 2023, with no route to checkout at all.
+ * - `current_step >= 5`, which is the furthest step the year has ever REACHED,
+ *   not a record of submitting it. Opening 2023's review section writes 5, so
+ *   2022 then decided 2023 was finished and offered payment from the FIRST year
+ *   of a two-year catch-up.
+ *
+ * There is no column that means "this year is finished", and inventing one from
+ * whatever is nearby is what produced both bugs. A catch-up is filed oldest to
+ * newest, so the year after this one is the answer, and the most recent year is
+ * where the job pays. Revisiting a year is what the tab strip is for.
+ *
+ * The one exception is a year that has never reached review, which is not a
+ * revisit but an unfinished year the filer left behind. Those are picked up
+ * before payment rather than being paid for half-answered. `years` is sorted
+ * ascending.
  */
 function nextOpenYear(years: JobYear[], currentId: string | null, currentTaxYear: string | number): JobYear | null {
-  const open = years.filter((y) => y.id !== currentId && !isYearFinished(y));
-  const ahead = open.filter((y) => Number(y.tax_year) > Number(currentTaxYear));
-  return ahead[0] ?? open[0] ?? null;
+  const others = years.filter((y) => y.id !== currentId);
+  const ahead = others.filter((y) => Number(y.tax_year) > Number(currentTaxYear));
+  if (ahead[0]) return ahead[0];
+  return others.find((y) => y.status === 'draft' && Number(y.current_step ?? 1) < 5) ?? null;
 }
 
 function getStepOrder(show1b: boolean): IntakeStep[] {
