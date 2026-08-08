@@ -5,10 +5,16 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router';
 import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
 
+// WHAT TO HAVE READY. This list has to match what the intake actually asks
+// for. It said "passport number" until 8 August 2026, which no screen in the
+// flow ever requests: Owner Details asks for a FOREIGN TAX ID, validated
+// against the format for the filer's country. The list is read before anyone
+// starts, so it was sending people to find the wrong document. Owner's
+// instruction to drop it. /guide step 2 says foreign tax ID and always did.
 const checklistItems = [
   "Your LLC's EIN (Employer Identification Number)",
   "The tax year you are filing for",
-  "Owner details: full legal name, country of residence, passport number",
+  "Owner details: full legal name, country of residence, foreign tax ID",
   "Bank transaction details for the filing year",
   "Details of any capital contributions, distributions, loans, or payments between you and the LLC during the year",
 ];

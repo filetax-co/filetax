@@ -34,9 +34,9 @@ export interface PasswordRule {
 
 export const PASSWORD_RULES: PasswordRule[] = [
   { key: 'length', label: `At least ${PASSWORD_MIN_LENGTH} characters`, test: (p) => p.length >= PASSWORD_MIN_LENGTH },
-  { key: 'lower', label: 'One lowercase letter (a–z)', test: (p) => /[a-z]/.test(p) },
-  { key: 'upper', label: 'One uppercase letter (A–Z)', test: (p) => /[A-Z]/.test(p) },
-  { key: 'number', label: 'One number (0–9)', test: (p) => /[0-9]/.test(p) },
+  { key: 'lower', label: 'One lowercase letter (a-z)', test: (p) => /[a-z]/.test(p) },
+  { key: 'upper', label: 'One uppercase letter (A-Z)', test: (p) => /[A-Z]/.test(p) },
+  { key: 'number', label: 'One number (0-9)', test: (p) => /[0-9]/.test(p) },
   { key: 'symbol', label: 'One symbol (!?@#$…)', test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
 
