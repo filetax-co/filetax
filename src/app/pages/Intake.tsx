@@ -3070,6 +3070,14 @@ export function Intake() {
           taxYear,
         );
         if (target) {
+          // THE STATE, NOT JUST THE URL. `filingId` is
+          // `localFilingId ?? params.get('filing_id')`, and localFilingId holds
+          // this year, so it wins over anything the URL says: navigating alone
+          // left the page rendering the year it was already on, which is why
+          // "Save 2022 & continue to 2023" appeared to do nothing while the year
+          // tabs, which set this state, worked. Set before navigate, the same
+          // order switchYear uses.
+          setLocalFilingId(target.id);
           // Company + owner (Steps 1-2) were just propagated to this year, so
           // send the user straight to Step 3 (related parties). Every section
           // stays open on the page, so they can still scroll back to review
