@@ -3665,7 +3665,15 @@ export function Intake() {
 
         {jobId && (
           <div style={{ background: 'rgba(var(--tf-accent-rgb), 0.08)', border: '1px solid var(--tf-border)', borderRadius: '0.5rem', padding: '0.625rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: 'var(--tf-text)' }}>
-            <strong>Catch-up filing for tax year {taxYear}.</strong> Finish this year and we’ll take you to the next one. Your LLC and owner details are shared across all the years you selected.
+            {/* Reads off the SAME nextOpenYear the button and the routing use.
+                It used to promise a next year unconditionally, so the last year
+                of a two-year catch-up said "we'll take you to the next one"
+                while its own button said the next stop was payment. */}
+            <strong>Catch-up filing for tax year {taxYear}.</strong>{' '}
+            {nextDraftYear
+              ? `Finish this year and we’ll take you to ${nextDraftYear}.`
+              : 'This is the last year left in this catch-up, so finishing it takes you to payment for every year together.'}{' '}
+            Your LLC and owner details are shared across all the years you selected.
           </div>
         )}
 
