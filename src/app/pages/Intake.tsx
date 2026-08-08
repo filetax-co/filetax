@@ -2854,15 +2854,21 @@ export function Intake() {
   /**
    * Label for a section's "continue" button.
    *
-   * A bare "Save & continue" never told the user where they were going, and on
-   * the last section before Review it read as though it were submitting the
-   * return. Naming the destination ("Save & continue to Owner Details") makes
-   * the action explicit, and keeps it clearly distinct from the Review step's
-   * button, which is the only one that actually submits.
+   * "Save & continue", bare. Owner's instruction, 8 August 2026, and it REVERSES
+   * an earlier decision here, so the reasoning that was overridden is kept
+   * rather than deleted: the destination used to be named ("Save & continue to
+   * Owner Details") because a bare label never told the filer where they were
+   * going, and because on the last section before Review it could read as though
+   * it were submitting the return.
    *
-   * The next section is derived from the same `stepOrder` that
-   * `continueFromSection` walks, so the label can never drift from where the
-   * button really goes, including when step 1b is absent for an on-time filer.
+   * The section heading the button sits under, and the accordion row it scrolls
+   * to next, both still name the destination, so the label was carrying the
+   * information a third time. The submit risk is the part that was genuinely
+   * traded away: if "Save & continue" under Transactions ever starts reading as
+   * "file my return", name that one destination again rather than all of them.
+   *
+   * "Save" alone on the last section stays. There is nothing after it to
+   * continue to, and it is the Review step's own button that submits.
    */
   const continueLabel = (key: string): string => {
     if (saving) return 'Saving…';
@@ -2870,7 +2876,7 @@ export function Intake() {
     const idx = stepOrder.indexOf(s);
     const nextKey = idx >= 0 && idx + 1 < stepOrder.length ? String(stepOrder[idx + 1]) : null;
     if (!nextKey) return 'Save';
-    return `Save & continue to ${STEP_LABELS[nextKey] ?? 'the next step'} →`;
+    return 'Save & continue →';
   };
 
   const saveTransactions = async (idOverride?: string): Promise<boolean> => {
