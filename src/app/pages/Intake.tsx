@@ -2583,6 +2583,20 @@ export function Intake() {
     setOpenSections(new Set([String(target)]));
     if (target === step) return;
 
+    // SAY SO. This clamp used to move the filer and write nothing anywhere, so
+    // a resumed filing whose earliest sections predate a question they were
+    // never asked (`hasUsActivity` is the one that did it) opened at LLC
+    // Details with every visible field filled in, no message, and no way to
+    // tell what was wanted. `toggleSection` performs the same clamp and has
+    // always explained itself; this path is the one a dashboard "Continue"
+    // link takes, so it is the one a real filer actually hits.
+    //
+    // The specific validation messages are deliberately NOT listed here. They
+    // anchor to fields inside the section being opened, which is where the
+    // filer is now looking, and dumping them above a section they can see
+    // says the same thing twice.
+    setStepErrors([`Complete ${STEP_LABELS[target]} before opening a later section.`]);
+
     setStep(target);
     const nextParams = new URLSearchParams(params.toString());
     nextParams.set('step', String(target));
