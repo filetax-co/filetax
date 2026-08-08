@@ -6,6 +6,7 @@ import { edgeFunctionError } from '../../lib/edgeErrors';
 import { PART_V_TX_TYPES } from '../../lib/filingMapping';
 import { TX_TYPES } from './intake/constants';
 import { formatAmount } from '../../lib/money';
+import { billablePartyCount } from '../../lib/pricing';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SignaturePad } from '../components/SignaturePad';
 import FaxPanel, { type FaxBuild } from '../components/FaxPanel';
@@ -62,7 +63,14 @@ export default function FilingWizard() {
   // to the filing record or to storage: see the header of lib/drawnSignature.ts
   // for why that is what keeps the "we never store your documents" claim true.
   const [drawnSignature, setDrawnSignature] = useState<DrawnSignature | null>(null);
-  const relatedPartyCount = Array.isArray(filing?.related_parties) ? filing.related_parties.length : 0;
+  // BILLABLE parties, not stored ones. A related party with no transactions in
+  // this year produces no Form 5472 in the download, so it is not charged for,
+  // and counting it here would have gated the download behind a $25 payment for
+  // a form that was never going to be in the package.
+  const relatedPartyCount = billablePartyCount(
+    Array.isArray(filing?.related_parties) ? filing.related_parties.length : 0,
+    transactions.map((t) => t.related_party_index),
+  );
   const hasUnpaidRelatedParties =
     relatedPartyCount > Number(filing?.paid_related_party_count ?? 0);
   // `submitted` is a paid state, the strongest one: it is what a filing becomes

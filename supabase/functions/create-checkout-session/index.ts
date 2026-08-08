@@ -14,6 +14,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { billablePartyTotal } from '../_shared/billableParties.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,9 +59,6 @@ function dodoBaseUrl() {
     : 'https://live.dodopayments.com';
 }
 
-function relatedPartyCount(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
-}
 
 // ─── Billing address prefill ──────────────────────────────────────────────────
 //
@@ -252,10 +250,10 @@ serve(async (req) => {
     // `dispatch-irs-fax` to disagree about what the customer bought. The
     // dispatcher reads the filing rows, so this does too.
     const includeFax = filings.some((filing) => filing.include_irs_fax === true);
-    const additionalParties = filings.reduce(
-      (total, filing) => total + relatedPartyCount(filing.related_parties),
-      0,
-    );
+    // Only the parties that actually produce a Form 5472 in that year are
+    // billed. A party stored on a year with no transactions of its own gets no
+    // form in the download, so it gets no line on the invoice either.
+    const additionalParties = await billablePartyTotal(supabase, filings);
     const paidAdditionalParties = filings.reduce(
       (total, filing) => total + Number(filing.paid_related_party_count ?? 0),
       0,

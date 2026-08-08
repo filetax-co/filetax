@@ -182,6 +182,35 @@ export function serviceWithPrice(s: Service): string {
   return s.price == null ? s.label : `${s.label}, $${s.price}`;
 }
 
+/**
+ * How many additional related parties are BILLABLE in one tax year.
+ *
+ * The add-on buys a Form 5472, and the generator only produces one for an
+ * additional party in a year where that party has at least one transaction
+ * (`buildYearDocs` filters on `is_owner || has transactions`). A party stored
+ * on a year with nothing to report generates no form, so it is not billable,
+ * and on a multi-year catch-up a party with transactions in one year only is
+ * billable in that year only.
+ *
+ * The edge functions re-derive this server-side from the database; this is the
+ * same rule for what the filer is shown. `supabase/functions/_shared/
+ * billableParties.ts` is the copy that decides the money.
+ */
+export function billablePartyCount(
+  storedParties: number,
+  transactionPartyIndexes: (number | null | undefined)[],
+): number {
+  const billed = new Set<number>();
+  for (const raw of transactionPartyIndexes) {
+    const idx = Number(raw ?? 0);
+    // 0 is the owner: their 5472 is the base filing, never an add-on. An index
+    // past the end of the stored list is a leftover from a removed party.
+    if (!Number.isInteger(idx) || idx < 1 || idx > storedParties) continue;
+    billed.add(idx);
+  }
+  return billed.size;
+}
+
 /** Cost of the additional Form 5472s beyond the first, for a single year. */
 export function additionalPartiesCost(totalForms: number): number {
   const additional = Math.max(0, totalForms - 1);

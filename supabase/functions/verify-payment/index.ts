@@ -5,6 +5,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { billablePartyCounts } from '../_shared/billableParties.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -46,10 +47,6 @@ function dodoBaseUrl() {
   return DODO_ENVIRONMENT === 'test_mode'
     ? 'https://test.dodopayments.com'
     : 'https://live.dodopayments.com';
-}
-
-function relatedPartyCount(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
 }
 
 function canonicalCart(cart: Array<{ product_id: string; quantity: number }>) {
@@ -141,8 +138,12 @@ serve(async (req) => {
     // source that nothing ever wrote, and the price re-derived here has to be
     // computed from exactly what the cart was built from.
     const includeFax = filings.some((filing) => filing.include_irs_fax === true);
+    // Same definition the cart was built from: a party is billable in a year
+    // only when it produces a Form 5472 in that year. Anything else here and a
+    // legitimate payment is answered 409 as a mismatch.
+    const billableByFiling = await billablePartyCounts(supabase, filings);
     const additionalParties = filings.reduce(
-      (total, filing) => total + relatedPartyCount(filing.related_parties),
+      (total, filing) => total + (billableByFiling.get(filing.id) ?? 0),
       0,
     );
     const paidAdditionalParties = filings.reduce(
@@ -278,9 +279,14 @@ serve(async (req) => {
           // and got them free. The delta `create-checkout-session` bills from is
           // the difference between these two numbers, so anything that advances
           // this without money changing hands is money we never charge.
+          //
+          // This counts BILLABLE parties, not stored ones, because that is what
+          // was charged. Storing the stored count would mark a party that has no
+          // transactions (and so no form, and so no charge) as paid for, and the
+          // day it gains a transaction and a form we would never bill it.
           paid_related_party_count: faxAddon || alreadyRecorded
             ? filing.paid_related_party_count
-            : relatedPartyCount(filing.related_parties),
+            : (billableByFiling.get(filing.id) ?? 0),
           // What the $9 actually buys. Written here rather than at intake
           // because this is the only moment we know it was paid for.
           //

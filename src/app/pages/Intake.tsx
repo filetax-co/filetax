@@ -40,7 +40,7 @@ import {
   taxIdTooltip,
   taxIdWarning,
 } from './intake/countryTaxIds';
-import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY } from '../../lib/pricing';
+import { PRICE_PER_YEAR, PRICE_RCL, PRICE_FAX, PRICE_ADDITIONAL_PARTY, billablePartyCount } from '../../lib/pricing';
 import { formatAmount, formatUsd } from '../../lib/money';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { DevScenarioLoader } from './intake/DevScenarioLoader';
@@ -1416,6 +1416,13 @@ export function Intake() {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [paidRelatedPartyCount, setPaidRelatedPartyCount] = useState(0);
+  // What the filer is actually charged for: a related party only produces a
+  // Form 5472 in a year where it has a transaction, so a party added with
+  // nothing to report costs nothing and must not be announced as owing $25.
+  const billableRelatedPartyCount = billablePartyCount(
+    relatedParties.length,
+    transactions.map((t) => t.related_party_index),
+  );
 
   // Foreign tax ID guidance, driven by the country of TAX RESIDENCE (not
   // citizenship). Cheap enough to recompute each render; no memo needed.
@@ -4783,7 +4790,7 @@ export function Intake() {
             {!showRpForm && (
               <button type="button" style={addBtnStyle} onClick={() => openRpForm()}>Add related party</button>
             )}
-            {!showRpForm && isPaidLocked && relatedParties.length > paidRelatedPartyCount && (
+            {!showRpForm && isPaidLocked && billableRelatedPartyCount > paidRelatedPartyCount && (
               <div className="cat-banner-amber" style={{ marginTop: '0.5rem' }}>
                 The new related party generates another Form 5472. Save your changes, then complete
                 the ${PRICE_ADDITIONAL_PARTY} additional-party payment before downloading the updated package.
@@ -5537,7 +5544,7 @@ export function Intake() {
                 {saving
                   ? 'Saving…'
                   : isPaidLocked
-                    ? (relatedParties.length > paidRelatedPartyCount
+                    ? (billableRelatedPartyCount > paidRelatedPartyCount
                         ? 'Save & continue to additional-party payment'
                         : 'Save corrections & re-download')
                     : jobId
