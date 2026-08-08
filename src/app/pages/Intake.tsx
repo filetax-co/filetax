@@ -793,6 +793,7 @@ function AccordionSection({
   onToggle,
   anchorRef,
   frozen,
+  liveFooter,
   children,
 }: {
   numberLabel: string;
@@ -810,6 +811,17 @@ function AccordionSection({
    * be opened and read.
    */
   frozen?: boolean;
+  /**
+   * Controls that must keep working on a frozen section, rendered inside the
+   * body but OUTSIDE the fieldset.
+   *
+   * `disabled` on a fieldset disables every descendant button, not just the
+   * inputs, so a link out of a read-only filing placed in `children` is dead on
+   * arrival: it looks like a button, it is styled like a button, and it cannot
+   * be clicked. That is how the first "Go to downloads" shipped. Anything that
+   * NAVIGATES rather than edits belongs here.
+   */
+  liveFooter?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -840,6 +852,7 @@ function AccordionSection({
               {children}
             </fieldset>
           ) : children}
+          {liveFooter}
         </div>
       )}
     </section>
@@ -5376,6 +5389,21 @@ export function Intake() {
           onToggle={() => toggleSection('5')}
           anchorRef={(el) => { sectionRefs.current['5'] = el; }}
           frozen={isFaxLocked}
+          // Outside the frozen fieldset, because a faxed filing disables every
+          // control in the body and this one has to keep working: it is the only
+          // thing left to do with the return, and without it the review section
+          // ends on nothing at all.
+          liveFooter={isFaxLocked && filingId ? (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                style={primaryBtnStyle}
+                onClick={() => navigate(`/filing/${filingId}`)}
+              >
+                Go to downloads →
+              </button>
+            </div>
+          ) : null}
         >
           <div>
             {/* "Submit" was the wrong word for what this step does. Nothing is
@@ -5677,22 +5705,6 @@ export function Intake() {
                 write path anyway, so "Save corrections & re-download" only
                 offered a correction that cannot happen. The download of the fax
                 record lives on the filing page, which the banner points to. */}
-            {/* A faxed filing has no actions, which left the review section
-                ending on nothing: the filer scrolled to the bottom of their own
-                return and the page simply stopped. There is one thing they can
-                still do with it, so offer that instead of an empty space. */}
-            {isFaxLocked && filingId && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <button
-                  type="button"
-                  style={primaryBtnStyle}
-                  onClick={() => navigate(`/filing/${filingId}`)}
-                >
-                  Go to downloads →
-                </button>
-              </div>
-            )}
-
             {!isFaxLocked && (
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem', flexWrap: 'wrap' }}>
               {!isPaidLocked && (
