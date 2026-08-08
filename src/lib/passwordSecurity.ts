@@ -68,6 +68,15 @@ export interface StrengthResult {
   feedback: string; // first suggestion from zxcvbn, or a default message
 }
 
+/**
+ * Lowest zxcvbn score we accept. Exported because the checklist renders this
+ * gate as a row of its own: until 8 August 2026 the score was enforced on
+ * submit but never shown, so a password could tick all five character-class
+ * rules green and still be rejected with zxcvbn's own wording. A requirement
+ * the form enforces is a requirement the form has to display.
+ */
+export const MIN_STRENGTH_SCORE = 3;
+
 export async function checkStrength(password: string): Promise<StrengthResult> {
   const zxcvbn = await getZxcvbn();
   const result = zxcvbn(password);
@@ -153,7 +162,7 @@ export async function validatePassword(
 
   // Step 1, strength
   const { score, feedback } = await checkStrength(password);
-  if (score < 3) {
+  if (score < MIN_STRENGTH_SCORE) {
     return {
       ok: false,
       error: feedback || 'Password is too weak. Try adding numbers, symbols, or more words.',

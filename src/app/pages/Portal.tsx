@@ -3,8 +3,9 @@ import { useSearchParams } from 'react-router';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router';
-import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
+import { validatePassword, meetsAllRules } from '../../lib/passwordSecurity';
 import { PasswordField } from '../components/PasswordField';
+import { PasswordChecklist } from '../components/PasswordChecklist';
 
 // WHAT TO HAVE READY. This list has to match what the intake actually asks
 // for. It said "passport number" until 8 August 2026, which no screen in the
@@ -58,6 +59,7 @@ export function Portal() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const initialMode = searchParams.get('mode') === 'login' ? 'login' : 'signup';
   const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>(initialMode);
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +122,9 @@ export function Portal() {
         setError('Please meet all the password requirements shown below the field.');
         return;
       }
+      // Checked before the strength and breach gates, same order as reset. A
+      // mismatch is the filer's typo and needs no network round trip to catch.
+      if (password !== confirm) { setError('Passwords do not match.'); return; }
 
       setSubmitting(true);
       const pwCheck = await validatePassword(password);
@@ -345,7 +350,10 @@ export function Portal() {
                 </div>
 
                 {mode !== 'forgot' && (
-                  <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
+                  /* On signup the confirm field follows, so this block keeps the
+                     standard field gap and the confirm block carries the larger
+                     margin that separates the form from the error and button. */
+                  <div style={{ marginBottom: mode === 'signup' ? '1.125rem' : error ? '0.75rem' : '1.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.375rem' }}>
                       <label htmlFor="portal-password" style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--tf-text)' }}>Password</label>
                       {mode === 'login' && (
@@ -361,22 +369,28 @@ export function Portal() {
                       value={password}
                       onChange={setPassword}
                     />
-                    {mode === 'signup' && (() => {
-                      const status = ruleStatus(password);
-                      return (
-                        <ul style={{ listStyle: 'none', margin: '0.625rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          {PASSWORD_RULES.map((r) => {
-                            const met = status[r.key];
-                            return (
-                              <li key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: met ? '#059669' : 'var(--tf-muted)' }}>
-                                <span aria-hidden="true" style={{ fontWeight: 700, width: '0.9rem', display: 'inline-block' }}>{met ? '✓' : '○'}</span>
-                                {r.label}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      );
-                    })()}
+                    {mode === 'signup' && <PasswordChecklist password={password} />}
+                  </div>
+                )}
+
+                {mode === 'signup' && (
+                  <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
+                    <label htmlFor="portal-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
+                    <PasswordField
+                      id="portal-confirm"
+                      autoComplete="new-password"
+                      placeholder="Repeat your password"
+                      value={confirm}
+                      onChange={setConfirm}
+                    />
+                    {/* Told as soon as both fields have content, rather than on
+                        submit, because the password is typed blind and the typo
+                        is invisible by definition. */}
+                    {confirm && password !== confirm && (
+                      <p style={{ margin: '0.375rem 0 0', fontSize: '0.8125rem', color: 'var(--tf-muted)' }}>
+                        Passwords do not match yet.
+                      </p>
+                    )}
                   </div>
                 )}
 

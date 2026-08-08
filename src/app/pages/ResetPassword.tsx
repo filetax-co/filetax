@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabase';
 import { usePageMeta } from '../hooks/usePageMeta';
-import { validatePassword, meetsAllRules, PASSWORD_RULES, ruleStatus } from '../../lib/passwordSecurity';
+import { validatePassword, meetsAllRules } from '../../lib/passwordSecurity';
 import { PasswordField } from '../components/PasswordField';
+import { PasswordChecklist } from '../components/PasswordChecklist';
 
 export function ResetPassword() {
   usePageMeta({
@@ -123,25 +124,10 @@ export function ResetPassword() {
                   disabled={!sessionReady}
                   style={{ opacity: sessionReady ? 1 : 0.5 }}
                 />
-                {/* Same checklist as signup, driven by the same PASSWORD_RULES.
-                    A reset that enforces the signup rules must also show them,
-                    or the filer is guessing at what the form wants. */}
-                {(() => {
-                  const status = ruleStatus(password);
-                  return (
-                    <ul style={{ listStyle: 'none', margin: '0.625rem 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {PASSWORD_RULES.map((r) => {
-                        const met = status[r.key];
-                        return (
-                          <li key={r.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: met ? '#059669' : 'var(--tf-muted)' }}>
-                            <span aria-hidden="true" style={{ fontWeight: 700, width: '0.9rem', display: 'inline-block' }}>{met ? '✓' : '○'}</span>
-                            {r.label}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  );
-                })()}
+                {/* Same checklist as signup, same component. A reset that
+                    enforces the signup gates must also show them, or the filer
+                    is guessing at what the form wants. */}
+                <PasswordChecklist password={password} />
               </div>
               <div style={{ marginBottom: error ? '0.75rem' : '1.5rem' }}>
                 <label htmlFor="rp-confirm" style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.375rem', color: 'var(--tf-text)' }}>Confirm password</label>
