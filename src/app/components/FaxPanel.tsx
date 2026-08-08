@@ -43,6 +43,13 @@ export interface FaxBuild {
   formCount: number;
   hasRCL: boolean;
   has7004: boolean;
+  /**
+   * Whether the Part V and Part VI statements are in the transmission. Read off
+   * the built package, never guessed from `formCount`: both are the owner's
+   * alone and both are conditional on transaction type.
+   */
+  hasPartV: boolean;
+  hasPartVI: boolean;
   /** Every year the transmission covers. One fax covers a whole catch-up. */
   taxYears: number[];
 }
@@ -228,6 +235,8 @@ export default function FaxPanel({ filing, build, busy }: Props) {
           formCount: shape.formCount,
           hasRCL: shape.hasRCL,
           has7004: shape.has7004,
+          hasPartV: shape.hasPartV,
+          hasPartVI: shape.hasPartVI,
           taxYears: shape.taxYears,
         }));
       }

@@ -527,6 +527,8 @@ export default function FilingWizard() {
         // whether a 7004 is in the package. Any year carrying one puts one in
         // the transmission, because the transmission is the whole job.
         has7004: yearFilings.some((f) => f.include_7004 === true || f.extension_filed === true),
+        hasPartV: pkg.hasPartV,
+        hasPartVI: pkg.hasPartVI,
         taxYears: pkg.taxYears,
       };
     }
@@ -555,6 +557,8 @@ export default function FilingWizard() {
       formCount: pkg.formCount,
       hasRCL: !!pkg.reasonableCauseLetter,
       has7004: !!pkg.form7004,
+      hasPartV: pkg.hasPartV,
+      hasPartVI: pkg.hasPartVI,
       taxYears: [Number(fi.tax_year)],
     };
   };

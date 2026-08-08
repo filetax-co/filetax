@@ -1438,10 +1438,23 @@ export const buildInstructionsPage = async (
 export const IRS_5472_FAX = '855-887-7737';
 
 export interface FaxCoverOpts {
-  /** Forms 5472 enclosed, one per related party. */
+  /** Forms 5472 enclosed: one for the owner, plus one per additional party. */
   formCount: number;
   /** A Reasonable Cause Statement is enclosed. */
   hasRCL: boolean;
+  /**
+   * Whether the Part V and Part VI statements are actually enclosed.
+   *
+   * NOT derivable from `formCount`. Both statements belong to the OWNER'S Form
+   * 5472 alone (buildYearDocs gates them on `party.is_owner`) and each is
+   * conditional on the transaction types present, so a package can carry two
+   * forms and one statement, or one form and neither. The enclosure list used
+   * to assert "one per related party, each with its Part V / Part VI
+   * statements", which is wrong three ways at once and was wrong on a page
+   * addressed to the IRS. See the enclosure list below.
+   */
+  hasPartV: boolean;
+  hasPartVI: boolean;
   /** A Form 7004 is enclosed. */
   has7004: boolean;
   /** Total pages in the transmission, INCLUDING this cover page. */
@@ -1460,6 +1473,54 @@ export interface FaxCoverOpts {
    * Statement does; see the signature block below.
    */
   drawnSignature?: DrawnSignature | null;
+}
+
+/**
+ * What is in the transmission, named the way the package names it.
+ *
+ * ONE list, used by the fax cover the IRS receives and by the confirmation the
+ * filer downloads, so the two cannot describe different contents. They were
+ * two copies of the same expression before, which held: they were identically
+ * wrong, and both had to be corrected.
+ *
+ * Each statement is listed only when it was actually produced, under the title
+ * printed at the head of the page itself. `formCount` says nothing about
+ * either: Parts V and VI are the owner's alone, so a two-form package carries
+ * at most one of each, and both are conditional on transaction type.
+ *
+ * `signed` adds how the documents were executed. That belongs on the cover
+ * addressed to Ogden, where it tells the reader the jurats are complete, and
+ * not on the filer's own receipt, which is a record of what was sent.
+ */
+function enclosureList(
+  opts: { formCount: number; hasRCL: boolean; has7004: boolean; hasPartV: boolean; hasPartVI: boolean },
+  { signed }: { signed: boolean },
+): string[] {
+  const out: string[] = [];
+  if (opts.hasRCL) {
+    out.push(signed
+      ? 'Reasonable Cause Statement, signed under penalties of perjury'
+      : 'Reasonable Cause Statement');
+  }
+  out.push(signed
+    ? 'Pro forma Form 1120 (transmittal), signed and dated'
+    : 'Pro forma Form 1120 (transmittal)');
+  if (opts.has7004) {
+    out.push('Form 7004, Application for Automatic Extension of Time to File');
+  }
+  out.push(
+    opts.formCount === 1
+      ? 'Form 5472 for the foreign owner'
+      : `${opts.formCount} Forms 5472: one for the foreign owner and `
+        + `${opts.formCount - 1} for additional related ${opts.formCount === 2 ? 'party' : 'parties'}`,
+  );
+  if (opts.hasPartV) {
+    out.push('Statement required under Form 5472, Part V: transactions with foreign owner');
+  }
+  if (opts.hasPartVI) {
+    out.push('Attachment to Form 5472, Part VI: nonmonetary and less-than-full consideration transactions');
+  }
+  return out;
 }
 
 export const buildFaxCoverPage = async (
@@ -1545,19 +1606,7 @@ export const buildFaxCoverPage = async (
   // ── Enclosures, built from what is actually in the package ─────────────────
   cursor.y = drawWrapped(page, 'Enclosed:', MARGIN, cursor.y, { size: FS_BODY, font: bold }, fonts);
   cursor.y -= 4;
-  const enclosures: string[] = [];
-  if (opts.hasRCL) {
-    enclosures.push('Reasonable Cause Statement, signed under penalties of perjury');
-  }
-  enclosures.push('Pro forma Form 1120 (transmittal), signed and dated');
-  if (opts.has7004) {
-    enclosures.push('Form 7004, Application for Automatic Extension of Time to File');
-  }
-  enclosures.push(
-    opts.formCount === 1
-      ? 'Form 5472, with its Part V / Part VI statements'
-      : `${opts.formCount} Forms 5472, one per related party, each with its Part V / Part VI statements`,
-  );
+  const enclosures = enclosureList(opts, { signed: true });
   for (const e of enclosures) {
     if (cursor.y < MIN_Y) ({ page, cursor } = newPage(doc));
     cursor.y = drawWrapped(page, `• ${e}`, MARGIN + 10, cursor.y, { size: FS_BODY, maxWidth: COL_W - 10 }, fonts);
@@ -1664,12 +1713,15 @@ export interface FaxConfirmationRecord {
 }
 
 export interface FaxConfirmationOpts {
-  /** Forms 5472 transmitted, one per related party. */
+  /** Forms 5472 transmitted: one for the owner, plus one per additional party. */
   formCount: number;
   /** A Reasonable Cause Statement was in the transmission. */
   hasRCL: boolean;
   /** A Form 7004 was in the transmission. */
   has7004: boolean;
+  /** Whether each statement was in the transmission. See FaxCoverOpts. */
+  hasPartV: boolean;
+  hasPartVI: boolean;
   /** Every tax year the transmission covered. A catch-up sends one fax for all of them. */
   taxYears: number[];
   /** Render date, for the footer. Defaults to today. */
@@ -1724,18 +1776,8 @@ const fmtInstant = (iso: string | null | undefined): string => {
  * so the receipt and the page Ogden received cannot describe different
  * contents.
  */
-const confirmationContents = (opts: FaxConfirmationOpts): string => {
-  const parts: string[] = [];
-  if (opts.hasRCL) parts.push('Reasonable Cause Statement');
-  parts.push('Pro forma Form 1120 (transmittal)');
-  if (opts.has7004) parts.push('Form 7004');
-  parts.push(
-    opts.formCount === 1
-      ? 'Form 5472, with its Part V / Part VI statements'
-      : `${opts.formCount} Forms 5472, one per related party, each with its Part V / Part VI statements`,
-  );
-  return parts.join('\n');
-};
+const confirmationContents = (opts: FaxConfirmationOpts): string =>
+  enclosureList(opts, { signed: false }).join('\n');
 
 export const buildFaxConfirmation = async (
   rawFiling: Filing,
@@ -2427,15 +2469,27 @@ export interface FilingPackage {
    *   1. Pro Forma 1120
    *   then, for EACH related party (owner first):
    *     2. Form 5472
-   *     3. Part V statement (only if that party has Part V transactions)
-   *     4. Part VI statement (owner always; others only if they have a
-   *        non-monetary transaction)
+   *     3. Part V statement (OWNER only, and only with Part V transactions)
+   *     4. Part VI statement (OWNER only, and only with the managerial
+   *        disclosure on or a nonmonetary transaction)
    */
   combined: Uint8Array;
   /** The OWNER's standalone Part V statement, if the owner has Part V txns. */
   statement_partV?: Uint8Array;
-  /** The OWNER's standalone Part VI statement (always present). */
+  /**
+   * The OWNER's standalone Part VI statement, or an EMPTY array when the
+   * package has none. Not optional and not always present, so its length is
+   * the only thing that answers whether it exists; prefer `hasPartVI`.
+   */
   statement_partVI: Uint8Array;
+  /**
+   * Whether each statement was actually produced. Both are owner-only and
+   * conditional, so neither follows from `formCount`, and `statement_partVI`
+   * is an empty array rather than undefined when absent. The fax cover and the
+   * receipt list what is enclosed, and this is what they read.
+   */
+  hasPartV: boolean;
+  hasPartVI: boolean;
   /**
    * Form 7004 (6-month extension), present when the filing opted into an
    * extension (filed elsewhere → for their records, or filing one through us).
@@ -2641,6 +2695,15 @@ interface YearDocs {
   doc1120: PDFDocument;
   partyDocs: PartyDocs[];
   formCount: number;
+  /**
+   * Whether this year actually produced each statement. Read off the built
+   * documents rather than re-derived from the transactions, because the fax
+   * cover and the receipt both list what is enclosed and a second derivation
+   * is a second thing to keep in step. Both are owner-only and conditional on
+   * transaction type, so neither follows from `formCount`.
+   */
+  hasPartV: boolean;
+  hasPartVI: boolean;
 }
 
 /**
@@ -2700,7 +2763,15 @@ const buildYearDocs = async (
     }),
   );
 
-  return { filing, period, doc1120, partyDocs, formCount };
+  return {
+    filing,
+    period,
+    doc1120,
+    partyDocs,
+    formCount,
+    hasPartV: partyDocs.some((pd) => pd.docPartV !== null),
+    hasPartVI: partyDocs.some((pd) => pd.docPartVI !== null),
+  };
 };
 
 /** Merge one year's docs (optionally prefixed with an instructions/RCL page) into a fresh PDF. */
@@ -2881,6 +2952,8 @@ export const generateFilingPackage = async (
       formCount: yd.formCount,
       hasRCL,
       has7004: include7004,
+      hasPartV: yd.hasPartV,
+      hasPartVI: yd.hasPartVI,
       pageCount: 0,
       // Always "Original": the product has no amended-return concept, no
       // column, no intake question, no UI. FaxCoverOpts.isAmended exists so the
@@ -2905,6 +2978,7 @@ export const generateFilingPackage = async (
   return {
     form5472, form1120, combined, statement_partVI, statement_partV,
     form7004, reasonableCauseLetter, formCount: yd.formCount,
+    hasPartV: yd.hasPartV, hasPartVI: yd.hasPartVI,
     ...(faxPayload ? { faxPayload } : {}),
     ...(unsupportedText.length ? { unsupportedText } : {}),
   };
@@ -2940,6 +3014,12 @@ export interface MultiYearPackage {
   bundled: Uint8Array;
   /** One transmission-ready PDF: cover, one RCL, then every year's forms. */
   faxPayload?: Uint8Array;
+  /**
+   * Whether each statement appears in ANY year of the job. One fax carries the
+   * whole catch-up, so this is what its cover and receipt describe.
+   */
+  hasPartV: boolean;
+  hasPartVI: boolean;
   /** Years included, ascending. */
   taxYears: number[];
   /**
@@ -3093,6 +3173,10 @@ export const generateMultiYearPackage = async (
       formCount: perYear.reduce((sum, item) => sum + item.formCount, 0),
       hasRCL: !!rclDoc,
       has7004: sorted.some((item) => wants7004(item.filing)),
+      // One fax carries every year, so a statement produced in ANY year is
+      // enclosed in the transmission the cover describes.
+      hasPartV: yearDocs.some((yd) => yd.hasPartV),
+      hasPartVI: yearDocs.some((yd) => yd.hasPartVI),
       pageCount: 0,
       senderFax: opts.senderFax,
       sentOn: opts.sentOn,
@@ -3115,6 +3199,8 @@ export const generateMultiYearPackage = async (
     perYear: perYear.sort((a, b) => a.taxYear - b.taxYear),
     reasonableCauseLetter: rclDoc ? await rclDoc.save() : undefined,
     bundled: await bundle.save(),
+    hasPartV: yearDocs.some((yd) => yd.hasPartV),
+    hasPartVI: yearDocs.some((yd) => yd.hasPartVI),
     taxYears,
     ...(faxPayload ? { faxPayload } : {}),
     ...(unsupportedText.length ? { unsupportedText } : {}),
