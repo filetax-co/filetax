@@ -642,7 +642,7 @@ export function EligibilityCheck() {
               tabIndex={-1}
               style={{ fontSize: "clamp(1.375rem, 4vw, 1.75rem)", marginBottom: "0.75rem", outline: "none" }}
             >
-              This is one case our platform does not currently cover.
+              This filing is outside what our platform covers.
             </h1>
             <p style={{ color: "var(--tf-text)", fontSize: "0.9375rem", lineHeight: 1.65, marginBottom: "1.5rem" }}>
               {referReason}

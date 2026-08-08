@@ -63,28 +63,44 @@ interface Stage {
   /** Screenshot basename, without extension. Omit for stages with no screen. */
   shot?: string;
   shotAlt?: string;
-  points: { label: string; body: string }[];
+  points: { label: string; body: React.ReactNode }[];
   // A `sample` field used to live here, carrying the obscured reasonable cause
   // letter image onto step 5. It was removed with the rest of the letter on
   // 3 Aug 2026, on the owner's instruction. See the note above `STAGES`.
-  /**
-   * Articles for the filer who wants the tax detail behind this screen.
-   *
-   * THIS IS HOW THE GUIDE STAYS ABOUT THE PRODUCT. The rule at the top of this
-   * file is that /guide answers "what happens when I click Start" and never
-   * explains tax law. That rule only holds if there is somewhere to send the
-   * person whose real question is "yes, but what counts as a reportable
-   * transaction". Without these links the pressure to answer it here is
-   * constant, and the guide slowly turns into a worse copy of /resources.
-   *
-   * So: when a stage tempts you into a paragraph of tax explanation, add a link
-   * instead. Slugs must exist in the Sanity corpus, they are not rewritten if a
-   * post is renamed, and a dead one gives the filer a 404 at the exact moment
-   * they were told to go and read something.
-   */
-  reading?: { slug: string; label: string }[];
   /** Shown in an amber note under the points. */
-  note?: string;
+  note?: React.ReactNode;
+}
+
+/**
+ * An inline link to an article, for the filer whose real question is a tax
+ * question rather than a product one.
+ *
+ * THIS IS HOW THE GUIDE STAYS ABOUT THE PRODUCT. The rule at the top of this
+ * file is that /guide answers "what happens when I click Start" and never
+ * explains tax law. That rule only holds if there is somewhere to send the
+ * person who wants to know what actually counts as a reportable transaction.
+ * Without these links the pressure to answer it here is constant, and the guide
+ * slowly turns into a worse copy of /resources.
+ *
+ * So: when a stage tempts you into a paragraph of tax explanation, link a few
+ * words of the sentence you were already writing.
+ *
+ * These used to be a labelled "If you want the detail" list under each stage,
+ * which is the shape a filer skips: it sat below the thing it related to, it
+ * broke the reading, and it looked like a related-posts widget rather than an
+ * answer to the question they had just formed. Owner's instruction, 8 Aug 2026.
+ * Do not reintroduce the block form.
+ *
+ * Slugs must exist in the Sanity corpus. They are not rewritten if a post is
+ * renamed, and a dead one gives the filer a 404 at the exact moment they were
+ * told to go and read something. All six in use were verified on 8 Aug 2026.
+ */
+function A({ slug, children }: { slug: string; children: React.ReactNode }) {
+  return (
+    <Link to={`/resources/${slug}`} style={{ color: "var(--tf-accent)", fontWeight: 600 }}>
+      {children}
+    </Link>
+  );
 }
 
 const STAGES: Stage[] = [
@@ -93,39 +109,75 @@ const STAGES: Stage[] = [
     kicker: "Step 1",
     title: "The eligibility check",
     lede:
-      "Before we take any details, three questions establish whether this filing is one we can " +
-      "prepare properly. It takes about a minute, and it is the only part of the process where " +
+      "Four steps, about a minute, before we take any details from you. They establish whether " +
+      "this is a filing we can prepare properly, and it is the only part of the process where " +
       "the honest answer might be that you should see a CPA instead.",
     shot: "01-eligibility",
-    shotAlt: "The eligibility check, showing the entity type question and a three-step progress bar",
+    shotAlt: "The eligibility check on step 1 of 4, asking what type of U.S. entity you are filing for",
     points: [
       {
-        label: "What type of U.S. entity are you filing for?",
-        body:
-          "Only a single-member LLC continues. A multi-member LLC, a C-Corporation, or an " +
-          "honest 'I am not sure' each stop here with an explanation of why a professional " +
-          "should look at it first.",
+        label: "Step 1, Entity Type",
+        body: (
+          <>
+            One question: what type of U.S. entity you are filing for. Only a single-member LLC
+            continues. A multi-member LLC, a C-Corporation, or an honest 'I am not sure' each stop
+            here with an explanation of why a professional should look at it first. If you are
+            unsure whether your situation is even a Form 5472 one, it is worth reading{" "}
+            <A slug="form-5472-vs-form-5471">which of Form 5472 and Form 5471 you actually file</A>{" "}
+            before you begin.
+          </>
+        ),
       },
       {
-        label: "Has the IRS issued an EIN, is the owner a non-U.S. individual, and is the LLC still taxed as formed?",
+        label: "Step 2, LLC Setup",
         body:
-          "Three yes-or-no questions that appear one after another. No EIN means there is " +
-          "nothing to file against yet. A U.S. citizen, Green Card holder, or anyone meeting " +
-          "the Substantial Presence Test falls under different rules. And a Form 8832 or " +
-          "Form 2553 already on file means the LLC is no longer a disregarded entity, which " +
-          "changes the return entirely.",
+          "Three yes-or-no questions, one after another. Has the IRS issued an EIN? Is the owner " +
+          "a non-U.S. individual? And is the LLC still taxed the way it was when it was formed, " +
+          "with no election filed to change that? No EIN means there is nothing to file against " +
+          "yet, and applying is free at IRS.gov. A Form 8832 or Form 2553 already on file means " +
+          "the LLC is no longer a disregarded entity, which changes the return entirely.",
       },
       {
-        label: "How many tax years do you need to file?",
+        label: "What 'a non-U.S. individual' means here",
         body:
-          "A count, not the specific years, which is enough to price the job. You choose the " +
-          "actual years later, once we know your incorporation date and can rule out years " +
-          "the LLC did not exist. We support tax years back to 2019.",
+          "You are a non-U.S. individual if you do not hold U.S. citizenship, do not hold a " +
+          "Green Card, and have not met the IRS Substantial Presence Test, which counts the days " +
+          "you spent in the United States over the past three years. Holding any one of those " +
+          "three puts you under different tax rules, and this flow is not built for them. The " +
+          "question carries the same definition on screen, so you are not answering it from memory.",
       },
-    ],
-    reading: [
-      { slug: "form-5472-vs-form-5471", label: "Form 5472 vs Form 5471, which one you actually file" },
-      { slug: "form-5472-filing-checklist", label: "What you need before you start" },
+      {
+        label: "Step 3, Your Dealings",
+        body: (
+          <>
+            Five questions about who the LLC deals with, each answered No by an ordinary filer.
+            They cover cost sharing agreements over intellectual property, goods bought from a
+            related party and imported into the United States, loans with a related party who is
+            not you personally, interest or royalties under an arrangement the two countries tax
+            differently, and a related-company loan alongside a payout or an acquisition in the
+            last three years. A Yes to any of them puts your filing in Part VII or Part VIII of
+            Form 5472, which is work for a person rather than a form. Every question carries a
+            plain-language note saying what does and does not count, and money moving between you
+            and your own LLC never counts, which is{" "}
+            <A slug="reportable-transactions-form-5472">
+              the distinction that trips most owners up
+            </A>
+            .
+          </>
+        ),
+      },
+      {
+        label: "Step 4, Filing Years",
+        body: (
+          <>
+            How many tax years you need, as a count rather than the specific years, which is
+            enough to show you a price. You pick the actual years in the portal, where we check
+            them against the date your LLC was formed and work out which ones are late. We support
+            tax years back to 2019. If you would rather arrive with everything to hand, here is{" "}
+            <A slug="form-5472-filing-checklist">what to gather before you start</A>.
+          </>
+        ),
+      },
     ],
     note:
       "Your answers here are never stored and never carried into the portal, so there is " +
@@ -181,68 +233,43 @@ const STAGES: Stage[] = [
     title: "Your dashboard",
     lede:
       "Every filing you start appears here and stays here once it is finished, so you can come " +
-      "back and download the package again later. It opens with a row of counts so you can see " +
-      "what needs you without reading the list, and the filings themselves are grouped by " +
-      "company rather than listed as one long run of years.",
+      "back and download the package again later. Filings are grouped by company, and the row " +
+      "of counts at the top tells you what still needs you.",
     shot: "03-dashboard",
     shotAlt: "The dashboard showing filing counts, the next deadline, and a filing with its status",
+    // KEEP THIS LIST SHORT. It ran to seven points, and none of them was
+    // information the filer needed in order to file: it was the dashboard's
+    // design explained to itself, badge precedence and all. A filer reading
+    // /guide is deciding whether to hand over an EIN, not learning an interface
+    // they will understand on sight in about four seconds. Owner's instruction,
+    // 8 Aug 2026. If you are adding an eighth point, you are writing release
+    // notes. The behaviour is still all true, it just does not need saying here.
     points: [
       {
-        label: "One badge per filing, saying what it is right now",
+        label: "One badge per filing, saying where it is",
         body:
-          "A filing is a Draft while you are still entering details, In progress once it is " +
-          "under way, Ready to download once paid, and Downloaded after you have taken the " +
-          "package. Payment failed appears if a card is declined, so a half-finished purchase " +
-          "is never silently abandoned. There is deliberately only ever one badge: it tells you " +
-          "the single most important thing about that filing rather than making you read three " +
-          "labels and work out which one wins.",
+          "Draft while you are still entering details, In progress once it is under way, Ready " +
+          "to download once paid, and Downloaded after you have taken the package. Payment " +
+          "failed appears if a card is declined. If you bought fax delivery, the badge tracks " +
+          "the fax instead: Fax pending while it is in flight, Faxed to the IRS once the " +
+          "provider confirms it landed.",
       },
       {
-        label: "If you bought fax delivery, the badge is about the fax instead",
-        body:
-          "Fax pending while the transmission is still owed or still in flight, and Faxed to " +
-          "the IRS once the provider confirms it landed. That outranks Downloaded, because it " +
-          "is the thing you are actually waiting on. Nothing is at the IRS until the provider " +
-          "confirms it, and the wording never claims otherwise.",
-      },
-      {
-        label: "The deadline is worked out for you, and retired when it stops applying",
+        label: "Your deadline is worked out for you",
         body:
           "Each filing shows its own IRS position for that tax year: the original due date " +
           "while there is still time, the extended date once the first has passed, and 'Past " +
           "due, file ASAP' after that. The summary row shows your nearest deadline across every " +
-          "unfinished filing. Once a filing has been faxed the deadline disappears from that " +
-          "card, rather than warning you about a return you have just sent.",
+          "unfinished filing, and a filing you have faxed stops showing one at all.",
       },
       {
-        label: "Your companies are remembered between years",
+        label: "Your companies are remembered, and nothing is lost if you stop",
         body:
-          "Each company you have filed for gets its own group, showing the year you last filed " +
-          "for it. Starting the next year from there carries the LLC and owner details forward " +
-          "for you to review, instead of asking for an EIN you already gave us.",
-      },
-      {
-        label: "Start one year, or catch up several",
-        body:
-          "A single tax year goes straight into the intake. Missed several years and the " +
-          "catch-up flow sets them up as one job, grouped together so the years stay a single " +
-          "piece of work rather than scattered rows. Where we have no filing on record for a " +
-          "year, the company's card offers to start it. That is a statement about what you " +
-          "filed through us, never a claim about what you did or did not file elsewhere.",
-      },
-      {
-        label: "Nothing is lost if you stop",
-        body:
-          "The intake saves as you go. You can close the tab partway through and pick it up " +
-          "from the dashboard days later on a different machine, and the link returns you to " +
-          "the section you left rather than to the beginning. A catch-up resumes at the " +
-          "earliest year still needing work, so the years get filed in order.",
-      },
-      {
-        label: "You can delete a filing you have not paid for",
-        body:
-          "Unpaid drafts can be removed, including a whole catch-up job at once. Once a year " +
-          "has been paid for it stays, because a half-deleted catch-up is worse than none.",
+          "Each company you have filed for keeps its own group, and starting the next year from " +
+          "there carries your LLC and owner details forward for you to review. The intake saves " +
+          "as you go, so you can close the tab partway through and pick it up days later on a " +
+          "different machine, at the section you left. Drafts you have not paid for can be " +
+          "deleted, including a whole catch-up at once.",
       },
     ],
   },
@@ -288,12 +315,20 @@ const STAGES: Stage[] = [
       },
       {
         label: "Transactions",
-        body:
-          "The money and non-money movements between you and the LLC during the year: capital " +
-          "contributions, distributions, loans, services, reimbursements. You enter them " +
-          "manually, each against the related party it belongs to, and each one is saved as " +
-          "you add it rather than only when you leave the section. A running total sits under " +
-          "the list. These populate Part IV, Part V and Part VI of Form 5472.",
+        body: (
+          <>
+            The money and non-money movements between you and the LLC during the year: capital
+            contributions, distributions, loans, services, reimbursements. You enter them
+            manually, each against the related party it belongs to, and each one is saved as you
+            add it. A running total sits under the list. These populate Part IV, Part V and Part
+            VI of Form 5472, and if you are unsure what belongs here, start with{" "}
+            <A slug="reportable-transactions-form-5472">
+              which contributions, loans and distributions are reportable
+            </A>{" "}
+            and then check your entries against{" "}
+            <A slug="top-mistakes-form-5472">the mistakes foreign LLC owners make most often</A>.
+          </>
+        ),
       },
       {
         label: "Review",
@@ -302,19 +337,22 @@ const STAGES: Stage[] = [
           "Read it properly. This is the last point at which a typo is free to fix.",
       },
       {
-        label: "You can see the forms before you pay",
-        body:
-          "Review offers a preview of your filled Form 5472 and pro forma 1120, built from " +
-          "your own answers on the form revision for your year, watermarked DRAFT and with the " +
-          "detail obscured. It is there so you can check your name, your EIN and your figures " +
-          "landed in the right boxes before you decide to buy anything.",
+        label: "You see your own forms before you pay",
+        body: (
+          <>
+            Review shows you your filled Form 5472 and pro forma 1120, built from your own
+            answers, on the IRS form revision for your year. Check that your name, your EIN and
+            your figures have landed in the right boxes, then decide whether to buy anything. The
+            preview carries a DRAFT watermark, because it is not a filing until you have paid and
+            signed it. If you want to read the boxes as you check them, we explain{" "}
+            <A slug="form-5472-field-by-field">Form 5472 line by line</A> and{" "}
+            <A slug="pro-forma-1120-explained">
+              which fields of the pro forma 1120 you actually complete
+            </A>
+            .
+          </>
+        ),
       },
-    ],
-    reading: [
-      { slug: "reportable-transactions-form-5472", label: "Reportable transactions: contributions, loans and distributions explained" },
-      { slug: "form-5472-field-by-field", label: "Form 5472 field by field, every line explained" },
-      { slug: "pro-forma-1120-explained", label: "The pro forma 1120, and every field you complete" },
-      { slug: "top-mistakes-form-5472", label: "The mistakes foreign LLC owners make most often" },
     ],
     note:
       "Each section validates before it lets you continue. If something is missing or does not " +
@@ -358,19 +396,19 @@ const STAGES: Stage[] = [
           "yours contains.",
       },
       {
-        label: "You sign it here, at the end and not before",
+        label: "You sign at the end, not before",
         body:
           "Draw your signature, or leave the pad blank and it falls back to your typed name, " +
-          "which the IRS accepts just as readily. Signing sits immediately before generating on " +
-          "purpose, so you are signing the filing as it is about to be rendered rather than a " +
-          "version you edited three screens ago. On a catch-up, one signature covers every year.",
+          "which the IRS accepts just as readily. Signing is the last thing you do before your " +
+          "package is built, so what you sign is the filing you are about to receive. On a " +
+          "catch-up, one signature covers every year.",
       },
       {
         label: "The drawn signature is never stored",
         body:
-          "The pad is blank every time you come back, deliberately: we keep your typed name, " +
-          "not an image of your hand. Redrawing it changes only the next file you generate. A " +
-          "PDF you have already downloaded is fixed as it was.",
+          "We keep your typed name, not an image of your hand, so the pad is blank every time " +
+          "you come back. Redrawing it changes only the next file you generate. A PDF you have " +
+          "already downloaded stays as it was.",
       },
     ],
     // NO `reading` LIST ON THIS STAGE, DELIBERATELY, AND DO NOT RESTORE IT.
@@ -391,6 +429,9 @@ const STAGES: Stage[] = [
     lede:
       "The package is complete and signed when you download it. What it still needs is to reach " +
       "the IRS, and that step is yours unless you add fax delivery.",
+    shot: "06-fax",
+    shotAlt:
+      "The IRS fax delivery panel on a filing, showing the transmission status, pages transmitted, pages received and the button to download the confirmation and the pages sent",
     points: [
       {
         label: "By mail or by fax, yourself",
@@ -409,16 +450,27 @@ const STAGES: Stage[] = [
       {
         label: "You press send, and you can see what happened",
         body:
-          "Fax delivery does not fire on its own. Your filing page carries a Send to the IRS " +
-          "by fax button, so the moment your pages leave is a moment you chose. The page then " +
-          "shows the transmission's state, and if it fails it says why and lets you try again.",
+          "Fax delivery does not fire on its own. Your filing page carries a Send to the IRS by " +
+          "fax button, so the moment your pages leave is a moment you chose. The panel then " +
+          "tracks the transmission for you, and if it fails it says why and lets you try again.",
       },
       {
-        label: "Once it lands, you can download what we sent",
+        label: "The panel shows you the transmission as it happens",
         body:
-          "A confirmation from the fax provider, with the pages that were transmitted, the " +
-          "number they went to, and the time they were accepted. Keep it. If the IRS ever " +
-          "questions when you filed, that record is what answers it.",
+          "Status, the number of pages transmitted, the number the receiving end confirmed it " +
+          "received, and how many attempts it took. Pages transmitted and pages received sitting " +
+          "at the same number is the thing worth looking for: it means every page of your filing " +
+          "arrived, not just that the call connected.",
+      },
+      {
+        label: "Once it lands, download the confirmation and the pages",
+        body:
+          "One file, holding both. The confirmation is dated and says what went to the IRS and " +
+          "when. The pages are exactly what they received, cover page first, in the order they " +
+          "were sent. It appears once the transmission is confirmed, rather than the moment you " +
+          "press send, because a receipt for a fax that can still fail would be describing " +
+          "something that has not happened yet. Keep it: if the IRS ever questions when you " +
+          "filed, that record is what answers it.",
       },
       {
         label: "A faxed filing becomes read-only",
@@ -448,7 +500,7 @@ const AFTER_PAYMENT: { label: string; body: string }[] = [
       "filing you spot an error in three days later is not a filing you have to buy again.",
   },
   {
-    label: "Six fields lock, and they are the ones that define what you bought",
+    label: "Six fields lock, and they are the ones that identify the filing",
     body:
       "The EIN, the LLC name, the tax year, your legal name, your foreign tax ID and the " +
       "incorporation date. A change to any of those is not a correction to this filing, it is " +
@@ -665,35 +717,6 @@ export function Guide() {
               ))}
             </dl>
 
-            {stage.reading && (
-              <div style={{ margin: "0 0 1.5rem" }}>
-                <p
-                  style={{
-                    color: "var(--tf-muted)",
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    margin: "0 0 0.5rem",
-                  }}
-                >
-                  If you want the detail
-                </p>
-                <ul style={{ margin: 0, paddingLeft: "1.125rem", display: "grid", gap: "0.3rem" }}>
-                  {stage.reading.map((r) => (
-                    <li key={r.slug} style={{ fontSize: "0.875rem", lineHeight: 1.55 }}>
-                      <Link
-                        to={`/resources/${r.slug}`}
-                        style={{ color: "var(--tf-accent)", fontWeight: 600, textDecoration: "none" }}
-                      >
-                        {r.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {stage.note && (
               <p
                 style={{
@@ -768,6 +791,15 @@ export function Guide() {
             The flow above describes one tax year. Several missed years work the
             same way, with two differences worth knowing before you start.
           </p>
+          {/* The first screen of a catch-up, so the filer can see that several
+              missed years arrive as ONE job rather than as one purchase per
+              year. That is the fear this section exists to answer and it was
+              the only major flow on the page with nothing shown. */}
+          <Shot
+            name="07-catchup"
+            alt="The first screen of a catch-up, showing several missed tax years set up as a single job"
+          />
+          <div style={{ height: "1.5rem" }} />
           {/* Same marker treatment as the homepage's "What you receive" list:
               listStyle none, a green tick in its own flex column, and a rule
               under each row. The bullets used to be browser discs, which is
