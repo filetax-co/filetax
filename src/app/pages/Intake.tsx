@@ -1202,7 +1202,12 @@ export function Intake() {
   const [stateOfFormation, setStateOfFormation] = useState('');
   const [totalAssets, setTotalAssets] = useState('');
   const [entityDOI, setEntityDOI] = useState('');
-  const [entityPrincipalCountry, setEntityPrincipalCountry] = useState('');
+  // Defaults to the United States, changeable. The reporting corporation IS a
+  // US company, so it is the answer for most filers and the one they can accept
+  // without stopping to think; the alternative was a blank required select in
+  // the middle of step 1. Every other writer below preserves a saved value, so
+  // this only ever fills an empty field.
+  const [entityPrincipalCountry, setEntityPrincipalCountry] = useState('United States');
   const [mailing, setMailing] = useState<Address>({ country: 'US' });
   const [entityBizActivity, setEntityBizActivity] = useState('');
   const [entityBizCode, setEntityBizCode] = useState('');
@@ -1349,7 +1354,11 @@ export function Intake() {
   const [signerTitle, setSignerTitle] = useState('Managing Member');
   // Date the owner signs, printed on the Form 1120 "Date" line (all years) so
   // the package prints ready to mail. ISO YYYY-MM-DD.
-  const [signatureDate, setSignatureDate] = useState('');
+  // Today, in the FILER'S timezone, changeable. `todayISO` is deliberate here:
+  // toISOString would give the UTC date, which is yesterday for anyone west of
+  // Greenwich for part of their day, and this date is the one printed as the
+  // date of signature. A saved date always wins over it.
+  const [signatureDate, setSignatureDate] = useState(todayISO());
 
   // Step 3
   const [relatedParties, setRelatedParties] = useState<RelatedParty[]>([]);
@@ -1716,7 +1725,9 @@ export function Intake() {
       setTaxYear(String(f.tax_year ?? '2024'));
       setTotalAssets(String((f as any).total_assets ?? ''));
       setEntityDOI((f as any).entity_date_of_incorporation ?? (f as any).date_of_incorporation ?? '');
-      setEntityPrincipalCountry((f as any).entity_principal_country ?? '');
+      // `||`, not `??`. A filing saved before this field existed holds '' as
+      // readily as null, and both mean "never answered", which takes the default.
+      setEntityPrincipalCountry((f as any).entity_principal_country || 'United States');
       setMailing((f.mailing_address as Address) ?? { country: 'US' });
       setEntityBizActivity((f as any).entity_business_activity ?? (f as any).naics_description ?? '');
       setEntityBizCode((f as any).entity_business_code ?? '');
@@ -1748,7 +1759,7 @@ export function Intake() {
       setOwnerBizActivity(f.owner_business_activity?.trim() || loadedBizPreset?.label || '');
       setOwnerBizCode(loadedBizCode);
       setSignerTitle((f as any).signer_title ?? 'Managing Member');
-      setSignatureDate((f as any).signature_date ?? '');
+      setSignatureDate((f as any).signature_date || todayISO());
       if ((f as any).related_parties) setRelatedParties((f as any).related_parties as RelatedParty[]);
       setNoTransactionsConfirmed((f as any).no_transactions_confirmed ?? false);
       setPartViManagerial((f as any).part_vi_managerial ?? true);
@@ -3829,15 +3840,34 @@ export function Intake() {
             that none of them can move now. Showing both would end on the paid
             banner's promise that corrections can be re-downloaded as often as
             needed, which is exactly what is no longer true. */}
+        {/* The sent banner says the three things a filer needs and stops. It
+            used to also explain that their answers were worth keeping for next
+            year, and that an edit here would leave them holding a return the
+            IRS did not receive: both true, but that is the REASONING behind the
+            lock, and a banner is not where someone reads an argument. The route
+            out was described in prose ("from the filing page") with nothing to
+            click, which is what the button in it now fixes. */}
         {isFaxLocked ? (
           <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
-            <strong>This filing has been faxed to the IRS. You are viewing your answers,
-            read-only.</strong> Everything you entered stays here for you to look back on, which is
-            worth having in front of you when you file next year. Nothing can be changed: the IRS
-            holds the pages exactly as they were transmitted, and editing them here would leave you
-            with a return that differs from the one they received.{' '}
-            If something on it is wrong, email support@filetax.co. You can download the whole fax
-            record, your confirmation and the transmitted pages in one file, from the filing page.
+            <strong>This filing has been faxed to the IRS.</strong> These answers are read-only: the
+            IRS holds the pages exactly as they were sent. If something on it is wrong, email
+            support@filetax.co.
+            {filingId && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => navigate(`/filing/${filingId}`)}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, margin: 0,
+                    font: 'inherit', color: 'inherit', textAlign: 'left',
+                    textDecoration: 'underline', textUnderlineOffset: '0.15em', cursor: 'pointer',
+                  }}
+                >
+                  Download your fax record and the pages sent
+                </button>.
+              </>
+            )}
           </div>
         ) : isPaidLocked && (
           <div className="cat-banner-amber" style={{ marginBottom: '1.25rem' }}>
@@ -5647,6 +5677,22 @@ export function Intake() {
                 write path anyway, so "Save corrections & re-download" only
                 offered a correction that cannot happen. The download of the fax
                 record lives on the filing page, which the banner points to. */}
+            {/* A faxed filing has no actions, which left the review section
+                ending on nothing: the filer scrolled to the bottom of their own
+                return and the page simply stopped. There is one thing they can
+                still do with it, so offer that instead of an empty space. */}
+            {isFaxLocked && filingId && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  style={primaryBtnStyle}
+                  onClick={() => navigate(`/filing/${filingId}`)}
+                >
+                  Go to downloads →
+                </button>
+              </div>
+            )}
+
             {!isFaxLocked && (
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem', flexWrap: 'wrap' }}>
               {!isPaidLocked && (
